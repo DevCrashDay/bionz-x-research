@@ -135,6 +135,26 @@ class SettingTests(unittest.TestCase):
         self.assertTrue(body["ok"])
 
 
+class EventTests(unittest.TestCase):
+    """The panel must stay current without a busy loop, and must survive a silent camera."""
+
+    def setUp(self) -> None:
+        self.panel = PanelHarness()
+
+    def tearDown(self) -> None:
+        self.panel.close()
+
+    def test_an_event_is_reduced_to_fields_a_person_can_use(self) -> None:
+        event = self.panel.get("/api/events")
+        self.assertEqual(event["type"], "availableApiList")
+        self.assertEqual(event["api_count"], 47)
+
+    def test_the_raw_name_list_is_not_forwarded(self) -> None:
+        # getEvent's "names" array is 47 strings and would be re-sent on every poll.
+        event = self.panel.get("/api/events")
+        self.assertNotIn("names", event)
+
+
 class StreamTests(unittest.TestCase):
     def test_a_stream_request_without_a_camera_is_a_clean_refusal(self) -> None:
         # Offline there is no stream to relay; the panel must say so rather than hang.

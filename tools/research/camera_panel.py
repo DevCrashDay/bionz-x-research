@@ -75,6 +75,8 @@ SETTINGS: dict[str, dict[str, str]] = {
                       "choices": "getSupportedWhiteBalance", "label": "White balance"},
     "ev": {"getter": "getExposureCompensation", "setter": "setExposureCompensation",
            "choices": "getSupportedExposureCompensation", "label": "Exposure compensation"},
+    "drive": {"getter": "getContShootingMode", "setter": "setContShootingMode",
+              "choices": "getSupportedContShootingMode", "label": "Drive mode"},
 }
 
 PAGE = """<!doctype html>
@@ -190,6 +192,29 @@ async function buildSettings() {
   }
 }
 
+async function pollEvents() {
+  // Long poll: the camera answers when something changes. Re-arm immediately after.
+  for (;;) {
+    try {
+      const r = await fetch('/api/events');
+      const ev = await r.json();
+      if (ev.reason) { log('events unavailable: ' + ev.reason); await sleep(3000); continue; }
+      const parts = [];
+      for (const [k, v] of Object.entries(ev)) {
+        if (k === 'type' || k === 'api_count') continue;
+        parts.push(k + '=' + JSON.stringify(v));
+      }
+      if (parts.length) {
+        document.getElementById('status').dataset.events = parts.join('  ');
+        log('event ' + (ev.type || '') + '  ' + parts.join('  '));
+      }
+    } catch (e) {
+      await sleep(2000);
+    }
+  }
+}
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
 async function boot() {
   const info = await (await fetch('/api/scene')).json();
   state.scene = info;
@@ -203,6 +228,7 @@ async function boot() {
     + info.api.slice().sort().join('<br>') + '</div>';
   buildActions();
   await buildSettings();
+  pollEvents();
   const img = document.getElementById('live');
   if (info.api.includes('startLiveview')) {
     img.src = '/stream?t=' + Date.now();
@@ -285,7 +311,10 @@ class Camera:
         if not isinstance(raw, list) or not raw:
             return None
         field = self._NAME_FIELD.get(method)
-        items = raw[0] if isinstance(raw[0], list) else raw
+        head = raw[0]
+        if isinstance(head, dict) and isinstance(head.get("candidate"), list):
+            return [str(v) for v in head["candidate"]]
+        items = head if isinstance(head, list) else raw
         if not isinstance(items, list):
             return None
         values: list[str] = []
@@ -360,6 +389,9 @@ def build_handler(camera: Camera) -> type[BaseHTTPRequestHandler]:
                 values = camera.supported_values(spec["choices"])
                 self._json({"current": current, "values": values, "error": error})
                 return
+            if url.path == "/api/events":
+                self._events()
+                return
             if url.path == "/stream":
                 self._stream()
                 return
@@ -402,6 +434,34 @@ def build_handler(camera: Camera) -> type[BaseHTTPRequestHandler]:
                 self._json({"ok": True, "detail": f"now {now}"})
                 return
             self._json({"ok": False, "detail": "not found"}, 404)
+
+        def _events(self) -> None:
+            """One event from the camera, reduced to the fields the panel shows.
+
+            ``getEvent`` is a long poll: it answers when something changes or after its own
+            timeout. Asking with ``True`` is what keeps a panel current without a busy loop.
+            """
+            if camera.api_client is None and "getEvent" not in camera.recorded.get("answers", {}):
+                self._json({"type": None, "reason": "no camera"}, 503)
+                return
+            try:
+                raw = camera.call("getEvent", [True] if camera.api_client else None)
+            except (ApiError, TransportError) as exc:
+                self._json({"type": None, "reason": str(exc)}, 503)
+                return
+            event: dict[str, Any] = {}
+            if isinstance(raw, list) and raw and isinstance(raw[0], dict):
+                event = raw[0]
+            # Keep only fields the panel renders; the raw answer is large and mostly names.
+            keep = ("type", "cameraStatus", "shootMode", "focusStatus", "liveviewStatus",
+                    "liveviewOrientation", "zoomPosition", "zoomNumberBox",
+                    "storageInformation", "exposureMode", "fNumber", "shutterSpeed",
+                    "isoSpeedRate", "whiteBalance", "exposureCompensation",
+                    "contShootingMode", "selfTimer", "flashMode", "stillSize", "stillQuality")
+            trimmed = {k: event[k] for k in keep if k in event}
+            if "names" in event:
+                trimmed["api_count"] = len(event["names"])
+            self._json(trimmed)
 
         def _stream(self) -> None:
             """Relay the camera's MJPEG as multipart, so an <img> can show it directly."""

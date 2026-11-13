@@ -409,6 +409,73 @@
           "contShootingMode": "Single"
         }
       ]
+    },
+    "getEvent": {
+      "result": [
+        {
+          "type": "availableApiList",
+          "names": [
+            "getAvailableApiList",
+            "getShootMode",
+            "getSupportedShootMode",
+            "getAvailableShootMode",
+            "getSupportedFlashMode",
+            "getSupportedSelfTimer",
+            "getSupportedMovieQuality",
+            "startLiveview",
+            "stopLiveview",
+            "getExposureMode",
+            "getSupportedExposureMode",
+            "getAvailableExposureMode",
+            "setExposureCompensation",
+            "getExposureCompensation",
+            "getSupportedExposureCompensation",
+            "getAvailableExposureCompensation",
+            "setFNumber",
+            "getFNumber",
+            "getSupportedFNumber",
+            "getAvailableFNumber",
+            "setWhiteBalance",
+            "getWhiteBalance",
+            "getSupportedWhiteBalance",
+            "getAvailableWhiteBalance",
+            "getShutterSpeed",
+            "getSupportedShutterSpeed",
+            "getAvailableShutterSpeed",
+            "setIsoSpeedRate",
+            "getIsoSpeedRate",
+            "getSupportedIsoSpeedRate",
+            "getAvailableIsoSpeedRate",
+            "actHalfPressShutter",
+            "cancelHalfPressShutter",
+            "getSupportedProgramShift",
+            "startContShooting",
+            "stopContShooting",
+            "getSupportedMovieFileFormat",
+            "setContShootingMode",
+            "getContShootingMode",
+            "getSupportedContShootingMode",
+            "getAvailableContShootingMode",
+            "getSupportedViewAngleMode",
+            "getSupportedNearModeInPF",
+            "getSupportedWirelessFlashSetting",
+            "getApplicationInfo",
+            "getEvent",
+            "getTemporarilyUnavailableApiList"
+          ]
+        }
+      ]
+    },
+    "getSupportedContShootingMode": {
+      "result": [
+        {
+          "candidate": [
+            "Single",
+            "Continuous",
+            "Spd Priority Cont."
+          ]
+        }
+      ]
     }
   },
   "liveview_stream": {
