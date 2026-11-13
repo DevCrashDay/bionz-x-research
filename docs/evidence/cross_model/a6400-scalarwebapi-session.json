@@ -1,0 +1,165 @@
+{
+  "_note": "Recorded from the owner's ILCE-6400 (firmware 2.00) over its own AP on 2026-11-14; E0659. Counts are the camera's answers, not a curated list.",
+  "host": "192.168.122.1",
+  "port": 10000,
+  "ssid": "DIRECT-mRE1:ILCE-6400",
+  "application": [
+    "Smart Remote Control __SAK__",
+    "2.1.7"
+  ],
+  "firmware_from_digital_imaging": "2.00",
+  "shoot_mode": "still",
+  "available_shoot_modes": [
+    "still"
+  ],
+  "supported_shoot_modes": [
+    "still",
+    "movie",
+    "slow and quick"
+  ],
+  "api_list": [
+    "getAvailableApiList",
+    "getShootMode",
+    "getSupportedShootMode",
+    "getAvailableShootMode",
+    "getSupportedFlashMode",
+    "getSupportedSelfTimer",
+    "getSupportedMovieQuality",
+    "startLiveview",
+    "stopLiveview",
+    "getExposureMode",
+    "getSupportedExposureMode",
+    "getAvailableExposureMode",
+    "setExposureCompensation",
+    "getExposureCompensation",
+    "getSupportedExposureCompensation",
+    "getAvailableExposureCompensation",
+    "setFNumber",
+    "getFNumber",
+    "getSupportedFNumber",
+    "getAvailableFNumber",
+    "setWhiteBalance",
+    "getWhiteBalance",
+    "getSupportedWhiteBalance",
+    "getAvailableWhiteBalance",
+    "getShutterSpeed",
+    "getSupportedShutterSpeed",
+    "getAvailableShutterSpeed",
+    "setIsoSpeedRate",
+    "getIsoSpeedRate",
+    "getSupportedIsoSpeedRate",
+    "getAvailableIsoSpeedRate",
+    "actHalfPressShutter",
+    "cancelHalfPressShutter",
+    "getSupportedProgramShift",
+    "startContShooting",
+    "stopContShooting",
+    "getSupportedMovieFileFormat",
+    "setContShootingMode",
+    "getContShootingMode",
+    "getSupportedContShootingMode",
+    "getAvailableContShootingMode",
+    "getSupportedViewAngleMode",
+    "getSupportedNearModeInPF",
+    "getSupportedWirelessFlashSetting",
+    "getApplicationInfo",
+    "getEvent",
+    "getTemporarilyUnavailableApiList"
+  ],
+  "answers": {
+    "getShootMode": {
+      "result": [
+        "still"
+      ]
+    },
+    "actHalfPressShutter": {
+      "result": []
+    },
+    "cancelHalfPressShutter": {
+      "result": []
+    },
+    "actTakePicture": {
+      "error": [
+        1,
+        ""
+      ]
+    },
+    "startMovieRec": {
+      "error": [
+        5,
+        ""
+      ]
+    },
+    "stopMovieRec": {
+      "result": [
+        ""
+      ]
+    },
+    "startLiveview": {
+      "result": [
+        "http://192.168.122.1:60152/liveviewstream?%211234%21%2a%3a%2a%3aimage%2fjpeg%3a%2a%21%21%21%21%21"
+      ]
+    },
+    "stopLiveview": {
+      "result": [
+        0
+      ]
+    },
+    "startContShooting": {
+      "result": []
+    },
+    "stopContShooting": {
+      "result": []
+    },
+    "getStorageInformation": {
+      "result": [
+        []
+      ]
+    },
+    "getCreativeStyle": {
+      "error": [
+        12,
+        "getCreativeStyle"
+      ]
+    },
+    "setCreativeStyle": {
+      "error": [
+        12,
+        "setCreativeStyle"
+      ]
+    },
+    "getContrast": {
+      "error": [
+        12,
+        "getContrast"
+      ]
+    },
+    "setPictureEffect": {
+      "error": [
+        12,
+        "setPictureEffect"
+      ]
+    },
+    "startRecMode": {
+      "error": [
+        12,
+        "startRecMode"
+      ]
+    },
+    "accessControl.actEnableMethods": {
+      "error": [
+        3,
+        "Illegal Argument"
+      ]
+    }
+  },
+  "liveview_stream": {
+    "codec": "mjpeg",
+    "width": 640,
+    "height": 424,
+    "bytes_per_frame": 38016,
+    "frames_per_buffer_sample": 52,
+    "sample_bytes": 2031616
+  },
+  "uncalled_but_present_inorb_server_camera_methods_count": 221
+}

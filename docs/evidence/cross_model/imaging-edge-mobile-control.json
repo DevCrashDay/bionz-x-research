@@ -1,0 +1,42 @@
+{
+  "_note": "How Sony's own app drives this camera, measured from the shipped APK. E0660.",
+  "apk": {
+    "name": "Imaging Edge Mobile (Sony | Imaging Edge Mobile)",
+    "package": "com.sony.playmemories.mobile",
+    "version_name": "7.6.0",
+    "version_code": 760211020,
+    "size_bytes": 39386547,
+    "md5_catalog": "43d2f144f1d938cf212f82181231b6cf",
+    "md5_measured": "43d2f144f1d938cf212f82181231b6cf",
+    "sha256_measured": "b03e1ebe7e08d9e158ea9388d900c80010e3331107824e170a4c28bbd2e295e0",
+    "signing_cert_sha1": "84:E6:C9:BB:87:54:93:9E:C5:D0:69:60:85:2E:6C:C7:DB:98:35:95",
+    "signing_owner": "CN=Hiroyuki Tamaki",
+    "source": "pool.apk.aptoide.com, malware rank TRUSTED, signature validated against Google Play market 2026-07-03",
+    "decompiled_java_files": 8575
+  },
+  "what_the_app_does": {
+    "method_enum": 312,
+    "camera_methods_in_app": 221,
+    "note": "the same 221 camera methods found in the packaged orb-server; the app holds the whole standardized surface"
+  },
+  "shutter_sequence": [
+    "GetEvent.returnCb reads availableApiList from the event",
+    "if the list contains startRecMode and it was not yet called: StartRecMode.execute()",
+    "TakePicture.canExecute() returns false unless availableApiList contains actTakePicture",
+    "execute() calls WebApiExecuter -> camera.actTakePicture(callback)",
+    "on error code StillCaturingNotFinished: if awaitTakePicture is available, calls awaitTakePicture instead of failing"
+  ],
+  "discovery": {
+    "upnp": "parse X_ScalarWebAPI_ActionList_URL and X_ScalarWebAPI_LiveView_URL from the device description XML",
+    "services_recognised": [
+      "guide",
+      "camera",
+      "contentSync",
+      "system",
+      "accessControl",
+      "avContent",
+      "appControl"
+    ],
+    "note": "the client uses the URL the camera publishes; it does not hard-code the port"
+  }
+}
