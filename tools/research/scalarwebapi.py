@@ -33,13 +33,31 @@ DEFAULT_TIMEOUT = 20.0
 
 #: Error codes the camera returns in the ``error`` array. Sony documents the numbers; the
 #: ones seen on this body are named here so callers do not repeat the mapping.
+# Names are Sony's own, read from EnumErrorCode in the shipped 7.6.0 client (E0660), not
+# guessed from the number. Code 1 is literally "Any", an unclassified refusal; code 12 is
+# "No Such Method", which is how the camera answers a name it does not run at all.
 ERROR_CODES = {
-    1: "any: the camera refused the call in its current state",
-    2: "timeout: the call took too long inside the camera",
-    3: "illegal-argument: a parameter was rejected",
-    4: "illegal-data-format",
-    5: "not-ready: the camera is not in a state that serves this method",
-    12: "no-such-method: this method does not exist in the running application",
+    0: "OK",
+    1: "Any: the camera refused without a classified reason",
+    2: "Timeout: the call took too long inside the camera",
+    3: "Illegal Argument: a parameter was rejected",
+    4: "Illegal Data Format",
+    5: "Illegal Request: the request is not legal in the camera's current mode",
+    6: "Illegal Response",
+    7: "Illegal State",
+    8: "Illegal Type",
+    9: "Index Out Of Bounds",
+    10: "No Such Element",
+    11: "No Such Field",
+    12: "No Such Method: this name does not exist in the running application",
+    13: "Null Pointer",
+    14: "Unsupported Version",
+    15: "Unsupported Operation",
+    16: "Transport Error",
+    17: "Client Internal Error",
+    18: "Response Timeout",
+    40401: "Camera is not ready",
+    40402: "Already running polling API",
 }
 
 

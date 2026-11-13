@@ -94,6 +94,23 @@ E0659 §7 names the one experiment that separates them: a card inserted, then th
   this date; a newer build may add `awaitTakePicture` handling or a different order. This record is
   exact for 7.6.0.
 
+## 4a. Sony's own error vocabulary, which replaces this project's earlier guess
+
+The decompiled `EnumErrorCode` names every code the client knows. The two this project had been
+describing loosely:
+
+| code | Sony's name | meaning |
+| --- | --- | --- |
+| `1` | `Any` | an unclassified refusal; the name carries no diagnosis at all |
+| `5` | `Illegal Request` | the request is not legal in the camera's current mode |
+| `12` | `No Such Method` | the name does not exist in the running application |
+
+This matters because E0659 originally read code `1` as "refused in its current state", which
+implies a state that could change. Sony's own name says only "Any". The measured facts are
+unaffected — the shutter is absent from the 47 and answers `1` — but the interpretation was
+stronger than the evidence, and the error table in `tools/research/scalarwebapi.py` now carries
+Sony's names rather than this project's paraphrase.
+
 ## 5. Confidence and limitations
 
 - **Verified:** the package identity and its digest agreement; the four-step sequence and the busy

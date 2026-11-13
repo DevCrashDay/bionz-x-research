@@ -82,14 +82,18 @@ updater image does not carry.
 
 - **"Error 1 means the camera is busy; wait and retry."** Retried across more than ten event
   cycles and after `stopLiveview`; the answer stayed error `1` and the method stayed absent from
-  the 47. A transient state would have changed at least once.
+  the 47. A transient state would have changed at least once. The same code is what Sony's own
+  client calls "Any" — an unclassified refusal — so nothing about the number itself says "busy";
+  `Illegal Request` is `5` and `No Such Method` is `12` (E0660).
 - **"`startRecMode` would widen the list."** It answers error `12` on this body, so the method is
   not present at all, and `getAvailableShootMode` returns only `still`. `setShootMode("movie")`
   answers error `1`. The camera is locked to still capture under this application.
-- **"The storage is full, so the shutter refuses."** `getStorageInformation` answers
-  `200 [[]]` — an empty storage list, i.e. no card was present during this session. This is a
-  real confound and is **not** excluded: the same error `1` could be raised for a missing card.
-  It is recorded as a limitation, and the first follow-up is the same call with a card inserted.
+- **"No memory card, so the shutter refuses."** `getStorageInformation` answered `200 [[]]` for
+  the whole session, so no card was present. **This confound is not eliminated**, but the
+  evidence points against it: `startContShooting` answered `200 {}` in the same state, and a
+  body that refused to expose the shutter for lack of storage would not accept a continuous
+  shooting request either. Both facts are true and neither settles it, so the limitation stands
+  and the deciding call is still the same one with a card inserted.
 - **"The owner's unit differs from the packaged firmware."** The unit reports firmware 2.00
   (`DigitalImagingDesc.xml`, `X_FirmwareVersion`), while the packaged updater analysed here is a
   different point release. Addresses quoted are the packaged image's, as the project requires.

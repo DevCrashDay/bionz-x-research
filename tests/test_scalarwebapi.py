@@ -64,14 +64,17 @@ class ParseResponseTests(unittest.TestCase):
             parse_response(answer, "getCreativeStyle")
         self.assertEqual(caught.exception.code, 12)
         self.assertEqual(caught.exception.message, "getCreativeStyle")
-        self.assertIn("no-such-method", str(caught.exception))
+        self.assertIn("No Such Method", str(caught.exception))
 
-    def test_error_code_one_names_the_state_refusal(self) -> None:
+    def test_error_code_one_uses_sonys_own_name(self) -> None:
+        # Measured on the body: the shutter answers 1. Sony's client names 1 "Any", an
+        # unclassified refusal, and calling it "no such method" (12) would be a different claim.
         answer = http(b'{"error":[1,""],"id":1}')
         with self.assertRaises(ApiError) as caught:
             parse_response(answer, "actTakePicture")
         self.assertEqual(caught.exception.code, 1)
-        self.assertIn("refused", str(caught.exception))
+        self.assertIn("Any", str(caught.exception))
+        self.assertNotIn("No Such Method", str(caught.exception))
 
     def test_results_shape_is_accepted(self) -> None:
         # guide/getMethodTypes answers with "results", not "result".
