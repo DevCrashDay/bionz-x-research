@@ -218,26 +218,27 @@ class StatusSnapshot:
 
 STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
-    as_of="2026-11-13",
+    as_of="2026-11-14",
     latest=EvidenceRef(
-        evidence_id="E0509",
-        path="docs/evidence/0509-a6400a-msc-reply-lifetime-and-verified-native-identity.md",
-        date="2026-11-13",
-        title="a6400A normal identity query succeeds within its reply window",
+        evidence_id="E0510",
+        path="docs/evidence/0510-ilce-7rm4a-offline-sourced-profile.md",
+        date="2026-11-14",
+        title="ILCE-7RM4A (a7R IVA) gains a sourced reference profile",
         demonstrated=(
-            "Original ARM/Thumb controls identify a finite 10,000 ms reply timeout. The client "
-            "now keeps one request and bounded polling together and refuses stale continuation. "
-            "One owner-run transaction returns ILCE-6400A and opaque product code 0032858730 "
-            "in 2.727 ms through unchanged Windows USBSTOR, with three SCSI operations, no "
-            "BUSY, no request replay, no driver/mode change and no sector/file operation."
+            "The a7R IVA row of the E0477 platform map becomes a registered reference profile, "
+            "sourced only from the body's own packaged 1.13 updater. Seven gadget-core kernel "
+            "symbols are decoded from its own vmlinux.bin (8d02896458cd8927..., confirming and "
+            "extending E0480), with a CXD90045 identity and an 18-pair stock USB set from its "
+            "config.yaml and an 88-entry devno table that publishes no usb/video or usb/audio "
+            "node. No camera was accessed and no address is shared with the a6400."
         ),
         boundary=(
-            "This verifies normal model information, not a debugger, live kernel identity, "
-            "/proc, /setting or physical dumps. The exact first-BUSY cause and cold-session "
-            "repeatability remain unproven; the delayed E0508 test could miss a finite reply. "
-            "The target remains reference."
+            "Offline packaged firmware only: no USB, no updater execution, no boot, no live "
+            "/proc or physical dump. A resolved symbol is presence evidence, not loadability. "
+            "This body's kernel is distinct from the a6400's (E0477); ilce_7rm4a stays a "
+            "reference profile, not an execution or installation target."
         ),
-        tier="READ-ONLY PHYSICAL + OFFLINE",
+        tier="OFFLINE",
     ),
     headline="1782 tests recorded passing | No verified emulator GUI frame",
     cards=(
@@ -487,8 +488,8 @@ STATUS_SNAPSHOT = StatusSnapshot(
     ),
     suite=SuiteRecord(
         test_count=1782,
-        recorded_at="2026-11-13",
-        evidence_id="E0509",
+        recorded_at="2026-11-14",
+        evidence_id="E0510",
         command="python -m unittest discover -s tests -q",
     ),
     footer=(

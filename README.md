@@ -16,10 +16,18 @@ of "full firmware compatibility."
 | --- | --- | --- |
 | **1 · Offline Firmware Emulator** | Run Sony's original camera software, bootloader, and Linux kernel on a PC with zero risk to hardware | Core camera software reaches startup and event dispatch; the updater Linux kernel boots to its serial console and root filesystem, though full camera boot is **not** yet reached |
 | **2 · Low-Latency Liveview & USB Video (`CinemaHUD`)** | Stream video from the camera with minimal delay over USB | **Android/PTP liveview** works on real hardware. **Native USB webcam (UVC) mode** shows up on the host and disconnects cleanly, but video streaming still stalls during USB setup |
-| **3 · Multi-Camera Support** | Share hardware and kernel knowledge across BIONZ X bodies, including the a6400A | Six sourced profiles: original a6400 is the only verified execution target; the other five are reference profiles |
+| **3 · Multi-Camera Support** | Share hardware and kernel knowledge across BIONZ X bodies, including the a6400A | Seven sourced profiles: original a6400 is the only verified execution target; the other six are reference profiles |
 
 ## Latest progress
 
+- **ILCE-7RM4A (a7R IVA) Reference Profile ([E0510](docs/evidence/0510-ilce-7rm4a-offline-sourced-profile.md)):**
+  Turned the a7R IVA row of the E0477 platform map into a registered `reference` profile,
+  contributed by an a7R IVA owner from the body's own packaged 1.13 updater (no camera
+  accessed). Seven gadget-core kernel symbols decoded from its own `vmlinux.bin`
+  (`8d02896458cd8927…`, confirming and extending [E0480](docs/evidence/0480-ten-bodies-gain-kernel-symbols-offline.md)),
+  a `CXD90045` identity and 18-pair stock USB set from its `config.yaml`, and an 88-entry
+  `devno.ko` table with **no** `usb/video` or `usb/audio` node. The kernel is distinct from the
+  a6400's, so no address is shared; `ilce_7rm4a` is a reference profile, not an execution target.
 - **ILCE-6400A Reference Qualification ([E0506](docs/evidence/0506-a6400a-offline-qualification-and-debugger-boundary.md)–[E0509](docs/evidence/0509-a6400a-msc-reply-lifetime-and-verified-native-identity.md)):**
   Qualified the signed `ILCE-6400A 1.01` updater package offline (`bionzx_machine_map`: 30 partition rows, 8 MMIO mappings, moved kernel hook sites) and added a narrowly allowlisted read-only USBSTOR identity probe (`a6400a_native_readonly` + `msc_extcmd_trace`), verifying normal-mode `GetModelInfo` (`0032858730` in `2.727 ms`) while keeping `ilce_6400a` at `reference`.
 - **ISP Color & Gamma Pipeline ([E0505](docs/evidence/0505-av-cam-cc-3dlut-and-ec-gamma-pipeline.md)):**
@@ -103,7 +111,7 @@ of "full firmware compatibility."
 Recorded suite: 1782 tests. Each result is bounded by its own dated evidence record; no
 UVC video frame, no flash write, and no full firmware boot is claimed.
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=5128a1e1373c)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=7a0d90c63a55)
 
 ### Subsystem status
 
@@ -117,7 +125,7 @@ UVC video frame, no flash write, and no full firmware boot is claimed.
 | **Composite USB webcam (real camera)** | Camera appears as both PTP and Video device in Windows, and disconnects cleanly without a battery pull | DirectShow times out during the USB control handshake status stage | [E0350](docs/evidence/0350-trackb-transport-enumerates-but-renderstream-fails.md), [E0398](docs/evidence/0398-runb21-status-stage-and-disconnect-verdict.md) |
 | **USB Debugger v2** | Persistent Mass Storage debugger for reading live/warm-reboot kernel logs and USB state | Deploying the always-on WinUSB vendor interface | [E0401](docs/evidence/0401-usb-debugger-v2-ring-recover-and-mode-boundary.md), [E0405ab](docs/evidence/0405ab-device-desc-builder-and-msos2-subset.md) |
 | **Test UVC video pattern** | Streams a synthetic 720p MJPEG pattern at ~30 FPS; ZV-E10 USB video stack cataloged as reference | Wiring the live camera sensor feed | [E0143](docs/evidence/0143-uvc-720p-test-transport-and-30fps-verified.md), [E0321](docs/evidence/0321-zve10-uvc-enablement-manifest.md) |
-| **Multi-camera profiles** | Six sourced profiles, including `ilce_6400a` package/USB evidence | Only original a6400 is a verified execution target; a6400A bootstrap remains unqualified | [E0506](docs/evidence/0506-a6400a-offline-qualification-and-debugger-boundary.md), [`src/a6400/targets/`](src/a6400/targets/catalog.py), [Adding a camera](docs/ADDING_A_BIONZX_CAMERA.md) |
+| **Multi-camera profiles** | Seven sourced profiles, including `ilce_6400a` and `ilce_7rm4a` (a7R IVA) package/USB evidence | Only original a6400 is a verified execution target; the other six are reference profiles | [E0506](docs/evidence/0506-a6400a-offline-qualification-and-debugger-boundary.md), [E0510](docs/evidence/0510-ilce-7rm4a-offline-sourced-profile.md), [`src/a6400/targets/`](src/a6400/targets/catalog.py), [Adding a camera](docs/ADDING_A_BIONZX_CAMERA.md) |
 | **Automated checks** | 1782 tests pass offline (structure, profiles, emulator contracts, doc sync) | Proves bounded contracts, not full compatibility | [tests/](tests/README.md) |
 
 ## How to help (no camera needed)

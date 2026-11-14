@@ -10,6 +10,7 @@ Current consolidated state: [README research status](../../README.md) and
 
 | ID | Date | Claim |
 | --- | --- | --- |
+| [E0510](0510-ilce-7rm4a-offline-sourced-profile.md) | 2026-11-14 | ILCE-7RM4A (a7R IVA) gains a sourced `reference` profile from its own packaged 1.13 updater: seven gadget-core kernel symbols, a CXD90045 identity, an 18-pair stock USB set and an 88-entry devno table with no UVC node; no camera accessed and no address shared with the a6400 |
 | [E0509](0509-a6400a-msc-reply-lifetime-and-verified-native-identity.md) | 2026-11-13 | One uninterrupted normal-mode model query returns ILCE-6400A in 2.727 ms through unchanged Windows USBSTOR; finite reply-lifetime controls explain why delayed continuation was not a compatibility test; debugger and dump access remain unverified |
 | [E0508](0508-a6400a-native-readonly-transport-and-model-info-busy.md) | 2026-11-13 | Historical inquiry success and bounded model-info BUSY receipts, without driver, mode or storage changes; the delayed completion procedure is superseded by E0509 |
 | [E0507](0507-a6400a-kernel-partition-mmio-and-hook-map.md) | 2026-11-13 | Separate a6400A main/updater kernel, rootfs and hook maps; 30 static partition rows and eight MMIO mappings match the reference package; bounded updater execution stops at unsupported timer MMIO, not a full boot |
