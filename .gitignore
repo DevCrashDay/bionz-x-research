@@ -79,6 +79,11 @@ tools/native_camera/zve10_uvc_tree.h
 # Local Android tool downloads
 /.android-tools/
 
+# QEMU build checkout and local runtime data
+/qemu-a6400/qemu/
+/qemu-a6400/data/
+
+
 # User-owned LUT pack: bundled only in local APKs
 /android/cinemahud/assets/user_luts/
 # Local build outputs (reproducible from sources; never publish binaries)
