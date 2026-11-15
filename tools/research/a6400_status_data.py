@@ -218,27 +218,31 @@ class StatusSnapshot:
 
 STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
-    as_of="2026-11-14",
+    as_of="2026-11-15",
     latest=EvidenceRef(
-        evidence_id="E0510",
-        path="docs/evidence/0510-nflasha1-busybox-ash-ttyam0-shell.md",
-        date="2026-11-14",
-        title="Offline nflasha1 kernel boots cleanly to BusyBox /bin/ash shell on ttyAM0",
+        evidence_id="E0523",
+        path="docs/evidence/0523-mod-loader-ok-routing-diagnostics.md",
+        date="2026-11-15",
+        title="Guarded RAM-only Mod Loader: OK-routing gates root-caused, MTF2 menu touch verified through the loader",
         demonstrated=(
-            "Offline (no camera). Fixed amba2.console=1 override in UpdaterBootContract, added "
-            "PL011 IRQ 150 (_sync_uart_irq), enabled kuser hooks/return targets and 0xFFFF0FCC strexeq "
-            "COW Data Abort decoding, set _pending_cputlb_flush on switch_mm PGD change, and preserved "
-            "per-process SP_usr across sys_clone via _pending_user_frame + _restore_user_sp=False. "
-            "800M nflasha1 boot reaches BusyBox v1.13.4 /bin/ash (/ # ) on ttyAM0, executes uname -a "
-            "and ls -la /, and idles cleanly at cpu_v7_do_idle+0x8 (user_restores=1083, serial_bytes=11420, unmapped=[])."
+            "Physical ILCE-6400, RAM-only installs on fresh boots through the MSC debugger. Traced the "
+            "injected MENU tab-7 OK key through ViewBaseProduct::ProductMain into the generated state "
+            "table: state 1 / event 5 reaches action 1 only when state-table condition 4 sees "
+            "getIntProperty(12) == 0 and at least two selectable children, which the fake Mods items never "
+            "wrote. Also fixed the zero-filled MTF2 state (SMOD state-init flag), the single-CPU cacheflush "
+            "on the 4-core SMP kernel, and the MTF2 6-tab cap. Loader 36d25243... plus MenuTouchFull.mod "
+            "3f8ac4fb... left menu touch working in the ordinary tabs (Run L: count 29, last_err 0, "
+            "175/175 threads resumed)."
         ),
         boundary=(
-            "Updater kernel + initrd only (Phase 1 complete); main-firmware rootfs/services "
-            "(Appframework, gui.so, dmpgles2) and display rendering belong to Phases 2+."
+            "RAM-only on one boot: no flash write, no persistence and no boot-time load. Touch does not "
+            "work in My Menu (tab 6), the injected Mods tab (tab 7), or with tab-bar focus; the Mod Loader "
+            "toggle path is reached only through the injected row, and the upstream OK-to-action table for "
+            "other view states remains untraced. Camera state is restored by reboot."
         ),
-        tier="OFFLINE BOUNDED UNICORN BRING-UP",
+        tier="PHYSICAL RAM-ONLY + OFFLINE STATIC",
     ),
-    headline="1895 tests recorded passing | nflasha1 BusyBox /bin/ash shell | No verified emulator GUI frame",
+    headline="1903 tests recorded passing | MTF2 menu touch mod + guarded RAM-only Mod Loader | No verified emulator GUI frame",
     cards=(
         EvidenceRef(
             evidence_id="E0509",
@@ -505,9 +509,9 @@ STATUS_SNAPSHOT = StatusSnapshot(
         ),
     ),
     suite=SuiteRecord(
-        test_count=1895,
-        recorded_at="2026-11-14",
-        evidence_id="E0510",
+        test_count=1903,
+        recorded_at="2026-11-15",
+        evidence_id="E0523",
         command="python -m unittest discover -s tests -q",
     ),
     footer=(
@@ -957,6 +961,7 @@ DAILY_TEST_HISTORY: tuple[DailyTestPoint, ...] = (
     DailyTestPoint("2026-11-12", 1510, 198, "E0440", "WinUSB debugger v2 & nflasha dump"),
     DailyTestPoint("2026-11-13", 1727, 217, "E0500", "UC_TLB_VIRTUAL & 13-body map"),
     DailyTestPoint("2026-11-14", 1895, 168, "E0510", "BusyBox ash shell, A5KU & UI boot"),
+    DailyTestPoint("2026-11-15", 1903, 8, "E0523", "MTF2 touch mod, guarded Mod Loader & QEMU a6400 boot/SMP"),
 )
 
 
