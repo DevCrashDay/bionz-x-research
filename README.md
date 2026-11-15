@@ -27,7 +27,7 @@ writes and no boot-time persistence; a camera restart restores stock behaviour.
 ### RAM-only Mod Loader ([E0523](docs/evidence/0523-mod-loader-ok-routing-diagnostics.md))
 
 A reversible 7th `Mods` tab in the camera menu plus an SD-card `.mod` loader, housed in
-`/libMWF.so` RX padding with its anchor in the `/libMWF.so` RW segment and three hooks in
+`/libmprctrl.so` RX padding with a writable anchor and three hooks in
 `viewUnified2.so`, installed through the Mass Storage debugger. It scans `/mnt/mmca1/mods`
 (and `/media/mmca1/mods`, `/mnt/sd/mods`, `/tmp_bt/mods`) for SMOD v1 `.mod` files, lists up
 to 12 of them as ON/OFF rows, and toggles a row only after verifying the original hook bytes:
@@ -39,6 +39,10 @@ fail-closed: an invalid mod is shown as `ERR` and nothing is patched.
 Sources: [`mod_loader.c`](tools/native_camera/mod_loader.c),
 [`native_mod_loader_guard.c`](tools/native_camera/native_mod_loader_guard.c),
 [`pack_mod.py`](tools/research/pack_mod.py).
+
+The Mod Loader includes [the Mods tab artwork](docs/evidence/0522-mods-tab-icon-and-uxd-image-container.md).
+The camera's menu selects inactive, active, and tab-bar focus images through its existing
+resource properties. Each image has 192-byte rows clipped to the stock tab rectangle.
 
 ### MTF2 full-menu touch mod ([E0520](docs/evidence/0520-mtf2-full-menu-touch-verified-on-a6400.md))
 
@@ -55,31 +59,25 @@ verified snapshot in [`mods/menu_touch_full/`](mods/menu_touch_full/README.md).
 
 ### Short tutorial — load a mod from the SD card
 
-1. **Build the payload** (WSL/Ubuntu, `arm-linux-gnueabi-gcc`) from
-   [`menu_touch_full.c`](tools/native_camera/menu_touch_full.c) and
-   [`menu_touch_full_trampoline.S`](tools/native_camera/menu_touch_full_trampoline.S) as a
-   freestanding Thumb-2 payload at `0x0700D708` with the 2296-byte cap; [E0518](docs/evidence/0518-full-menu-touch-prototype-and-tab-page-bindings.md)
-   records the build style and the guard's checks.
-2. **Pack it to SMOD v1:**
-   `python -m tools.research.pack_mod --elf artifacts/hardware/menu_touch_full.elf --out artifacts/hardware/mods/MenuTouchFull.mod`
-   — the packer adds the 632-byte MTF2 state header and the one-byte 7-tab patch.
-3. **Copy it to the SD card:** create a `mods/` folder at the card root and put the `.mod`
+1. **Get the touch mod:** use the tested [MenuTouchFull.mod](mods/menu_touch_full/MenuTouchFull.mod)
+   or follow its [build instructions](mods/menu_touch_full/README.md#rebuild).
+2. **Copy it to the SD card:** create a `mods/` folder at the card root and put the `.mod`
    file in it. The loader scans for it on every boot (up to 12 mods).
-4. **Install the loader RAM-only:** build `mod_loader.elf` from
-   [`mod_loader.c`](tools/native_camera/mod_loader.c) and
-   [`mod_loader_trampoline.S`](tools/native_camera/mod_loader_trampoline.S) with
-   [`mod_loader.ld`](tools/native_camera/mod_loader.ld), run
-   `python -m tools.research.build_mod_loader` to emit `mod-loader-{check,install,remove}.req`,
-   and compile [`native_mod_loader_guard.c`](tools/native_camera/native_mod_loader_guard.c)
-   statically for ARMv7. Drive the Mass Storage debugger client
+3. **Install the loader RAM-only:** run `wsl.exe --exec bash tools/native_camera/build_mod_loader_wsl.sh`
+   from the repository root. It emits the combined `mod-loader-{check,install,remove}.req`
+   files and the ARM guard under `artifacts/hardware/`. Drive the Mass Storage debugger client
    ([guide](docs/NATIVE_USB_DEBUGGER.md)): `push` the guard and the check `.req` to
-   `/tmp_bt/native_mod_loader_guard` and `/tmp_bt/mod_loader.req`, `exec` the guard (it
-   exits non-zero on any refusal), then push `mod-loader-install.req` to the same
-   `/tmp_bt/mod_loader.req` path and `exec` it again.
-5. **Toggle and use:** open `MENU` → tab 7 (`Mods`) → tap the `MenuTouchFull` row until it
-   reports `ON`, then navigate with taps and swipes. Tap the row again to switch it off.
-6. **Undo:** tap it off, run the guard with `mod-loader-remove.req`, or simply restart the
-   camera — nothing was written to flash.
+   `/tmp_bt/native_mod_loader_guard` and `/tmp_bt/mod_loader.req` after a fresh MSC boot.
+   Confirm readback for both uploads. Run `chmod 700 /tmp_bt/native_mod_loader_guard` and
+   execute the guard. After it reports both `CHECK_OK` and `THEME_OK`, push
+   `mod-loader-install.req` to the same request path, confirm readback, and run the guard
+   again. Successful installation reports `INSTALLED` and resumes the camera threads.
+4. **Toggle and use:** open `MENU` → tab 7 (`Mods`) and press the center button on
+   `Menu Touch Full` to switch it on or off. The Mods artwork appears as soon as the
+   loader is installed.
+5. **Undo:** restart the camera to unload the loader and its mods. The combined remove
+   request also restores the patched bytes during the same boot before the loader first
+   builds its menu.
 
 Safety: RAM-only, one boot at a time. The guard verifies the exact firmware mapping and
 original hook bytes before any write, refuses on any mismatch, and restores what it changed;
@@ -99,7 +97,7 @@ and [E0521](docs/evidence/0521-qemu-a6400-main-firmware-boots-to-avcam.md) (the 
 `sony-a6400` machine boots the main `nflasha3` firmware to a shell and brings up four Cortex-A5
 cores; this is QEMU, not the Unicorn emulator).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=f4d3dccbd876)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=5ed64080e593)
 
 ![Daily automated test suite growth: 1903 tests across 29 days](docs/images/test-growth.svg?v=1853930dfcf7)
 

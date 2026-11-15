@@ -1,6 +1,11 @@
 .syntax unified
 .thumb
 
+#ifdef MTL_BUILTIN
+.global ml_builtin_tab_look
+.set ml_builtin_tab_look, 1
+#endif
+
 .global ml_hook_set_root
 .global ml_hook_refresh
 .global ml_hook_open_item

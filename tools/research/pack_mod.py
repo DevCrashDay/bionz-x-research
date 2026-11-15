@@ -142,12 +142,16 @@ def patch_mtf2_max_tabs(code: bytes) -> bytes:
 def build_menu_touch_full_mod(
     elf_path: Path | None = None,
     out_path: Path | None = None,
+    patch_max_tabs: bool = True,
 ) -> dict:
+    """patch_max_tabs: apply the binary 6->7 tab patch (E0520 payload only). Source builds compiled with
+    -DMT_MAX_TABS=7u pass False."""
     elf_path = elf_path or (ROOT / "artifacts/hardware/menu_touch_full.elf")
     out_path = out_path or (ROOT / "artifacts/hardware/mods/MenuTouchFull.mod")
 
     code_addr, code, syms = extract_elf_text(elf_path.read_bytes(), expected_code_addr=0x0700D708)
-    code = patch_mtf2_max_tabs(code)
+    if patch_max_tabs:
+        code = patch_mtf2_max_tabs(code)
     rel_entry = syms.get("mt_full_release", 0)
     prs_entry = syms.get("mt_full_press", 0)
     if not (rel_entry & 1) or not (prs_entry & 1):
@@ -189,8 +193,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Pack menu_touch_full.elf into SMOD .mod format.")
     parser.add_argument("--elf", type=Path, default=ROOT / "artifacts/hardware/menu_touch_full.elf")
     parser.add_argument("--out", type=Path, default=ROOT / "artifacts/hardware/mods/MenuTouchFull.mod")
+    parser.add_argument("--no-tab-patch", action="store_true", help="ELF already built with MT_MAX_TABS=7u")
     args = parser.parse_args()
-    print(json.dumps(build_menu_touch_full_mod(args.elf, args.out), indent=2))
+    print(json.dumps(build_menu_touch_full_mod(args.elf, args.out, not args.no_tab_patch), indent=2))
 
 
 if __name__ == "__main__":

@@ -23,7 +23,9 @@
 #define MT_ACT_POPUP_SCROLL 7u
 #define MT_ACT_POPUP_CANCEL 8u
 
-#define MT_MAX_TABS 6u
+#ifndef MT_MAX_TABS
+#define MT_MAX_TABS 6u /* Mod Loader build: -DMT_MAX_TABS=7u (injected Mods tab) */
+#endif
 #define MT_MAX_PAGES 15u
 #define MT_MAX_ROWS 6u
 
@@ -249,7 +251,7 @@ static void handle_menu_touch(volatile struct mt_full_state *s, uint32_t mouse) 
     int (*main_state)(uint32_t) = (void *)0x15b90535u;
     int (*inherited_mode)(uint32_t) = (void *)0x631e815u;
     int (*popup_open)(uint32_t) = (void *)0x15b95b61u;
-    if (rd8(menu, 0x21u) != 2u || rd8(menu, 0x1d8u) || inherited_mode(menu) > 2) {
+    if (rd8(menu, 0x21u) != 2u || inherited_mode(menu) > 2) {
         return;
     }
 
@@ -281,10 +283,38 @@ static void handle_menu_touch(volatile struct mt_full_state *s, uint32_t mouse) 
     int (*enter_selected)(uint32_t, uint32_t) = (void *)0x15b92045u;
 
     unsigned tabs = rd32(root, 8u), tab_sel = 0;
-    uint32_t tab_node = 0;
     if (tabs < 1u || tabs > MT_MAX_TABS ||
-        selected_index(root, &tab_sel) != 1 || tab_sel < 1u || tab_sel > tabs ||
-        indexed_child(root, tab_sel, &tab_node) != 1 || !tab_node ||
+        selected_index(root, &tab_sel) != 1 || tab_sel < 1u || tab_sel > tabs) {
+        return;
+    }
+
+    struct mt_point pt = {(float)x, (float)y};
+    int is_swipe = has_press && iabs(dx) >= 48 && iabs(dx) > 2 * iabs(dy);
+
+    /* Tab taps need only the real root: they work with tab-bar focus (menu+0x1d8) and in tabs whose
+     * content is not a plain setting tree (My Menu, Mods). Rows/pages/swipe keep the full checks below. */
+    if (!is_swipe) {
+        for (unsigned i = 0; i < tabs; i++) {
+            if (is_hit(menu + 0x0b9cu + i * 0x220u, &pt)) {
+                if (i + 1u != tab_sel) {
+                    if (set_selected_index(root, i + 1u) == 1) {
+                        sync_refresh(menu);
+                    } else {
+                        s->last_err = 1u;
+                    }
+                }
+                record_event(s, MT_ACT_TAB, i + 1u, x, y, tab_sel, 0u, 0u);
+                return;
+            }
+        }
+    }
+
+    if (rd8(menu, 0x1d8u)) {
+        return; /* tab-bar focus: only tab taps are handled */
+    }
+
+    uint32_t tab_node = 0;
+    if (indexed_child(root, tab_sel, &tab_node) != 1 || !tab_node ||
         rd32(tab_node, 0u) != 0x16c183e8u) {
         return;
     }
@@ -306,7 +336,7 @@ static void handle_menu_touch(volatile struct mt_full_state *s, uint32_t mouse) 
     }
 
     /* Horizontal swipe: left = next page/tab, right = prev page/tab */
-    if (has_press && iabs(dx) >= 48 && iabs(dx) > 2 * iabs(dy)) {
+    if (is_swipe) {
         if (dx < 0) {
             if (page_sel < pages) {
                 set_selected_index(tab_node, page_sel + 1u);
@@ -323,22 +353,6 @@ static void handle_menu_touch(volatile struct mt_full_state *s, uint32_t mouse) 
         sync_refresh(menu);
         record_event(s, MT_ACT_SWIPE_PAGE, dx < 0 ? 1u : 2u, x, y, tab_sel, page_sel, row_sel);
         return;
-    }
-
-    struct mt_point pt = {(float)x, (float)y};
-
-    for (unsigned i = 0; i < tabs; i++) {
-        if (is_hit(menu + 0x0b9cu + i * 0x220u, &pt)) {
-            if (i + 1u != tab_sel) {
-                if (set_selected_index(root, i + 1u) == 1) {
-                    sync_refresh(menu);
-                } else {
-                    s->last_err = 1u;
-                }
-            }
-            record_event(s, MT_ACT_TAB, i + 1u, x, y, tab_sel, page_sel, row_sel);
-            return;
-        }
     }
 
     for (unsigned p = 0; p < pages; p++) {
