@@ -1,4 +1,4 @@
-﻿"""E0459: models of the B24 NULL-deref fix and the unbuffered OBS flush.
+"""E0459: models of the B24 NULL-deref fix and the unbuffered OBS flush.
 
 The E0458/B24 oops is precise: `make_device_desc+0x70` (`ldrh r3,[r7]`, VA
 0x602bb9f8) read address 0 because the shared-PTP teardown had restored a valid
