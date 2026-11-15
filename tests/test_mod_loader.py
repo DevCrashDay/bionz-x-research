@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.research import build_mod_loader, pack_mod
+from tools.research import build_mod_loader, build_mods_tab_look, pack_mod
 
 
 class ModLoaderTests(unittest.TestCase):
@@ -85,23 +85,56 @@ class ModLoaderTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pack_mod.patch_mtf2_max_tabs(bytes(2128))
 
+    def test_themed_request_trailer_and_legacy_compatibility(self) -> None:
+        loader = b"\x00\xbf" * 4
+        theme = b"MTLB\x00\xbf\x00\xbf"
+        loader_entry = build_mod_loader.CODE_ADDR | 1
+        theme_entry = build_mods_tab_look.CODE_ADDR + 5
+        extension = build_mod_loader.pack_theme(theme, theme_entry)
+        for op in (0, 1, 2):
+            args = (op, loader, loader_entry, loader_entry, loader_entry, pack_mod.fnv1a_32(loader))
+            legacy = build_mod_loader.pack_req(*args)
+            themed_entry = build_mod_loader.THEMED_CODE_ADDR | 1
+            request = build_mod_loader.pack_req(
+                op, loader, themed_entry, themed_entry, themed_entry, args[-1], theme=extension
+            )
+            fields = struct.unpack_from("<9I", request)
+            self.assertEqual(fields[1], build_mod_loader.THEME_PROTO_VER)
+            self.assertEqual(fields[2], op)
+            self.assertEqual(fields[3], build_mod_loader.THEMED_CODE_ADDR)
+            self.assertEqual(fields[5:8], (themed_entry,) * 3)
+            self.assertEqual(request[32:len(legacy)], legacy[32:])
+            self.assertEqual(
+                struct.unpack_from("<3I", request, len(legacy)),
+                (len(theme), theme_entry, pack_mod.fnv1a_32(theme)),
+            )
+            self.assertEqual(request[len(legacy) + 12:], theme)
+        with self.assertRaises(ValueError):
+            build_mod_loader.pack_theme(b"MTL4" + theme[4:], theme_entry)
+        with self.assertRaises(ValueError):
+            build_mod_loader.pack_theme(theme, build_mods_tab_look.CODE_ADDR + len(theme) + 1)
+
     def test_build_mod_loader_artifacts(self) -> None:
         elf = build_mod_loader.ROOT / "artifacts/hardware/mod_loader.elf"
         if not elf.exists():
             self.skipTest("mod_loader.elf not present")
+        _, _, symbols = pack_mod.extract_elf_text(elf.read_bytes())
+        theme_elf = elf.with_name("mods_tab_look_builtin.elf") if symbols.get("ml_builtin_tab_look") else None
         with tempfile.TemporaryDirectory() as tmp:
             out_dir = Path(tmp)
-            manifest = build_mod_loader.build_artifacts(elf, out_dir)
+            manifest = build_mod_loader.build_artifacts(elf, out_dir, theme_elf=theme_elf)
             self.assertLessEqual(manifest["code_bytes"], build_mod_loader.CODE_CAP)
-            self.assertEqual(manifest["code_address"], "0x412f3d0")
+            expected_code_addr = build_mod_loader.THEMED_CODE_ADDR if theme_elf else build_mod_loader.CODE_ADDR
+            self.assertEqual(manifest["code_address"], hex(expected_code_addr))
             for op, name in ((0, "check"), (1, "install"), (2, "remove")):
                 req = (out_dir / f"mod-loader-{name}.req").read_bytes()
-                self.assertEqual(len(req), 36 + build_mod_loader.CODE_CAP)
+                extension = 12 + manifest["theme"]["code_bytes"] if theme_elf else 0
+                self.assertEqual(len(req), 36 + build_mod_loader.CODE_CAP + extension)
                 hdr = struct.unpack_from("<9I", req, 0)
                 self.assertEqual(hdr[0], build_mod_loader.REQ_MAGIC)
-                self.assertEqual(hdr[1], build_mod_loader.PROTO_VER)
+                self.assertEqual(hdr[1], manifest["version"])
                 self.assertEqual(hdr[2], op)
-                self.assertEqual(hdr[3], build_mod_loader.CODE_ADDR)
+                self.assertEqual(hdr[3], expected_code_addr)
                 self.assertEqual(hdr[4], manifest["code_bytes"])
 
 

@@ -1,15 +1,16 @@
 /*
  * RAM-only 7th "Mods" tab & SD /mods .mod loader for Sony A6400 (viewUnified2.so).
- * Linked into viewUnified2.so RX padding at 0x15e91b68; anchor at 0x1615ec40.
+ * The combined build uses libmprctrl.so RX padding with an anchor at 0x1615ec40.
  */
 #include <stdint.h>
+#include "mods_tab_look_layout.h"
 
 #define VIEW_BASE       0x155e6000u
-#define ANCHOR_ADDR     0x1615ec40u
+#define ANCHOR_ADDR     ML_ANCHOR_ADDR
 #define SET_TEXT_DIRECT (VIEW_BASE + 0x14f6d0u + 1u)
 #define SET_MODE_DIRECT (VIEW_BASE + 0x155a68u + 1u)
 
-#define SMOD_MAGIC      0x444f4d53u
+#define SMOD_MAGIC      ML_ANCHOR_MAGIC
 #define SMOD_VERSION    1u
 #define SMOD_MAX_HOOKS  8u
 #define SMOD_MAX_PATCH  16u
@@ -96,7 +97,7 @@ typedef struct {
     void            *opt_ptrs[2];
 } ModLoaderState;
 
-_Static_assert(sizeof(ModLoaderState) <= 8192u, "ModLoaderState exceeds its 8 KiB mmap");
+_Static_assert(sizeof(ModLoaderState) <= MTL_CACHE_OFF, "ModLoaderState overlaps the icon cache");
 
 typedef struct {
     uint32_t magic;
@@ -341,6 +342,21 @@ static int node_get_int_prop(FakeSettingNode *n, int32_t prop_id, int32_t *out) 
 static int node_get_resid_prop(FakeSettingNode *n, int32_t prop_id, uint32_t *out) {
     ModLoaderAnchor *a = (ModLoaderAnchor *)ANCHOR_ADDR;
     ModLoaderState *st = a->state;
+    /* E0522: Sony requests 29 for other tabs, 30 for the current tab and 31 for tab-bar focus. */
+    if (st && n == &st->mods_tab_node && (prop_id == 29 || prop_id == 30 || prop_id == 31)) {
+#ifdef MTL_BUILTIN
+        *out = prop_id == 29 ? 0x020cc012u : 0x020cc000u + (uint32_t)prop_id - 5u;
+        return 1;
+#else
+        if (*(volatile uint32_t *)(MTL_HOOK_ADDR + 2u) == 0xf000f8dfu) {
+            *out = 0x020cc012u;
+            if (prop_id != 29 && *(volatile uint32_t *)MTL_CODE_ADDR == MTL_MARKER) {
+                *out = 0x020cc000u + (uint32_t)prop_id - 5u;
+            }
+            return 1;
+        }
+#endif
+    }
     if (st && n == &st->mods_tab_node && (prop_id == 29 || prop_id == 30 || prop_id == 31 || prop_id == 2) && st->orig_tab5) {
         typedef int (*get_resid_fn)(void *, int32_t, uint32_t *);
         get_resid_fn fn = (get_resid_fn)(st->orig_tab5->vtable[32]);
@@ -359,7 +375,7 @@ static int node_is_disabled(FakeSettingNode *n, uint8_t *out) {
 static ModLoaderState *ml_get_state(void) {
     ModLoaderAnchor *a = (ModLoaderAnchor *)ANCHOR_ADDR;
     if (a->magic == SMOD_MAGIC && a->state) return a->state;
-    ModLoaderState *st = (ModLoaderState *)sys_mmap2(8192u);
+    ModLoaderState *st = (ModLoaderState *)sys_mmap2(ML_STATE_BYTES);
     if ((uint32_t)st >= 0xfffff000u) return 0;
     ml_memset(st, 0, sizeof(*st));
     st->magic = SMOD_MAGIC;
@@ -395,7 +411,11 @@ static void ml_scan_dir(ModLoaderState *st, const char *dir) {
                     if (sys_read(ffd, &hdr, sizeof(hdr)) == (int)sizeof(hdr) &&
                         hdr.magic == SMOD_MAGIC && hdr.version == SMOD_VERSION &&
                         hdr.hook_count <= SMOD_MAX_HOOKS && hdr.code_size > 0 &&
-                        (hdr.code_size & 3u) == 0 && hdr.code_addr >= 0x00100000u) {
+                        (hdr.code_size & 3u) == 0 && hdr.code_addr >= 0x00100000u
+#ifdef MTL_BUILTIN
+                        && hdr.code_addr != MTL_CODE_ADDR
+#endif
+                    ) {
                         ModEntry *m = &st->mods[st->mod_count];
                         ml_memset(m, 0, sizeof(*m));
                         ml_memcpy(m->name, hdr.name, 31);

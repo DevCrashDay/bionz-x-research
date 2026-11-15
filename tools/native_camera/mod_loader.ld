@@ -1,6 +1,6 @@
 SECTIONS
 {
-    . = 0x0412f3d0;
+    . = DEFINED(ML_CODE_ADDR) ? ML_CODE_ADDR : 0x0412f3d0;
     .text : {
         *(.text*)
         *(.rodata*)
