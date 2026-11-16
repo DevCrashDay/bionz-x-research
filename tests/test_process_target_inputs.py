@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 from project_paths import PROJECT_ROOT
 from src.a6400.targets import get_profile
 from tools.research import probe_interpreter
+from tools.research.probe_interpreter import kernel_symbol_crosscheck
 from tools.research.process_target_inputs import (
     ILCE_7C_MANIFEST,
     load_target_manifest,
@@ -279,6 +280,78 @@ class ProcessTargetInputTests(unittest.TestCase):
         self.assertFalse(mapping["runtime_mount_or_pivot_success_verified"])
         self.assertFalse(report["target_input_selection"]["runtime_mount_evidence"][
             "runtime_mount_success_or_boot_mode_verified"])
+        mounts = report["target_input_selection"]["runtime_mount_evidence"]["static_mounts"]
+        sequence = report["target_input_selection"]["runtime_mount_evidence"]["init_main_mount_sequence"]
+        self.assertGreaterEqual(len(mounts), len(app_mounts))
+        self.assertGreaterEqual(len(sequence), len(report["target_input_selection"][
+            "runtime_mount_evidence"]["root_transition_instructions"]))
+
+    def test_missing_kernel_symbol_is_not_a_crosscheck_match(self):
+        missing = kernel_symbol_crosscheck({}, {}, ["usb_gadgetcore_ioctl"])
+        self.assertFalse(missing["usb_gadgetcore_ioctl"]["match"])
+        matched = kernel_symbol_crosscheck(
+            {"usb_gadgetcore_ioctl": 0x10}, {"usb_gadgetcore_ioctl": 0x10},
+            ["usb_gadgetcore_ioctl"],
+        )
+        self.assertTrue(matched["usb_gadgetcore_ioctl"]["match"])
+
+    def test_other_registered_bodies_do_not_reuse_a6400_or_a7c_inputs(self):
+        for target_id in ("zv_e10", "ilce_6400a", "ilce_6100"):
+            with self.subTest(target=target_id):
+                profile = get_profile(target_id)
+                args = SimpleNamespace(target=target_id)
+                with patch.object(probe_interpreter, "InterpreterProbe") as probe:
+                    with self.assertRaisesRegex(ValueError, "not reused"):
+                        probe_interpreter._run_selected_target(args, profile)
+                    probe.assert_not_called()
+        with self.assertRaisesRegex(ValueError, "not reused"):
+            probe_interpreter._run_a6400(
+                SimpleNamespace(target="ilce_6400a"), get_profile("ilce_6400a")
+            )
+        with self.assertRaisesRegex(ValueError, "pinned to target ilce_7c"):
+            probe_interpreter._run_a7c(
+                SimpleNamespace(target="zv_e10", syscalls="stop"), get_profile("zv_e10")
+            )
+
+    def test_post_run_bookkeeping_failure_keeps_the_probe_receipt(self):
+        class Boom(dict):
+            def __setitem__(self, key, value):
+                if key == "target_input_selection":
+                    raise ValueError("bookkeeping failed")
+                super().__setitem__(key, value)
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            image = root / "firmware/a6400/root.img"
+            image.parent.mkdir(parents=True)
+            image.write_bytes(b"synthetic A6400 root image")
+            inventory_dir = root / "artifacts/inventory"
+            inventory_dir.mkdir(parents=True)
+            (inventory_dir / "guest-filesystem.json").write_text(json.dumps({"images": [{
+                "path": "firmware/a6400/root.img", "sha256": sha(image.read_bytes()),
+            }], "nodes": {}}), encoding="utf-8")
+            (inventory_dir / "elf-inventory.json").write_text(json.dumps({"entries": []}), encoding="utf-8")
+            args = SimpleNamespace(
+                interpreter_candidate=None, input_manifest=None, entry=None, argument=[],
+                syscalls="stop", respect_runtime_mounts=False, instructions=100,
+                timeout_us=1000,
+            )
+            receipt = Boom(status="syscall_boundary", instructions_executed=3, boundary={"r7": 45})
+            fake_probe = Mock()
+            fake_probe.run.return_value = receipt
+            with patch.object(probe_interpreter, "PROJECT_ROOT", root), \
+                 patch.object(probe_interpreter, "_load_guest_image",
+                              side_effect=[{"interpreter": "/lib/ld.so", "entry": 0x1000},
+                                           {"entry": 0x2000}]), \
+                 patch.object(probe_interpreter, "InterpreterProbe", return_value=fake_probe):
+                result = probe_interpreter._run_a6400(args, get_profile("ilce_6400"))
+        self.assertIs(result, receipt)
+        self.assertEqual(result["probe_status"], "syscall_boundary")
+        self.assertEqual(result["instructions_executed"], 3)
+        self.assertEqual(result["boundary"]["r7"], 45)
+        self.assertEqual(result["status"], "configuration_error")
+        self.assertIn("bookkeeping failed", result["error"])
+        self.assertEqual(result["guest_paths"]["interpreter"], "/lib/ld.so")
 
 
 if __name__ == "__main__":

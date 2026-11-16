@@ -40,6 +40,35 @@ A7C_KERNEL_SYMBOLS = (
     "usb_gadgetcore_ioctl", "usb_gadgetcore_register_driver", "usb_gcw_start",
     "usb_gcw_stop", "setup_req", "make_config_desc",
 )
+_PROBE_RECEIPT_ERRORS = (ValueError, KeyError, StopIteration, OSError, UcError)
+
+
+def kernel_symbol_crosscheck(profile_symbols, image_symbols, names):
+    """Compare named kernel addresses. A missing address is not a match."""
+    rows = {}
+    profile_symbols = profile_symbols if isinstance(profile_symbols, dict) else {}
+    image_symbols = image_symbols if isinstance(image_symbols, dict) else {}
+    for name in names:
+        profile_addr = profile_symbols.get(name)
+        image_addr = image_symbols.get(name)
+        rows[name] = {
+            'profile': profile_addr,
+            'image': image_addr,
+            'match': isinstance(profile_addr, int) and profile_addr == image_addr,
+        }
+    return rows
+
+
+def _finish_probe_report(report, populate):
+    """Attach runner metadata. Keep the probe receipt if that bookkeeping fails."""
+    try:
+        populate()
+    except _PROBE_RECEIPT_ERRORS as error:
+        report['probe_status'] = report.get('status')
+        report['status'] = 'configuration_error'
+        report['camera_fidelity_validated'] = False
+        report['error'] = str(error)
+    return report
 
 
 def _load_guest_image(manifest, inventory, guest_path):
@@ -66,6 +95,11 @@ def load_guest_image(manifest, inventory, guest_path):
 
 def _run_a6400(args, target_profile):
     """Keep the established A6400 input/layout behavior behind its target selector."""
+    if getattr(target_profile, 'target_id', None) != 'ilce_6400':
+        raise ValueError(
+            'The ILCE-6400 inventory bundle is not reused for '
+            f'{getattr(target_profile, "target_id", None)}'
+        )
     if args.interpreter_candidate or args.input_manifest:
         raise ValueError('--interpreter-candidate/--input-manifest are only valid for target ilce_7c')
     manifest = json.loads((PROJECT_ROOT / A6400_FILESYSTEM_MANIFEST).read_text(encoding='utf-8'))
@@ -101,6 +135,7 @@ def _run_a6400(args, target_profile):
         if args.respect_runtime_mounts:
             init = checked_input(PROJECT_ROOT, A6400_INIT, expected_inputs[A6400_INIT])
             roots = unsupplied_mount_roots(inspect_init(init)['mounts'])
+            # Preserve the default unknown roots as well as discovered ones.
             filesystem['unknown_roots'] = tuple(sorted(set(UNKNOWN_ROOTS).union(roots)))
             mount_profile = {'source_path': A6400_INIT, 'source_sha256': expected_inputs[A6400_INIT],
                              'unsupplied_mount_candidates': roots,
@@ -123,6 +158,7 @@ def _run_a6400(args, target_profile):
                         raise ValueError('ext2 namespace file size mismatch')
                     node_stat = {**metadata, 'image_sha256': image['sha256']}
                     if args.syscalls in ('mmap', 'kuser', 'uipc', 'threads'):
+                        # Evidence Record 0014: major 252, nflasha7=0xfc07, nflasha15=0xfc0f
                         part_num = 7 if 'nflasha7' in image['path'] else 15
                         node_stat['st_dev'] = (major << 8) | part_num
                     node['stat_metadata'] = node_stat
@@ -131,22 +167,32 @@ def _run_a6400(args, target_profile):
                              target_profile=target_profile)
     probe.prepare(application, interpreter, [entry, *args.argument])
     report = probe.run(args.instructions, args.timeout_us)
-    if args.respect_runtime_mounts:
-        report['runtime_mount_profile'] = mount_profile
-    report['guest_paths'] = {'application': entry, 'interpreter': application['interpreter']}
-    report['filesystem_sources'] = manifest['images']
-    report['target_input_selection'] = {
-        'target_id': 'ilce_6400', 'selection_mode': 'legacy_a6400_inventory_bundle',
-        'filesystem_manifest': A6400_FILESYSTEM_MANIFEST.as_posix(),
-        'elf_inventory': A6400_ELF_INVENTORY.as_posix(),
-        'baseline': A6400_BASELINE.as_posix() if uses_baseline else None,
-        'baseline_used': uses_baseline,
-        'kernel_used': args.syscalls in ('brk-uname', 'files', 'metadata', 'mmap', 'kuser', 'uipc', 'threads'),
-    }
-    return report
+
+    def populate():
+        if args.respect_runtime_mounts:
+            report['runtime_mount_profile'] = mount_profile
+        report['guest_paths'] = {'application': entry, 'interpreter': application['interpreter']}
+        report['filesystem_sources'] = manifest['images']
+        report['target_input_selection'] = {
+            'target_id': 'ilce_6400', 'selection_mode': 'legacy_a6400_inventory_bundle',
+            'target_profile_status': target_profile.status,
+            'target_profile_firmware_version': target_profile.firmware_version,
+            'filesystem_manifest': A6400_FILESYSTEM_MANIFEST.as_posix(),
+            'elf_inventory': A6400_ELF_INVENTORY.as_posix(),
+            'baseline': A6400_BASELINE.as_posix() if uses_baseline else None,
+            'baseline_used': uses_baseline,
+            'kernel_used': args.syscalls in ('brk-uname', 'files', 'metadata', 'mmap', 'kuser', 'uipc', 'threads'),
+        }
+
+    return _finish_probe_report(report, populate)
 
 
 def _run_a7c(args, target_profile):
+    if getattr(target_profile, 'target_id', None) != 'ilce_7c':
+        raise ValueError(
+            'ILCE-7C process inputs are pinned to target ilce_7c and are not reused for '
+            f'{getattr(target_profile, "target_id", None)}'
+        )
     manifest_path = args.input_manifest or ILCE_7C_MANIFEST
     manifest = load_target_manifest(PROJECT_ROOT, Path(manifest_path), 'ilce_7c')
     if target_profile.status != 'reference' or target_profile.firmware_version != '2.03':
@@ -181,11 +227,9 @@ def _run_a7c(args, target_profile):
     kuser = extract_kuser_template(kernel_raw, kernel_spec['sha256'])
     decoded = decode_kallsyms(kernel_raw)
     symbols = {item['name']: item['address'] for item in decoded['symbols']}
-    symbol_crosscheck = {
-        name: {'profile': target_profile.kallsyms.get(name), 'image': symbols.get(name),
-               'match': target_profile.kallsyms.get(name) == symbols.get(name)}
-        for name in A7C_KERNEL_SYMBOLS
-    }
+    symbol_crosscheck = kernel_symbol_crosscheck(
+        target_profile.kallsyms, symbols, A7C_KERNEL_SYMBOLS
+    )
     if not all(row['match'] for row in symbol_crosscheck.values()):
         raise ValueError(f'A7C kernel identity cross-check against reference profile failed: {symbol_crosscheck}')
 
@@ -207,6 +251,22 @@ def _run_a7c(args, target_profile):
     probe = InterpreterProbe(syscall_policy='stop', target_profile=target_profile)
     probe.prepare(application, interpreter, [entry, *args.argument])
     report = probe.run(args.instructions, args.timeout_us)
+
+    def populate():
+        _populate_a7c_report(
+            report, entry, application, interpreter_spec, manifest_path, manifest, target_profile,
+            app_spec, kernel_spec, uts, kuser, symbol_crosscheck, interpreter_path_mapping,
+            init_spec, init_analysis, application_mount_rows, rootfs_spec, rootfs_mount_rows,
+            sequence, root_transition, mount_candidates,
+        )
+
+    return _finish_probe_report(report, populate)
+
+
+def _populate_a7c_report(report, entry, application, interpreter_spec, manifest_path, manifest,
+                         target_profile, app_spec, kernel_spec, uts, kuser, symbol_crosscheck,
+                         interpreter_path_mapping, init_spec, init_analysis, application_mount_rows,
+                         rootfs_spec, rootfs_mount_rows, sequence, root_transition, mount_candidates):
     report['guest_paths'] = {'application': entry, 'pt_interp': application['interpreter'],
                              'interpreter_candidate_id': interpreter_spec['id']}
     report['target_input_selection'] = {
@@ -236,7 +296,13 @@ def _run_a7c(args, target_profile):
             'application_mount_success_verified': False,
             'rootfs_partition_sha256': rootfs_spec['sha256'],
             'rootfs_mount_rows': rootfs_mount_rows,
+            'static_mounts': init_analysis['mounts'],
+            'init_main_mount_sequence': sequence,
             'root_transition_instructions': root_transition,
+            'root_transition_window': (
+                'excerpt from seven instructions before the /rootfs literal through the following '
+                'chroot; the full decoded main sequence is init_main_mount_sequence'
+            ),
             'unsupplied_mount_candidates': mount_candidates,
             'runtime_mount_success_or_boot_mode_verified': False,
         },
@@ -253,11 +319,27 @@ def _run_a7c(args, target_profile):
         'original_executable_image': 'ld-2.11.2.so candidate',
         'original_instructions_executed': report.get('instructions_executed'),
         'im_elf_mapped': True,
+        'im_elf_mapping_scope': (
+            'experiment image mapped by InterpreterProbe.prepare; runtime mount success is not verified'
+        ),
         'im_elf_entry_reached': False,
         'syscall_policy': 'stop',
         'syscall_responses_supplied': report.get('syscall_responses_supplied'),
     }
-    return report
+
+
+def _run_selected_target(args, target_profile):
+    """Run only the process inputs registered for the selected body."""
+    if getattr(target_profile, 'target_id', None) != args.target:
+        raise ValueError('Selected target profile does not match the requested target')
+    if args.target == 'ilce_6400':
+        return _run_a6400(args, target_profile)
+    if args.target == 'ilce_7c':
+        return _run_a7c(args, target_profile)
+    raise ValueError(
+        f'No target-scoped process inputs are registered for {args.target}. '
+        'The ILCE-6400 inventory and the ILCE-7C manifest are not reused for another body.'
+    )
 
 
 def main():
@@ -267,7 +349,7 @@ def main():
     parser.add_argument('--instructions', type=int, default=100000)
     parser.add_argument('--timeout-us', type=int, default=2000000)
     parser.add_argument('--syscalls', choices=('stop', 'brk', 'brk-uname', 'files', 'metadata', 'mmap', 'kuser', 'uipc', 'threads'), default='stop',
-                        help='explicit guest contracts; target must declare support')
+                        help='explicit guest contracts; target must declare support; uname reads of runtime-unknown fields remain guarded')
     parser.add_argument('--report', type=Path)
     parser.add_argument('--respect-runtime-mounts', action='store_true',
                         help='stop at original init mount targets whose runtime contents are unsupplied')
@@ -298,19 +380,23 @@ def main():
     try:
         if args.respect_runtime_mounts and args.syscalls not in ('files', 'metadata', 'mmap', 'kuser', 'uipc', 'threads'):
             raise ValueError('Runtime mount checks require files, metadata, mmap, kuser, uipc, or threads policy')
-        if args.target == 'ilce_6400':
-            report = _run_a6400(args, target_profile)
-        elif args.target == 'ilce_7c':
-            report = _run_a7c(args, target_profile)
-        else:
-            raise ValueError(f'No target-scoped process inputs are registered for {args.target}')
+        report = _run_selected_target(args, target_profile)
         print(f"Stopped: {report['status']}; original-code instructions: {report['instructions_executed']}")
         if 'boundary' in report:
             print(json.dumps(report['boundary'], indent=2))
         return 0 if report['status'] in ('syscall_boundary', 'memory_boundary') else 2
-    except (ValueError, KeyError, StopIteration, OSError, UcError) as error:
-        report = {'status': 'configuration_error', 'camera_fidelity_validated': False,
-                  'target_id': args.target, 'error': str(error)}
+    except _PROBE_RECEIPT_ERRORS as error:
+        if isinstance(report, dict) and (
+            'instructions_executed' in report or 'boundary' in report or 'target_input_selection' in report
+        ):
+            report['probe_status'] = report.get('status')
+            report['status'] = 'configuration_error'
+            report['camera_fidelity_validated'] = False
+            report.setdefault('target_id', args.target)
+            report['error'] = str(error)
+        else:
+            report = {'status': 'configuration_error', 'camera_fidelity_validated': False,
+                      'target_id': args.target, 'error': str(error)}
         print(f'Probe configuration failed: {error}')
         return 2
     finally:
