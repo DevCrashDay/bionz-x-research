@@ -154,6 +154,28 @@ defaults to `-icount shift=0,sleep=on`. See
 
 Findings, known gaps and the ordered next steps: [STATUS.md](STATUS.md).
 
-Next: av-cam's hardware dependencies (no `liro-*` IRQ fires yet): sub-micro link, ADC, front end;
+Next, at the time of E0522: av-cam's hardware dependencies (no `liro-*` IRQ fires yet): sub-micro link, ADC, front end;
 then the Sugilite display pipeline.
 Before each new blocker, check whether `Oein/a5000-emulator` already solved the CXD90014 equivalent.
+
+## Milestone 4: Captured inputs and qualified waits (E0524)
+
+The sections above this heading describe how to rebuild hash-checked inputs and
+how the LIRO observer qualifies Task 43, IRQs 101/102, and Task 65. Keep that
+workflow. The device work below uses the same boot.
+
+## Milestone 5: Device models through the viewfinder console (E0525–E0541)
+
+`run.sh` can add `/setting/ulogio.bin` to the per-run overlay (E0525) and can
+replay a captured sub-micro page (E0527). Set `ULOGIO=` or `SUBMICRO_PAGE=` empty
+to skip either one. The default `ULOGIO` path is a local ZV-E10 stand-in, not an
+a6400 capture.
+
+`tools/a6400_probe.py` boots, waits until a checkpoint appears in
+`/proc/snsc_boot_time`, runs shell commands, and stops QEMU.
+
+The overlay adds SIO, GPIO, ADC, the timing-event block, VPH/SYSV, a Sugilite
+GPU, SA DSP ID responses, and a P2S writer. Five guest seconds after
+`SetContentTarget`, graphic console 0 shows the viewfinder readout (E0536).
+The YUV layer is still off, and forcing `isOutputEvf` to return 0 does not
+select the rear-LCD skin (E0541). See [STATUS.md](STATUS.md).

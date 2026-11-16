@@ -29,11 +29,14 @@
 #include "hw/cpu/a9mpcore.h"
 #include "hw/misc/unimp.h"
 #include "hw/qdev-properties.h"
+#include "monitor/qdev.h"
 #include "hw/sd/sd.h"
 #include "hw/sd/sdhci.h"
+#include "hw/misc/cxd90014_sio.h"
 #include "hw/sysbus.h"
 #include "system/blockdev.h"
 #include "qemu/log.h"
+#include "qemu/timer.h"
 #include "qemu/units.h"
 #include "system/address-spaces.h"
 #include "system/system.h"
@@ -53,6 +56,35 @@
 #define CXD90045_TIMER_BASE      0xF2403000ULL
 #define CXD90045_TIMER_IRQ0      153
 #define CXD90045_MAX_CPUS        4
+#define CXD90045_SIO_BASE        0xF2405000ULL
+#define CXD90045_SIO_IRQ0        201
+#define CXD90045_GPIO_BASE       0xF2910000ULL
+#define CXD90045_ADC_BASE        0xF2406000ULL
+#define CXD90045_ADC_IRQ0        215
+
+/*
+ * GPIO input levels at reset (E0526), "port.pin" pins that read 1:
+ *  - input.ko GPIO keys marked active low ("L") in the a6400 key table
+ *    (/proc/udm/input): P0.3 (0x70FD), P0.4 (0x70FE), P0.7 (0x70DC),
+ *    P0.10 (0x1F0 MOVIE), P0.11 (0x70C6), P1.1 (0x70EF) -> released;
+ *  - P0.1, P0.13, P1.5: a5000 shutter S1/S2 lines (active low, idle high);
+ *    the a6400 av-cam registers the matching pin IRQs 122/142 [inference];
+ *  - P1.4: E-mount lens detect (a6400 Backup F9050C/0D = port 1 pin 4,
+ *    IRQ 141 registered); active low on the a5000, high = empty mount
+ *    [inference for the polarity]. Holding it low (lens present, unanswered)
+ *    did not make av-cam start an SA function before SetContentTarget.
+ * P9.22 carries both an "H" key (0x4C) and an "L" key (0x4B), i.e. a
+ * two-position switch; it is left at 0 (0x4B side) [assumption].
+ *
+ * Sub-micro link lines (a6400 Backup ids, cf. a5000 RE_SUBMICRO_LINK.md):
+ * request F904CA/CB = P2.5 (a5000 p3.17), strobe F90465/66 = P0.8 / IRQ 129
+ * (a5000 p0.12), release-lock F9045F/60 = P0.9 / IRQ 130 (a5000 p0.7),
+ * exposure F90200/01 = P1.2 / IRQ 139 (a5000 p0.16), S2REQ F90455/56 =
+ * P7.15 (CPU output), CS F900B1/6D = P5.14.  All idle low.
+ */
+#define CXD90045_GPIO_RESET_HIGH "0.1,0.3,0.4,0.7,0.10,0.11,0.13,1.1,1.4,1.5"
+#define CXD90045_SM_REQ_LINE     (2 * 32 + 5)
+#define CXD90045_SM_STROBE_LINE  (0 * 32 + 8)
 #define CXD90045_CRCDC_BASE      0xF2A31000ULL
 #define CXD90045_GPES_BAR_BASE   0xF1000000ULL
 #define CXD90045_GPES_SPI        (76 - 32)
@@ -146,105 +178,22 @@ static const MemoryRegionOps cxd90045_rw_stub_ops = {
 };
 
 static CxdRwStub *cxd90045_create_rw_stub(MemoryRegion *sysmem, const char *name,
-                                         hwaddr base, size_t size)
+                                         hwaddr base, size_t size, int priority)
 {
     CxdRwStub *s = g_new0(CxdRwStub, 1);
     s->num_regs = size / sizeof(uint32_t);
     s->regs = g_new0(uint32_t, s->num_regs);
     memory_region_init_io(&s->mmio, NULL, &cxd90045_rw_stub_ops, s, name, size);
-    memory_region_add_subregion(sysmem, base, &s->mmio);
+    memory_region_add_subregion_overlap(sysmem, base, &s->mmio, priority);
     return s;
 }
 
-typedef struct CxdSugilite {
-    MemoryRegion mmio;
-    qemu_irq irq;
-    uint32_t regs[0x10000 / 4];
-} CxdSugilite;
-
-static uint64_t cxd90045_sugilite_read(void *opaque, hwaddr offset,
-                                       unsigned size)
-{
-    CxdSugilite *s = opaque;
-    size_t idx = offset >> 2;
-    if (idx < ARRAY_SIZE(s->regs)) {
-        return s->regs[idx];
-    }
-    return 0;
-}
-
-static void cxd90045_sugilite_write(void *opaque, hwaddr offset, uint64_t value,
-                                    unsigned size)
-{
-    CxdSugilite *s = opaque;
-    size_t idx = offset >> 2;
-    if (idx < ARRAY_SIZE(s->regs)) {
-        s->regs[idx] = (uint32_t)value;
-    }
-    if (offset == 0x1000 || offset == 0x1800) {
-        if (value) {
-            if (offset == 0x1800) {
-                static int cmd_log = 0;
-                uint32_t addr = s->regs[0x1804 >> 2];
-                uint32_t buf[16] = {0};
-                cpu_physical_memory_read(addr, buf, sizeof(buf));
-                if (buf[7] != 0x12345678 && cmd_log < 20) {
-                    fprintf(stderr,
-                            "[SUGI-RENDER #%d] addr=0x%08x val=0x%08x :",
-                            cmd_log, addr, (unsigned)value);
-                    for (int k = 0; k < 16; k++) {
-                        fprintf(stderr, " %08x", buf[k]);
-                    }
-                    fprintf(stderr, "\n");
-                    cmd_log++;
-                }
-            }
-            s->regs[0x34 >> 2] |= 0x80000000U;
-            qemu_irq_raise(s->irq);
-        } else if (offset == 0x1000) {
-            s->regs[0x34 >> 2] &= ~0x80000000U;
-            if ((s->regs[0x34 >> 2] & 0xC400000FU) == 0) {
-                qemu_irq_lower(s->irq);
-            }
-        }
-    } else if (offset == 0x0C18) {
-        if (value) {
-            s->regs[0x34 >> 2] |= 0x40000000U;
-            qemu_irq_raise(s->irq);
-        } else {
-            s->regs[0x34 >> 2] &= ~0x40000000U;
-            if ((s->regs[0x34 >> 2] & 0xC400000FU) == 0) {
-                qemu_irq_lower(s->irq);
-            }
-        }
-    } else if (offset == 0x001C) {
-        if (value) {
-            s->regs[0x34 >> 2] |= 0x04000000U;
-            qemu_irq_raise(s->irq);
-        } else {
-            s->regs[0x34 >> 2] &= ~0x04000000U;
-            if ((s->regs[0x34 >> 2] & 0xC400000FU) == 0) {
-                qemu_irq_lower(s->irq);
-            }
-        }
-    }
-}
-
-static const MemoryRegionOps cxd90045_sugilite_ops = {
-    .read = cxd90045_sugilite_read,
-    .write = cxd90045_sugilite_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
-};
-
-static void cxd90045_create_sugilite(MemoryRegion *sysmem, hwaddr base,
-                                     qemu_irq irq)
-{
-    CxdSugilite *s = g_new0(CxdSugilite, 1);
-    s->irq = irq;
-    memory_region_init_io(&s->mmio, NULL, &cxd90045_sugilite_ops, s,
-                          "cxd90045.sugilite_bar", 0x10000);
-    memory_region_add_subregion(sysmem, base, &s->mmio);
-}
+/*
+ * Sugilite / DMP SMAPH-S30 is hw/display/dmp_smaph.c (ported from
+ * Oein/a5000-emulator).  It executes PSC fills, PPF copies and P3D
+ * command lists, and raises IRQ 76 from status +0x34.  The previous
+ * register stub completed jobs without writing a pixel.
+ */
 
 typedef struct CxdLdec {
     MemoryRegion mmio;
@@ -443,6 +392,44 @@ static const MemoryRegionOps cxd90045_f2a01_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
+/*
+ * Leo clock generator at 0xFC021000 (av-cam 0x63782020).  Enable bits are
+ * written at +0x000; PLL lock is polled at +0x050/+0x054/+0x058 bit0, up to
+ * 1001 tight reads.  Unmapped reads are 0, so that poll logs
+ * "IMG:Timeout:Leo Clkgen PLL Wait" and the imager init stops there (E0534).
+ * Lock is always reported set.  Other offsets read back what was written.
+ */
+static uint64_t cxd90045_leo_read(void *opaque, hwaddr offset, unsigned size)
+{
+    uint32_t *regs = opaque;
+    uint32_t v = 0;
+
+    if ((offset >> 2) < 0x400) {
+        v = regs[offset >> 2];
+    }
+    /* +0x050/054/058 bit0: Leo PLL lock (av-cam 0x63782020). */
+    if (offset == 0x50 || offset == 0x54 || offset == 0x58) {
+        v |= 1;
+    }
+    return v;
+}
+
+static void cxd90045_leo_write(void *opaque, hwaddr offset, uint64_t value,
+                               unsigned size)
+{
+    uint32_t *regs = opaque;
+
+    if ((offset >> 2) < 0x400) {
+        regs[offset >> 2] = (uint32_t)value;
+    }
+}
+
+static const MemoryRegionOps cxd90045_leo_ops = {
+    .read = cxd90045_leo_read,
+    .write = cxd90045_leo_write,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+};
+
 static void cxd90045_create_ldec(MemoryRegion *sysmem, hwaddr base, qemu_irq irq)
 {
     CxdLdec *s = g_new0(CxdLdec, 1);
@@ -547,7 +534,9 @@ static void cxd90045_create_xdmac(MemoryRegion *sysmem, hwaddr base,
  * Boot stubs in the reserved first megabyte (memrsv=1M@0), standing in for
  * what the boot ROM / bootloader does before the kernel runs (E0522):
  *
- *   CPU0 (CXD90045_STUB0): program GICD_ITARGETSR8..63, then r0 = 0,
+ *   CPU0 (CXD90045_STUB0): program GICD_ITARGETSR8..63, make the
+ *     ack-less frame pulses SYSV 98/99 and vsync 101/102 edge-triggered
+ *     (GICD_ICFGR6 = 0x28A0, as the a5000 board stub does), then r0 = 0,
  *     r1 = machine id, r2 = kemco block, jump to the kernel.  Sony's
  *     gic_dist_init never writes SPI targets and its irq_select_affinity
  *     (0x6011feb0) only reads the ITARGETSR byte back into the affinity
@@ -563,20 +552,25 @@ static void cxd90045_create_xdmac(MemoryRegion *sysmem, hwaddr base,
 #define CXD90045_SMPSTUB         0x00001200ULL
 #define CXD90045_SMP_MBOX        0xFE005010ULL
 
-static const uint32_t cxd90045_stub0[15] = {
-    0xe59f3024,             /* ldr r3, =0xF8001820 (ITARGETSR8)  */
-    0xe59f4024,             /* ldr r4, =0xF8001900               */
-    0xe28f602c,             /* add r6, pc, #0x2c (table @ +0x3c) */
+static const uint32_t cxd90045_stub0[20] = {
+    0xe59f3030,             /* ldr r3, =0xF8001820 (ITARGETSR8)  */
+    0xe59f4030,             /* ldr r4, =0xF8001900               */
+    0xe28f6040,             /* add r6, pc, #0x40 (table @ +0x50) */
     0xe4965004,             /* 1: ldr r5, [r6], #4               */
     0xe4835004,             /* str r5, [r3], #4                  */
     0xe1530004,             /* cmp r3, r4                        */
     0x3afffffb,             /* blo 1b                            */
+    0xe59f301c,             /* ldr r3, =0xF8001C18 (ICFGR6)      */
+    0xe59f501c,             /* ldr r5, =0x28A0                   */
+    0xe5835000,             /* str r5, [r3]                      */
     0xe3a00000,             /* mov r0, #0                        */
-    0xe59f100c,             /* ldr r1, =CXD90045_MACHINE_ID      */
-    0xe59f200c,             /* ldr r2, =CXD90045_BOOT_PARAMS     */
+    0xe59f1014,             /* ldr r1, =CXD90045_MACHINE_ID      */
+    0xe59f2014,             /* ldr r2, =CXD90045_BOOT_PARAMS     */
     0xe3a0f942,             /* mov pc, #0x108000 (kernel entry)  */
     0xf8001820,
     0xf8001900,
+    0xf8001c18,
+    0x000028a0,             /* IRQ 98, 99, 101, 102 edge (E0529) */
     CXD90045_MACHINE_ID,
     0x00103000,
 };
@@ -626,13 +620,13 @@ static void cxd90045_spi_targets(uint32_t *words, unsigned ncpu)
 
 static void sony_a6400_write_stubs(unsigned ncpu)
 {
-    uint32_t blob0[15 + 56];
+    uint32_t blob0[20 + 56];
     uint32_t smp[11];
 
-    for (int i = 0; i < 15; i++) {
+    for (int i = 0; i < 20; i++) {
         blob0[i] = cpu_to_le32(cxd90045_stub0[i]);
     }
-    cxd90045_spi_targets(&blob0[15], ncpu);
+    cxd90045_spi_targets(&blob0[20], ncpu);
     rom_add_blob_fixed("sony_a6400.stub0", blob0, sizeof(blob0),
                        CXD90045_STUB0);
     for (int i = 0; i < 11; i++) {
@@ -706,6 +700,116 @@ static void sony_a6400_load_boot_contract(MachineState *machine,
                        CXD90045_BOOT_PARAMS);
 }
 
+/*
+ * SIO slave used until a channel has a real peer model (E0526): logs every
+ * transfer under -d unimp ("sony-a6400 sio chN") and leaves the FIFO as is,
+ * which is what the a5000 SIO model does for a channel without a slave.
+ */
+/*
+ * Sub-micro strobe (E0526), the a5000 board's a5k_submicro_tick applied to
+ * the a6400 pins: the request line P2.5 stays low (frame exchange, not
+ * command), and the strobe P0.8 gives a 1 ms pulse every 50 ms.  Each edge
+ * is a link event 0 (IRQ 129).  The strobe must be low when the engine tick
+ * samples it, or the CPU skips its slot-A exchange ("FrtComSkip").  The real
+ * micro's timing is unknown [assumption: a5000 values].
+ */
+static DeviceState *sony_a6400_gpio;
+static QEMUTimer *sony_a6400_sm_timer;
+static int sony_a6400_sm_step;
+
+static void sony_a6400_submicro_tick(void *opaque)
+{
+    qemu_set_irq(qdev_get_gpio_in(sony_a6400_gpio, CXD90045_SM_REQ_LINE), 0);
+    sony_a6400_sm_step ^= 1;
+    qemu_set_irq(qdev_get_gpio_in(sony_a6400_gpio, CXD90045_SM_STROBE_LINE),
+                 sony_a6400_sm_step);
+    timer_mod(sony_a6400_sm_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
+              (sony_a6400_sm_step ? SCALE_MS : 49 * SCALE_MS));
+}
+
+static void sony_a6400_sio_log(void *opaque, int ch, uint32_t mode,
+                               uint8_t *buf, int len)
+{
+    char hex[3 * 48 + 1];
+    int n = len < 48 ? len : 48;
+
+    for (int i = 0; i < n; i++) {
+        snprintf(hex + 3 * i, 4, "%02x ", buf[i]);
+    }
+    hex[3 * n] = 0;
+    qemu_log_mask(LOG_UNIMP, "sony-a6400 sio ch%d mode=0x%08x len=%d tx: %s\n",
+                  ch, mode, len, hex);
+    /*
+     * Diagnostic only (A6400_SIO_MARKER=1): answer with a recognisable
+     * marker so the RX buffer can be located in a RAM dump (E0526).
+     */
+    if (getenv("A6400_SIO_MARKER") && len >= 128) {
+        /* type 0x30 slot-B frame, one TLV id 0x13 (12 B) = marker, CRC */
+        static const char mark[] = "A6400RXMARK!";
+        uint16_t c = 0xffff;
+        memset(buf, 0, len);
+        buf[0] = 0x30;
+        buf[2] = 4 + 12;
+        buf[4] = 0x13;
+        buf[5] = 12;
+        memcpy(buf + 8, mark, 12);
+        for (int i = 0; i < 126; i++) {
+            c ^= buf[i] << 8;
+            for (int b = 0; b < 8; b++) {
+                c = (c & 0x8000) ? (c << 1) ^ 0x1021 : c << 1;
+            }
+        }
+        buf[126] = c;
+        buf[127] = c >> 8;
+    }
+}
+
+/*
+ * Sub-micro side of the link (E0527): replay the real camera's frames.
+ * "submicro-frames" names a 384-byte file = av-cam's micro->CPU link RX
+ * buffer as captured from a live ILCE-6400 at PA 0x034433A4..0x03443523
+ * (one read-only 4 KiB /dev/mem page): slot A (type 0x20, task-48 packet),
+ * slot C (type 0x60) and slot B (type 0x30, TLV status frame), 128 B each,
+ * all CRC-16/CCITT-FALSE valid.  The CPU's TX buffer holds 0x21 / 0x61 /
+ * 0x31 in the same order.  Like the a5000 board (a5k_submicro_xfer), each
+ * CPU frame is answered by its pair: 0x31 -> slot B, 0x61 -> slot C, any
+ * other 128-byte frame -> slot A; a 256-byte exchange gets slot A + B.  Contents are
+ * replayed as captured, never synthesised (the slot-A clock bytes stay at
+ * the capture time [limitation]).
+ */
+static char *sony_a6400_sm_file;
+static uint8_t sony_a6400_sm_frames[384];
+static bool sony_a6400_sm_loaded;
+
+static void sony_a6400_submicro_xfer(void *opaque, int ch, uint32_t mode,
+                                     uint8_t *buf, int len)
+{
+    uint8_t out[256];
+
+    sony_a6400_sio_log(opaque, ch, mode, buf, len);
+    if (!sony_a6400_sm_loaded || len < 128) {
+        return;
+    }
+    memcpy(out, sony_a6400_sm_frames +
+           (buf[0] == 0x31 ? 256 : buf[0] == 0x61 ? 128 : 0), 128);
+    if (len >= 256) {
+        memcpy(out + 128, sony_a6400_sm_frames + 256, 128);
+    }
+    memcpy(buf, out, len >= 256 ? 256 : 128);
+}
+
+static char *sony_a6400_get_sm_file(Object *obj, Error **errp)
+{
+    return g_strdup(sony_a6400_sm_file);
+}
+
+static void sony_a6400_set_sm_file(Object *obj, const char *value,
+                                   Error **errp)
+{
+    g_free(sony_a6400_sm_file);
+    sony_a6400_sm_file = g_strdup(value);
+}
+
 static void sony_a6400_init(MachineState *machine)
 {
     MemoryRegion *sysmem = get_system_memory();
@@ -774,6 +878,144 @@ static void sony_a6400_init(MachineState *machine)
                            pic[CXD90045_TIMER_IRQ0 + i - 32]);
     }
 
+    /*
+     * Catch-all for unmodelled peripherals (E0525): same behaviour as the
+     * unassigned space it covers (reads 0, writes dropped, see
+     * ignore_memory_transaction_failures), but every access is logged
+     * under -d unimp so missing devices are visible instead of silent.
+     * A global read-back register file here broke dwc3 (a self-clearing
+     * reset bit read back as set: "failed to initialize core", -110), so
+     * read-back is applied per block below (E0528).
+     */
+    create_unimplemented_device("cxd90045.unmodelled", 0xF0000000ULL,
+                                0x08000000ULL);
+
+    /*
+     * AudioIp (E0528): the av-cam audio driver writes and reads back plain
+     * config registers in 0xF3420000-0xF3423FFF (a5000 RE_AUDIO.md section
+     * 1.1, where a read-back register file let audio initialise fully); the
+     * a6400 av-cam also touches 0xF3428000.  Read-back over 32 KiB, logged.
+     */
+    {
+        DeviceState *rf = qdev_new("cxd90014-regfile");
+        qdev_prop_set_string(rf, "name", "cxd90045.audioip");
+        qdev_prop_set_uint64(rf, "size", 0x8000);
+        qdev_prop_set_uint64(rf, "base", 0xF3420000ULL);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(rf), &error_fatal);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(rf), 0, 0xF3420000ULL, -500);
+    }
+
+    /*
+     * Imager / ComboPHY window (E0534).  av-cam keeps absolute pointers
+     * here (Leo clk 0xFC021000, MIPI D-PHY register blocks, sensor tables
+     * under 0xFC0Axxxx).  Reads of unassigned space are 0, so a
+     * read-after-write such as set_mptx_fbmode (wants 0x7c back) fails.
+     * Plain read-back, same device as the audio block.  The Leo page is
+     * mapped on top because its lock bits are status, not a stored write.
+     */
+    {
+        DeviceState *rf = qdev_new("cxd90014-regfile");
+        uint32_t *leo = g_new0(uint32_t, 0x400);
+        MemoryRegion *leo_mmio = g_new(MemoryRegion, 1);
+
+        qdev_prop_set_string(rf, "name", "cxd90045.imager");
+        qdev_prop_set_uint64(rf, "size", 0x200000);
+        qdev_prop_set_uint64(rf, "base", 0xFC000000ULL);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(rf), &error_fatal);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(rf), 0, 0xFC000000ULL, -500);
+        memory_region_init_io(leo_mmio, NULL, &cxd90045_leo_ops, leo,
+                              "cxd90045.leo_clk", 0x1000);
+        memory_region_add_subregion_overlap(sysmem, 0xFC021000ULL,
+                                            leo_mmio, 0);
+    }
+
+    /* GPIO p0..p17; pin IRQs p0.0-15 -> 121+, p0.16 -> 144, p1.0-6 -> 137+ */
+    {
+        DeviceState *gpio = qdev_new("cxd90014-gpio");
+        qdev_prop_set_string(gpio, "reset-high", CXD90045_GPIO_RESET_HIGH);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(gpio), &error_fatal);
+        sysbus_mmio_map(SYS_BUS_DEVICE(gpio), 0, CXD90045_GPIO_BASE);
+        for (i = 0; i <= 16; i++) {
+            sysbus_connect_irq(SYS_BUS_DEVICE(gpio), i,
+                               pic[(i < 16 ? 121 + i : 144) - 32]);
+        }
+        for (i = 0; i <= 6; i++) {
+            sysbus_connect_irq(SYS_BUS_DEVICE(gpio), 17 + i,
+                               pic[137 + i - 32]);
+        }
+        sony_a6400_gpio = gpio;
+        sony_a6400_sm_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
+                                           sony_a6400_submicro_tick, NULL);
+        timer_mod(sony_a6400_sm_timer, 50 * SCALE_MS);
+    }
+
+    /* ADC units 0/1: all channels read 1023 = every ladder key released */
+    for (i = 0; i < 2; i++) {
+        sysbus_create_simple("cxd90014-adc", CXD90045_ADC_BASE + i * 0x1000,
+                             pic[CXD90045_ADC_IRQ0 + i - 32]);
+    }
+
+    if (sony_a6400_sm_file) {
+        gchar *data = NULL;
+        gsize flen = 0;
+
+        if (!g_file_get_contents(sony_a6400_sm_file, &data, &flen, NULL) ||
+            flen != sizeof(sony_a6400_sm_frames)) {
+            error_report("sony-a6400: submicro-frames %s: need a 384-byte "
+                         "file (slot A, C, B)", sony_a6400_sm_file);
+            exit(1);
+        }
+        memcpy(sony_a6400_sm_frames, data, sizeof(sony_a6400_sm_frames));
+        g_free(data);
+        sony_a6400_sm_loaded = true;
+    }
+
+    /*
+     * Camera timing-event block (E0527): engine frame events (group A,
+     * IRQ 83) and 1 MHz one-shot comparators (group B, IRQ 84).  The engine's
+     * 1/8-frame "int_HS" comparator chain sets the sub-micro slot-A permit
+     * flag (a5000 RE_ENGINE_TICK.md sections 1-2).
+     */
+    {
+        /*
+         * VPH display controller + SYSV frame timer (E0529, a5000 wiring):
+         * SYSV 0xF3402000 = master V clock (IRQ 98 every engine frame,
+         * V counter +0x98, phase +0x28), panel/line vsync IRQ 101/102 at
+         * 60 Hz, VPH 0xF3440000.  SYSV's V output drives the engine frame
+         * of the timing-event block (ext-vd), as on the a5000.  av-cam's
+         * AudioIp position poll runs from this frame clock.
+         */
+        DeviceState *vph = qdev_new("cxd90014-vph");
+        DeviceState *ev = qdev_new("cxd90014-evsel");
+        qdev_set_id(vph, g_strdup("vph"), &error_fatal);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(vph), &error_fatal);
+        sysbus_mmio_map(SYS_BUS_DEVICE(vph), 0, 0xF3440000ULL);
+        sysbus_mmio_map(SYS_BUS_DEVICE(vph), 1, 0xF3402000ULL);
+        sysbus_connect_irq(SYS_BUS_DEVICE(vph), 0, pic[98 - 32]);
+        sysbus_connect_irq(SYS_BUS_DEVICE(vph), 1, pic[101 - 32]);
+        sysbus_connect_irq(SYS_BUS_DEVICE(vph), 2, pic[102 - 32]);
+        qdev_prop_set_bit(ev, "ext-vd", true);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(ev), &error_fatal);
+        qdev_connect_gpio_out(vph, 0, qdev_get_gpio_in(ev, 0));
+        sysbus_mmio_map(SYS_BUS_DEVICE(ev), 0, 0xF3C30000ULL);
+        sysbus_connect_irq(SYS_BUS_DEVICE(ev), 0, pic[83 - 32]);
+        sysbus_connect_irq(SYS_BUS_DEVICE(ev), 1, pic[84 - 32]);
+    }
+
+    /* SIO: 5 channels, 0xF2405000 + 0x200 * ch, IRQ 201 + ch (E0526) */
+    {
+        DeviceState *sio = qdev_new("cxd90014-sio");
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(sio), &error_fatal);
+        sysbus_mmio_map(SYS_BUS_DEVICE(sio), 0, CXD90045_SIO_BASE);
+        for (i = 0; i < 5; i++) {
+            sysbus_connect_irq(SYS_BUS_DEVICE(sio), i,
+                               pic[CXD90045_SIO_IRQ0 + i - 32]);
+            cxd90014_sio_attach_dir(sio, i, i == 3 ?
+                                    sony_a6400_submicro_xfer :
+                                    sony_a6400_sio_log, NULL);
+        }
+    }
+
     memory_region_init_io(crcdc_mmio, NULL, &cxd90045_crcdc_ops, NULL,
                           "cxd90045.crcdc", 0x1000);
     memory_region_add_subregion(sysmem, CXD90045_CRCDC_BASE, crcdc_mmio);
@@ -782,16 +1024,68 @@ static void sony_a6400_init(MachineState *machine)
                           "cxd90045.l2c_stub", 0x1000);
     memory_region_add_subregion(sysmem, CXD90045_L2C_STUB_BASE, l2c_mmio);
 
-    cxd90045_create_sugilite(sysmem, CXD90045_GPES_BAR_BASE,
-                             pic[CXD90045_GPES_SPI]);
+    {
+        DeviceState *gpu = qdev_new("dmp-smaph-s30");
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(gpu), &error_fatal);
+        sysbus_mmio_map(SYS_BUS_DEVICE(gpu), 0, CXD90045_GPES_BAR_BASE);
+        sysbus_connect_irq(SYS_BUS_DEVICE(gpu), 0, pic[CXD90045_GPES_SPI]);
+    }
 
+    /*
+     * SA DSP cores (a5000 null-SA model).  av-cam's imager start waits on
+     * SA0 source A (IRQ 51) after ZIT ConvZ1C.  Without that completion the
+     * mode sequencer never requests the YC output, so VPH 0x144 bit0 stays
+     * clear.  The four ID strings are in this av-cam.bin.
+     */
+    {
+        static const struct {
+            hwaddr base;
+            int irq[3];
+            const char *id;
+        } sa_cores[] = {
+            { 0xF34A0000ULL, { 51, 52, 53 }, "ZMA0V1.0SA5_V1.0" },
+            { 0xF34B0000ULL, { 54, 55, 56 }, "ZMA1V1.0SA5_V1.0" },
+            { 0xF34C0000ULL, { 61, 62, 63 }, "SA0_V1.0SA5_V1.0" },
+            { 0xF35C0000ULL, { 64, 65, 66 }, "SA1_V1.0SA5_V1.0" },
+        };
+        for (int n = 0; n < ARRAY_SIZE(sa_cores); n++) {
+            DeviceState *sa = qdev_new("cxd90014-sa");
+            qdev_prop_set_uint32(sa, "index", n);
+            qdev_prop_set_uint64(sa, "base", sa_cores[n].base);
+            qdev_prop_set_string(sa, "core-id", sa_cores[n].id);
+            sysbus_realize_and_unref(SYS_BUS_DEVICE(sa), &error_fatal);
+            sysbus_mmio_map(SYS_BUS_DEVICE(sa), 0, sa_cores[n].base);
+            for (int k = 0; k < 3; k++) {
+                sysbus_connect_irq(SYS_BUS_DEVICE(sa), k,
+                                   pic[sa_cores[n].irq[k] - 32]);
+            }
+        }
+    }
+
+    /*
+     * Sensor register writer (a5000 P2S).  av-cam has the same unit-0
+     * bases.  A transfer that never clears 0xF3C00908 bit0 is refused
+     * forever after the first one (RE_SENSOR_ISP.md).  IRQ 38.
+     */
+    {
+        DeviceState *p2s = qdev_new("cxd90014-p2s");
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(p2s), &error_fatal);
+        sysbus_mmio_map(SYS_BUS_DEVICE(p2s), 0, 0xF3C00000ULL);
+        sysbus_connect_irq(SYS_BUS_DEVICE(p2s), 0, pic[38 - 32]);
+    }
+
+    /*
+     * The 64 KiB window also covers SYSV at 0xF3402000.  Priority -1 lets
+     * that device answer 0xF3402028.  At priority 0 the stub answered the
+     * phase read with 0 (E0535).
+     */
     sugi_clk = cxd90045_create_rw_stub(sysmem, "cxd90045.sugi_clk",
-                                       CXD90045_SUGI_CLK_BASE, 0x10000);
+                                       CXD90045_SUGI_CLK_BASE, 0x10000, -1);
     /* sugilite_clock_up_internal expects 0x15 at 0xF3400080 */
     sugi_clk->regs[0x80 >> 2] = 0x15;
 
     cxd90045_create_rw_stub(sysmem, "cxd90045.dfs_ctrl",
-                            CXD90045_DFS_CTRL_BASE, 0x1000);
+                            CXD90045_DFS_CTRL_BASE, 0x1000, 0);
 
     cxd90045_create_xdmac(sysmem, CXD90045_XDMAC0_BASE,
                           &pic[CXD90045_XDMAC0_SPI_BASE]);
@@ -846,6 +1140,11 @@ static void sony_a6400_machine_init(MachineClass *mc)
     mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-a5");
     mc->default_ram_size = CXD90045_RAM0_SIZE;
     mc->ignore_memory_transaction_failures = true;
+    object_class_property_add_str(OBJECT_CLASS(mc), "submicro-frames",
+                                  sony_a6400_get_sm_file,
+                                  sony_a6400_set_sm_file);
+    object_class_property_set_description(OBJECT_CLASS(mc), "submicro-frames",
+        "384-byte file: captured sub-micro RX slots A, C, B (E0527)");
 }
 
 DEFINE_MACHINE("sony-a6400", sony_a6400_machine_init)

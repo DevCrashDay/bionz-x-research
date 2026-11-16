@@ -24,7 +24,7 @@ index dc68391..1c32425 100644
  
  hw_arch += {'arm': arm_ss}
  hw_common_arch += {'arm': arm_common_ss}
-+arm_common_ss.add(when: 'CONFIG_SONY_A6400', if_true: files('sony_a6400.c'))
++arm_common_ss.add(when: 'CONFIG_SONY_A6400', if_true: files('sony_a6400.c', '../misc/cxd90014_sio.c', '../misc/cxd90014_gpio.c', '../misc/cxd90014_adc.c', '../misc/cxd90014_evsel.c', '../misc/cxd90014_regfile.c', '../misc/cxd90014_vph.c', '../display/dmp_smaph.c', '../display/dmp_shader.c', '../misc/cxd90014_sa.c', '../misc/cxd90014_p2s.c'))
 diff --git a/hw/cpu/a9mpcore.c b/hw/cpu/a9mpcore.c
 index 64bebbd..a245819 100644
 --- a/hw/cpu/a9mpcore.c

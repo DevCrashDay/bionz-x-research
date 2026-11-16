@@ -551,6 +551,22 @@ void ml_after_refresh(uint32_t menu) {
             st->root_children[6] = &st->mods_tab_node;
             st->orig_root->child_count = 7;
         }
+#ifdef ML_DIAG_OSD
+        /* Log-only diagnostic (E0522): copy the tab-header strip of OSD A (im.elf mapping of
+         * /dev/stream PA 0x23a80000, VA 0x0bfd0000, 640x480 RGBA4444, E0298) on the 3rd/6th/9th
+         * refresh, when earlier menu frames are on screen. 640x70x2 = 89600 B per file. */
+        uint32_t c = ++st->pad[1];
+        if (c == 3u || c == 6u || c == 9u) {
+            char path[] = "/tmp_bt/mods/osd0.bin";
+            path[16] = (char)('0' + c / 3u);
+            int fd = sys_open3(path, 0x241 /* O_WRONLY|O_CREAT|O_TRUNC */, 0644);
+            if (fd >= 0) {
+                sys_write(fd, (const void *)0x0bfd0000u, 640u * 70u * 2u);
+                sys_close(fd);
+            }
+            ml_log("osd_dump", (c << 16) | *(volatile uint32_t *)(menu + 0x1f0u));
+        }
+#endif
     }
     if (*(volatile uint32_t *)(menu + 0x1f0u) != 7u) return;
     if (!st) return;
@@ -571,6 +587,12 @@ void ml_after_refresh(uint32_t menu) {
             set_text((void *)(btn + 0xb60u), "");
         }
     }
+}
+
+/* SMOD flag bit 1: lifecycle mod; Thumb entry at code_addr gets 1 after ON, 0 before OFF. */
+static void __attribute__((noinline)) ml_life(ModEntry *m, int on) {
+    if (m->pad & 2u) ((void (*)(int))(m->code_addr | 1u))(on);
+    ml_log("mod", m->code_addr | (uint32_t)on); /* low bit: 1 = ON, 0 = OFF */
 }
 
 static void ml_toggle_mod(ModEntry *m) {
@@ -641,8 +663,9 @@ static void ml_toggle_mod(ModEntry *m) {
             ml_flush_all(hk->target_addr, hk->target_addr + hk->patch_size);
         }
         m->enabled = 1;
-        ml_log("mod_on", m->code_addr);
+        ml_life(m, 1);
     } else {
+        ml_life(m, 0);
         for (uint32_t h = 0; h < m->hook_count; h++) {
             SmodHook *hk = &m->hooks[h];
             if (ml_make_rwx(hk->target_addr, hk->patch_size) == 0) {
@@ -651,7 +674,6 @@ static void ml_toggle_mod(ModEntry *m) {
             }
         }
         m->enabled = 0;
-        ml_log("mod_off", m->code_addr);
     }
 }
 
@@ -736,7 +758,7 @@ void ml_before_pmain(uint32_t view) {
 #endif
 
 int ml_before_enter(uint32_t menu, FakeSettingNode *leaf) {
-#if defined(ML_HOOK_DISPATCH) || defined(ML_HOOK_PMAIN)
+#if defined(ML_HOOK_DISPATCH) || defined(ML_HOOK_PMAIN) || defined(ML_DIAG_OSD)
     /* Unused when the third hook targets the dispatcher; keeps the payload within CODE_CAP. */
     return -1;
 #endif

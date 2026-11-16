@@ -35,6 +35,16 @@ not a demonstrated sub-micro deadlock. The next step is the actual event-produce
 contract, not an injected completion. No camera access or emulator GUI frame is
 claimed.
 
+### Continued QEMU machine work ([E0525](docs/evidence/0525-qemu-a6400-ulogio-queue-unblocks-appframework.md)–[E0541](docs/evidence/0541-qemu-a6400-isoutputevf-does-not-switch-the-panel.md))
+
+The same captured-input boot now continues through Appframework, a replayed
+sub-micro link, and a Sugilite console. Graphic console 0 shows the viewfinder
+readout (program mark, battery, exposure scale). Forcing `isOutputEvf` to
+return 0 changes the focus marks only. The YUV layer stays off because the
+imager has not started a sensor transfer or an SA function. This is still
+QEMU, not a verified rear-LCD frame. Details are in
+[qemu-a6400/STATUS.md](qemu-a6400/STATUS.md).
+
 Two RAM-only mods run on a live ILCE-6400 (`im.elf`): a guarded loader that enables `.mod`
 payloads from the SD card, and the MTF2 full-menu touch mod. Both live only in RAM — no flash
 writes and no boot-time persistence; a camera restart restores stock behaviour.
@@ -71,6 +81,20 @@ My Menu (tab 6), the injected Mods tab (7), and tab-bar focus.
 Sources: [`menu_touch_full.c`](tools/native_camera/menu_touch_full.c),
 [`native_menu_touch_full_guard.c`](tools/native_camera/native_menu_touch_full_guard.c),
 verified snapshot in [`mods/menu_touch_full/`](mods/menu_touch_full/README.md).
+
+### Arrivederci look mod
+
+[Arrivederci](mods/arri_isp/arrivederci/README.md) is an SMOD v1 Mods-tab entry for the
+same loader. The loader calls its Thumb entry with 1 on ON and 0 on OFF when the
+mod's flag bit 1 is set. It was checked on a live ILCE-6400 on 2026-11-16 with
+Picture Profile gamma S-Log3 and color mode S-Gamut3.Cine. The tone curve is
+reloaded from the read-only image at boot. The color matrix is part of Sony's
+backup and can remain until it is toggled back and the camera saves stock.
+Rebuild with [`mods/arri_isp/arrivederci/build_wsl.sh`](mods/arri_isp/arrivederci/build_wsl.sh).
+The offline ISP staging component and the LUT converter stay separate:
+[`mods/arri_isp/`](mods/arri_isp/README.md),
+[`a6400-lut-converter/`](a6400-lut-converter/README.md),
+[ISP transform catalog](docs/ISP_TRANSFORM_CATALOG.md).
 
 ### Short tutorial — load a mod from the SD card
 
@@ -110,13 +134,14 @@ the separate native eMMC controls pass in WSL. Full receipts are reported in
 [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md).
 Each result is bounded by its own dated evidence record; no UVC video frame and no
 flash write are claimed. Latest records: [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md)
-(reproducible captured QEMU inputs and qualified event waits), [E0523](docs/evidence/0523-mod-loader-ok-routing-diagnostics.md)
+(reproducible captured QEMU inputs and qualified event waits), [E0541](docs/evidence/0541-qemu-a6400-isoutputevf-does-not-switch-the-panel.md)
+(the same boot continued to a viewfinder console; the rear LCD skin and the imager are still open), [E0523](docs/evidence/0523-mod-loader-ok-routing-diagnostics.md)
 (guarded RAM-only Mod Loader plus the MTF2 full-menu touch mod), [E0522](docs/evidence/0522-qemu-a6400-smp-four-cores-and-cxd4115-timers.md)
 and [E0521](docs/evidence/0521-qemu-a6400-main-firmware-boots-to-avcam.md) (the out-of-tree QEMU
 `sony-a6400` machine boots the main `nflasha3` firmware to a shell and brings up four Cortex-A5
 cores; this is QEMU, not the Unicorn emulator).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=2494459376ac)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=15c44309418d)
 
 ![Daily automated test suite growth: 1905 tests across 30 days](docs/images/test-growth.svg?v=4d4e15620e85)
 
@@ -124,10 +149,10 @@ cores; this is QEMU, not the Unicorn emulator).
 
 | Subsystem | What works today | What's still missing | Evidence |
 | --- | --- | --- | --- |
-| **Offline firmware & kernel** | QEMU boots the captured main kernel, filesystems and LIRO on four cores with a shell; the separate Unicorn path delivers user faults to the kernel | QEMU event/IRQ producers and a verified GUI frame; Unicorn's Thumb return path; full camera boot unproven | [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md), [L2 reference](docs/architecture/l2-kernel-boot-and-mmu.md) |
+| **Offline firmware & kernel** | QEMU boots the captured main kernel, filesystems and LIRO on four cores with a shell, then continues to Appframework and a viewfinder OSD; the separate Unicorn path delivers user faults to the kernel | Rear-LCD skin and an imager start; Unicorn's Thumb return path; full camera boot unproven | [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md), [E0541](docs/evidence/0541-qemu-a6400-isoutputevf-does-not-switch-the-panel.md), [L2 reference](docs/architecture/l2-kernel-boot-and-mmu.md) |
 | **Internal messaging & USB state** | Message routing and synchronous kernel-to-user callbacks run to completion offline | Remaining callback packet format is still unknown | [E0327](docs/evidence/0327-mwf-objmsg-wire-format.md), [E0332](docs/evidence/0332-sync-callback-delivery-first-invocation.md) |
 | **Offline USB enumeration** | Combined USB webcam + PTP descriptors decoded; configuration and endpoint selection modelled | Delivering an incoming USB configuration end-to-end on the sync lane | [E0337](docs/evidence/0337-emulator-uvc-ptp-preparation-and-0a4002-broadcast.md) |
-| **Display & GPU** | Camera screen layout confirmed (640×480); GPU memory/interrupt contracts decoded offline | Completing the GPU wait signal and rendering a verified firmware frame | [E0298](docs/evidence/0298-safe-osd-capture-and-sugilite-correction.md), [E0314](docs/evidence/0314-gpes-bar-irq-contract-engine-model.md) |
+| **Display & GPU** | Camera screen layout confirmed (640×480); GPU memory/interrupt contracts decoded offline. The QEMU Sugilite model draws the shooting-screen OSD onto the viewfinder console | A verified rear-LCD frame, and the YUV layer, which stays off until the imager starts | [E0298](docs/evidence/0298-safe-osd-capture-and-sugilite-correction.md), [E0314](docs/evidence/0314-gpes-bar-irq-contract-engine-model.md), [E0536](docs/evidence/0536-qemu-a6400-viewfinder-readout-and-eye-sensor-command.md) |
 | **PTP liveview (real camera)** | PC Remote streams 1024×680 sensor JPEGs; custom reader captures 29.8 FPS alongside PTP | Running UVC + PTP together with reliable teardown | [E0349](docs/evidence/0349-p1-foreign-get-jpeg-succeeds-in-pc-remote.md), [E0151](docs/evidence/0151-pc-remote-liveview-and-uvc-verified.md) |
 | **Composite USB webcam (real camera)** | Camera appears as both PTP and Video device in Windows, and disconnects cleanly without a battery pull | DirectShow times out during the USB control handshake status stage | [E0350](docs/evidence/0350-trackb-transport-enumerates-but-renderstream-fails.md), [E0398](docs/evidence/0398-runb21-status-stage-and-disconnect-verdict.md) |
 | **USB Debugger v2** | Persistent Mass Storage debugger for reading live/warm-reboot kernel logs and USB state | Deploying the always-on WinUSB vendor interface | [E0401](docs/evidence/0401-usb-debugger-v2-ring-recover-and-mode-boundary.md), [E0405ab](docs/evidence/0405ab-device-desc-builder-and-msos2-subset.md) |
@@ -139,10 +164,13 @@ cores; this is QEMU, not the Unicorn emulator).
 
 **Top 3 open tasks right now**
 
-1. **Recover QEMU's real event producer for Task 43** — its flag-10 wait is
-   qualified and IRQs 101/102 are enabled but unasserted. Derive their original
-   register/status/timing contract rather than injecting an interrupt.
-   Start with the [captured-input workflow and status](qemu-a6400/README.md).
+1. **Find the rear-LCD image set on the QEMU machine** — captured inputs, the
+   four-core boot, and the qualified Task 43 / IRQ 101/102 waits remain
+   [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md).
+   Later records reach a viewfinder console. Forcing `isOutputEvf` to return 0
+   does not select `image_DSC_Only_169.uxc`. Start from
+   [E0541](docs/evidence/0541-qemu-a6400-isoutputevf-does-not-switch-the-panel.md)
+   and [qemu-a6400/STATUS.md](qemu-a6400/STATUS.md).
 2. **Decode the USB control callback packet format** — figure out the remaining message
    layout so an incoming USB configuration request reaches the firmware's USB state machine
    ([`usb_sync_callback.py`](src/a6400/execution/usb_sync_callback.py)).
@@ -188,6 +216,8 @@ Firmware images, backups, and captured artifacts stay local and are excluded fro
 | `tools/research/` | Firmware analysis scripts, emulator runners, and status-card generator |
 | `tools/native_camera/` | C helpers, kernel-module sources, and USB/UVC transport code |
 | `probes/` | Safe, read-only ARM probe for other BIONZ X cameras |
+| [`a6400-lut-converter/`](a6400-lut-converter/README.md) | Offline ISP table fitting, ARRI presets, and 8-bit 4:2:0 preview |
+| [`mods/arri_isp/`](mods/arri_isp/README.md) | Conditional ISP staging component, Arrivederci v1 mod, and read-only camera notes |
 | `tests/` | Automated contract, regression, and structure checks |
 | `docs/evidence/` | Dated research logs with exact observations and boundaries |
 | `docs/` | Architecture notes, workflows, and contributor guides |
