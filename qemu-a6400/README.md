@@ -21,8 +21,22 @@ From the `qemu-a6400/` directory inside WSL2:
 ./setup-qemu.sh
 cd qemu/build
 ../configure --target-list=arm-softmmu --enable-sdl --disable-werror
-ninja qemu-system-arm
+ninja qemu-system-arm qemu-img
 ```
+
+The patch also honors eMMC CMD1 sector-addressing requests below 2 GiB. Without
+that negotiation, the original driver requests sector `0x52002` but QEMU reads
+byte address `0x52002` instead of `0x0A400400`, so a valid captured ext2 rootfs
+cannot mount. This is a device-protocol correction, not a firmware patch or a
+reason to inflate the disk to 4 GiB. Optional native regressions use constructed
+disks and paused CPUs, requiring neither firmware nor camera:
+
+```powershell
+wsl.exe --exec python3 -m unittest tests.test_qemu_emmc -v
+```
+
+Run this command from the repository root. The ordinary Windows suite skips
+these two native tests when the Linux QEMU build is unavailable.
 
 ## Milestone 1: Initial Bring-Up
 
@@ -33,6 +47,89 @@ Verify the machine registers cleanly:
 ```
 
 ## Milestone 2: Main firmware boot (E0521)
+
+### Rebuild inputs from a local camera capture
+
+The preferred input set uses the captured SDM partition table, every nonempty
+partition image, and the kernel, initrd, av-cam and settings extracted from those
+same images. It does not substitute update-package libraries or default settings.
+Original capture files are opened read-only; generated files remain git-ignored.
+Capture/output overlap is refused before creating any directories or receipts.
+The native QEMU eMMC backing layout is `nflashaB0` (4 MiB), `nflashaB1`
+(4 MiB), then the user area. The captured SDM header therefore belongs at
+backing-file offset 8 MiB, and each user partition at `8 MiB + SDM.start`.
+Manifest schema 2 records this translation; placing the SDM header at file
+offset zero makes the guest reject the partition table.
+
+Create the ignored `qemu-a6400/inputs.local.json` once for this workstation:
+
+```json
+{
+  "schema_version": 1,
+  "dump_dir": "C:\\private\\a6400-nflasha-readonly",
+  "manifest_sha256": "<verified SHA-256 of manifest.json>",
+  "checksums_sha256": "<verified SHA-256 of SHA256SUMS.txt>"
+}
+```
+
+Check these initial identities against the acquisition receipts. Do not refresh
+hashes to silence a mismatch. The tool uses the capture's complete per-device
+`manifest.json` and the existing checksum list; it does not rewrite either.
+
+From PowerShell in the repository root:
+
+```powershell
+$bootInputs = 'artifacts\qemu-a6400\inputs-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+.\venv\Scripts\python.exe -m tools.research.qemu_boot_inputs prepare --report-dir $bootInputs --allow-unacquired-zero-fill
+.\venv\Scripts\python.exe -m tools.research.qemu_boot_inputs verify --report-dir $bootInputs --sources
+$linuxInputs = (wsl.exe --exec wslpath -a -u (Resolve-Path $bootInputs).Path).Trim()
+wsl.exe --exec env "A6400_QEMU_DATA_DIR=$linuxInputs" TIMEOUT=110 bash qemu-a6400/run.sh
+```
+
+`--allow-unacquired-zero-fill` explicitly permits zero-filled unacquired disk
+ranges, including the tail required by QEMU's power-of-two card-size restriction.
+The manifest distinguishes captured capacity, emulated capacity and every such
+range. This is a reconstructed emulator disk, **not** a complete physical-disk
+dump. Writable source filesystems were also not acquired atomically.
+
+Each preparation requires a new output directory and produces a deterministic
+`boot-manifest.json`, disk image and preload files. Repeating preparation with the
+same sources, tool bytes and policy produces identical output hashes. Before
+booting, `run.sh` checks all prepared hashes, uses the recorded serial command
+line and creates a new run directory. `RUN_DIR` may select another new directory.
+The raw base image is never attached writable: the guest uses a fresh qcow2 overlay.
+An exit caused by `TIMEOUT` is a bounded stop, not proof of successful boot.
+
+### Bounded task and interrupt observations
+
+The standard-library observer runs inside WSL, captures real serial command exit
+statuses, stops all emulated CPUs for snapshots and verifies QMP shutdown:
+
+```powershell
+wsl.exe --exec python3 -u -m tools.research.qemu_boot_probe --inputs $linuxInputs --report-dir artifacts/qemu-a6400/NEW-PROBE --seconds 120 --wait-for "Created HeapAllocator:" --guest-command "cat /proc/interrupts" --liro-task 1 --liro-task 43 --liro-task 65 --liro-irq 101 --liro-irq 102
+```
+
+Serial input is paced and acknowledged one command at a time; commands are not
+retried automatically. Active console I/O stays on Linux storage and is
+hash-verified when archived, avoiding concurrent cloud-backed DrvFS reads.
+
+The optional LIRO decoder is deliberately restricted to the captured E0524
+kernel/usr hashes. It binds the original ELF offsets to this run's module
+section addresses, archives each bounded RAM read and does not unwind runnable
+tasks. Other builds must establish their own layout; do not replace hashes to
+make them pass.
+
+IRQ observations use native GIC enable/disable/input traces, not debugger reads
+of GIC MMIO. A debug read reset the emulator connection; the native SMP GIC path
+requires a current CPU and is not safe in that QMP context. No IRQ, event flag
+or semaphore is signalled by the observer.
+See [E0524](../docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md)
+for the verified wait and the remaining producer boundary.
+
+### Historical input layout
+
+Without `A6400_QEMU_DATA_DIR`, the legacy launcher expects the locally prepared
+`qemu-a6400/data/` layout and its original `AVCAM` override behavior:
 
 ```bash
 ./run.sh            # TIMEOUT=80 ./run.sh for a bounded run

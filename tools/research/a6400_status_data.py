@@ -210,7 +210,7 @@ class StatusSnapshot:
     @property
     def description(self) -> str:
         return (
-            f"{self.suite.test_count} tests recorded passing. Offline original-code execution, "
+            f"{self.suite.test_count} tests in the recorded offline suite. Offline original-code execution, "
             "read-only physical observation and authored demonstrations are reported separately. "
             "No emulator GUI frame and no UVC frame are claimed."
         )
@@ -218,32 +218,45 @@ class StatusSnapshot:
 
 STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
-    as_of="2026-11-15",
+    as_of="2026-11-16",
     latest=EvidenceRef(
-        evidence_id="E0523",
-        path="docs/evidence/0523-mod-loader-ok-routing-diagnostics.md",
-        date="2026-11-15",
-        title="Guarded RAM-only Mod Loader: OK-routing gates root-caused, MTF2 menu touch verified through the loader",
+        evidence_id="E0524",
+        path="docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md",
+        date="2026-11-16",
+        title="Reproducible captured QEMU inputs and qualified LIRO event waits",
         demonstrated=(
-            "Physical ILCE-6400, RAM-only installs on fresh boots through the MSC debugger. Traced the "
-            "injected MENU tab-7 OK key through ViewBaseProduct::ProductMain into the generated state "
-            "table: state 1 / event 5 reaches action 1 only when state-table condition 4 sees "
-            "getIntProperty(12) == 0 and at least two selectable children, which the fake Mods items never "
-            "wrote. Also fixed the zero-filled MTF2 state (SMOD state-init flag), the single-CPU cacheflush "
-            "on the 4-core SMP kernel, and the MTF2 6-tab cap. Loader 36d25243... plus MenuTouchFull.mod "
-            "3f8ac4fb... left menu touch working in the ordinary tabs (Run L: count 29, last_err 0, "
-            "175/175 threads resumed)."
+            "Two hash-checked preparations from the captured boot areas and user partitions have "
+            "identical outputs. Correct native eMMC user-area offsets and CMD1 sector negotiation "
+            "restore original mounts, four CPUs, LIRO/stella startup and shell command roundtrips. "
+            "Stopped task snapshots and bounded original-code analysis identify Task 43 waiting on "
+            "flag 10 (mask 0x3373); its IRQ 101/102 paths are enabled but never asserted."
         ),
         boundary=(
-            "RAM-only on one boot: no flash write, no persistence and no boot-time load. Touch does not "
-            "work in My Menu (tab 6), the injected Mods tab (tab 7), or with tab-bar focus; the Mod Loader "
-            "toggle path is reached only through the injected row, and the upstream OK-to-action table for "
-            "other view states remains untraced. Camera state is restored by reboot."
+            "Recover the real IRQ producer/register/timing contract; do not inject completion flags. "
+            "Task 65 is dormant with a finite entry target, not a proven sub-micro deadlock. Task 1's "
+            "lifecycle semaphore wait is not established as the sole blocker. No full camera boot, "
+            "verified emulator GUI frame or physical operation is claimed."
         ),
-        tier="PHYSICAL RAM-ONLY + OFFLINE STATIC",
+        tier="OFFLINE QEMU + ORIGINAL STATIC",
     ),
-    headline="1903 tests recorded passing | MTF2 menu touch mod + guarded RAM-only Mod Loader | No verified emulator GUI frame",
+    headline="1905 offline suite cases | Reproducible captured QEMU boot + qualified LIRO waits | No verified emulator GUI frame",
     cards=(
+        EvidenceRef(
+            evidence_id="E0523",
+            path="docs/evidence/0523-mod-loader-ok-routing-diagnostics.md",
+            date="2026-11-15",
+            title="Guarded RAM-only Mod Loader and MTF2 menu touch",
+            demonstrated=(
+                "The owner-run physical checkpoint verifies Mod Loader OK routing, MTF2 state-init "
+                "packaging, SMP cache flushing and touch through the loader in ordinary menu tabs."
+            ),
+            boundary=(
+                "Historical physical checkpoint: RAM-only, no persistence or flash write. Its recorded "
+                "My Menu, injected Mods-tab and tab-bar-focus limitations remain; no new camera test "
+                "was performed for the offline QEMU work."
+            ),
+            tier="PHYSICAL RAM-ONLY + OFFLINE STATIC",
+        ),
         EvidenceRef(
             evidence_id="E0509",
             path="docs/evidence/0509-a6400a-msc-reply-lifetime-and-verified-native-identity.md",
@@ -509,9 +522,9 @@ STATUS_SNAPSHOT = StatusSnapshot(
         ),
     ),
     suite=SuiteRecord(
-        test_count=1903,
-        recorded_at="2026-11-15",
-        evidence_id="E0523",
+        test_count=1905,
+        recorded_at="2026-11-16",
+        evidence_id="E0524",
         command="python -m unittest discover -s tests -q",
     ),
     footer=(
@@ -684,7 +697,7 @@ class TelemetryDashboard:
 
     def description(self) -> str:
         return (
-            f"{DASHBOARD_TITLE}: {self.test_count:,} tests recorded passing, "
+            f"{DASHBOARD_TITLE}: {self.test_count:,} tests in the recorded suite, "
             f"{self.receipt_count} evidence receipts through {self.latest_evidence}. "
             "Bounded telemetry, not a firmware compatibility percentage."
         )
@@ -743,7 +756,7 @@ def _build_telemetry() -> TelemetryDashboard:
     test_count = STATUS_SNAPSHOT.suite.test_count
 
     pills = (
-        KpiPill("contract tests", f"{test_count:,} passing", "green", "offline suite receipts"),
+        KpiPill("contract tests", f"{test_count:,} recorded", "green", "offline suite receipts"),
         KpiPill("evidence receipts", f"{receipt_count} recorded", "blue", "docs/evidence/"),
         KpiPill("teardown sequencer", f"{TEARDOWN_PHASES}/{TEARDOWN_PHASES} phases ({TEARDOWN_PHASE_MASK})", "green", "E0353"),
         KpiPill("task phases", f"{phases.done}/{phases.total} observed", "amber", "task94_phases"),
@@ -962,6 +975,7 @@ DAILY_TEST_HISTORY: tuple[DailyTestPoint, ...] = (
     DailyTestPoint("2026-11-13", 1727, 217, "E0500", "UC_TLB_VIRTUAL & 13-body map"),
     DailyTestPoint("2026-11-14", 1895, 168, "E0510", "BusyBox ash shell, A5KU & UI boot"),
     DailyTestPoint("2026-11-15", 1903, 8, "E0523", "MTF2 touch mod, guarded Mod Loader & QEMU a6400 boot/SMP"),
+    DailyTestPoint("2026-11-16", 1905, 2, "E0524", "Captured QEMU boot inputs, eMMC addressing & qualified LIRO waits"),
 )
 
 

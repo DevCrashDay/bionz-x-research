@@ -4,6 +4,15 @@
 The entries below are dated history: their test counts and boundaries describe the state at
 the time of writing and are not updated retroactively.
 
+Offline QEMU input and wait qualification (2026-11-16,
+[E0524](evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md)):
+captured boot sets now reproduce with unchanged original hashes. Native eMMC
+boot-area offsets and CMD1 sector negotiation are explicit and regression-tested.
+Original firmware reaches four cores, LIRO and a shell. Task 43 waits on flag 10
+(`0x3373`); its IRQ 101/102 producer paths are enabled but unasserted. Recover their
+real timing/status contract next, rather than assuming Task 65 is stuck on SIO or
+injecting an event. No emulator GUI frame or complete camera boot is claimed.
+
 a6400A identity track (2026-11-13, [E0509](evidence/0509-a6400a-msc-reply-lifetime-and-verified-native-identity.md)):
 original reply-lifetime controls correct the split-process test procedure.
 One uninterrupted owner-run query now returns ILCE-6400A in 2.727 ms through
