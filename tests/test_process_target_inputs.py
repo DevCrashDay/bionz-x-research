@@ -130,8 +130,9 @@ class ProcessTargetInputTests(unittest.TestCase):
             app, linker, kernel, init, rootfs = select_a7c_images(
                 root, manifest, "/usr/bin/im.elf", "nflasha7-ld"
             )
+            expected_root = (root / "firmware/ilce_7c_203").resolve()
             for item in (app, linker, kernel, init, rootfs):
-                self.assertTrue(item["local_path"].is_relative_to(root / "firmware/ilce_7c_203"))
+                self.assertTrue(item["local_path"].is_relative_to(expected_root))
             self.assertEqual(app["sha256"], manifest["application"]["sha256"])
             self.assertEqual(kernel["sha256"], manifest["kernel"]["sha256"])
             with self.assertRaisesRegex(ValueError, "select a named interpreter candidate explicitly"):
