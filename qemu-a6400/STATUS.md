@@ -1,5 +1,44 @@
 # QEMU `sony-a6400`: findings and next steps
 
+## Captured-input qualification (2026-11-16 / E0524)
+
+The reproducible input builder now uses all 18 captured images: two 4 MiB
+hardware boot areas and the 16 nonempty SDM user partitions. It retains the
+captured kernel, initrd, av-cam, libraries and settings together. Two independent
+preparations produce identical output hashes; the original captures remain
+unchanged. The native eMMC user area begins at backing offset 8 MiB.
+
+The 2 GiB model also needed a real protocol correction: honor the original
+`CMD1 0x40000080` sector-mode request. Before the fix, rootfs sector `0x52002`
+was read as a byte offset; afterward it reads `0x0A400400`. Both sector-addressed
+and byte-addressed constructed-disk regressions pass, without inflating capacity.
+
+Original firmware reaches four CPUs, mounts its captured filesystems, runs LIRO
+`entry_pre` / `entry_main`, initializes DMP/stella and answers shell commands.
+This is not a complete camera boot or a verified GUI frame.
+
+Stopped, hash-qualified task/IRQ observations refine the older next-step list:
+
+- Task 65 is dormant with no queued activation. Its observed entry target has a
+  finite initialization body; the helper sleep alone is not a demonstrated
+  sub-micro deadlock.
+- Task 43 waits on ITRON flag 10, mask `0x3373`, mode 1, timeout -1.
+  Original registered IRQ 101/102 handlers contain paths setting bits 1/2.
+  Native traces show both IRQs enabled, with zero input assertions during the
+  bounded run.
+- Task 1 waits on OSAL semaphore `0x00BF04EE` at av-cam `0x6361BB48`.
+  Its lifecycle purpose and status as a global blocker remain unproven.
+
+**Next:** recover the actual register/status/timing producer contract for the
+enabled IRQ 101/102 paths. Do not inject a periodic interrupt or signal a flag
+merely to advance the firmware. These are qualified observations of separate
+waits, not proof of one global deadlock.
+
+Commands, identities, failed receipts and limitations:
+[E0524](../docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md).
+
+## Historical E0521/E0522 snapshot
+
 Snapshot: 2026-11-15, after E0521 and E0522. Nothing below has been run on the real camera.
 Labels: [C] confirmed by a run receipt or disassembly, [I] inference, [A] assumption.
 

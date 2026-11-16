@@ -8,8 +8,10 @@ node_modules/
 
 # Firmware, device state, dumps and generated outputs
 /firmware
+a6400-nflasha-readonly*/
 backups/
 /artifacts
+/qemu-a6400/inputs.local.json
 scratch/
 assets/reference/*
 !assets/reference/README.md

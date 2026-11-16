@@ -23,6 +23,7 @@ Central navigation map for the Sony BIONZ X (`CXD90045`) universal emulator and 
 | [LIVE_CAMERA_EMULATOR_WORKFLOW.md](LIVE_CAMERA_EMULATOR_WORKFLOW.md) | Safe read-only live camera observation and emulator handoff workflow |
 | [NATIVE_USB_DEBUGGER.md](NATIVE_USB_DEBUGGER.md) | Native USB debugger protocol and safety rules |
 | [REA_WORKFLOW.md](REA_WORKFLOW.md) | Ghidra / WSL reverse-engineering workflow (`tools.research.rea_wsl_batch`) |
+| [QEMU workflow](../qemu-a6400/README.md) | Reproducible captured boot inputs, native eMMC regression checks and bounded LIRO task/IRQ observations |
 | [DEPENDENCY_WORKFLOW.md](DEPENDENCY_WORKFLOW.md) | Dependency and call-chain tracing workflow |
 | [VALIDATION.md](VALIDATION.md) | Differential validation and fidelity rules |
 

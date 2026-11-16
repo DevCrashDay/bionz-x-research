@@ -160,7 +160,7 @@ class TestKpiDerivation(unittest.TestCase):
 
     def test_contract_test_pill_matches_recorded_suite(self):
         pill = self._pill("contract tests")
-        self.assertEqual(pill.value, f"{TELEMETRY.test_count:,} passing")
+        self.assertEqual(pill.value, f"{TELEMETRY.test_count:,} recorded")
         self.assertEqual(TELEMETRY.test_count, TELEMETRY.test_count)
         self.assertEqual(pill.tone, "green")
 
@@ -320,7 +320,7 @@ class TestEpistemicHonesty(unittest.TestCase):
                 else:
                     self.assertIn(token, INVENTORY_SOURCES, f"unknown inventory source {token!r}")
 
-        self.assertEqual(len(DAILY_TEST_HISTORY), 29)
+        self.assertEqual(len(DAILY_TEST_HISTORY), 30)
         self.assertEqual(DAILY_TEST_HISTORY[0].date, "2026-10-18")
         self.assertEqual(DAILY_TEST_HISTORY[0].total, 204)
         self.assertEqual(DAILY_TEST_HISTORY[-1].date, STATUS_SNAPSHOT.as_of)

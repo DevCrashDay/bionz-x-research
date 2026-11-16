@@ -14,11 +14,26 @@ of "full firmware compatibility."
 
 | Goal | What it means | Current state |
 | --- | --- | --- |
-| **1 · Offline Firmware Emulator** | Run Sony's original camera software, bootloader, and Linux kernel on a PC with zero risk to hardware | Core camera software reaches startup and event dispatch; the updater Linux kernel boots to its serial console and root filesystem, though full camera boot is **not** yet reached |
+| **1 · Offline Firmware Emulator** | Run Sony's original camera software, bootloader, and Linux kernel on a PC with zero risk to hardware | Captured main firmware reaches four QEMU cores, original filesystem mounts, LIRO/application startup and a shell; no complete camera boot or verified emulator GUI frame |
 | **2 · Low-Latency Liveview & USB Video (`CinemaHUD`)** | Stream video from the camera with minimal delay over USB | **Android/PTP liveview** works on real hardware. **Native USB webcam (UVC) mode** shows up on the host and disconnects cleanly, but video streaming still stalls during USB setup |
 | **3 · Multi-Camera Support** | Share hardware and kernel knowledge across BIONZ X bodies, including the a6400A | Six sourced profiles: original a6400 is the only verified execution target; the other five are reference profiles |
 
 ## Latest progress
+
+### Reproducible captured QEMU boot inputs ([E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md))
+
+The [QEMU workflow](qemu-a6400/README.md) now rebuilds its inputs from hash-checked
+camera dumps without mixing in updater-package libraries or default settings.
+Two independent preparations have identical output hashes, and the original
+captures remain unchanged. The native eMMC backing layout and CMD1 sector-mode
+negotiation are corrected and regression-tested.
+
+Original firmware reaches four cores, LIRO/stella startup and a working shell.
+Qualified snapshots identify Task 43 waiting on flag 10 (`0x3373`), with its
+IRQ 101/102 pathways enabled but never asserted by the model. Task 65 is dormant,
+not a demonstrated sub-micro deadlock. The next step is the actual event-producer
+contract, not an injected completion. No camera access or emulator GUI frame is
+claimed.
 
 Two RAM-only mods run on a live ILCE-6400 (`im.elf`): a guarded loader that enables `.mod`
 payloads from the SD card, and the MTF2 full-menu touch mod. Both live only in RAM — no flash
@@ -90,22 +105,26 @@ Earlier progress highlights are preserved in [docs/archives/readme-latest-progre
 
 ## Status overview
 
-Recorded suite: 1903 tests. Each result is bounded by its own dated evidence record; no
-UVC video frame and no flash write are claimed. Latest records: [E0523](docs/evidence/0523-mod-loader-ok-routing-diagnostics.md)
+Recorded suite: 1905 tests. The workstation run reports OK with 128 skipped;
+the separate native eMMC controls pass in WSL. Full receipts are reported in
+[E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md).
+Each result is bounded by its own dated evidence record; no UVC video frame and no
+flash write are claimed. Latest records: [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md)
+(reproducible captured QEMU inputs and qualified event waits), [E0523](docs/evidence/0523-mod-loader-ok-routing-diagnostics.md)
 (guarded RAM-only Mod Loader plus the MTF2 full-menu touch mod), [E0522](docs/evidence/0522-qemu-a6400-smp-four-cores-and-cxd4115-timers.md)
 and [E0521](docs/evidence/0521-qemu-a6400-main-firmware-boots-to-avcam.md) (the out-of-tree QEMU
 `sony-a6400` machine boots the main `nflasha3` firmware to a shell and brings up four Cortex-A5
 cores; this is QEMU, not the Unicorn emulator).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=5ed64080e593)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=2494459376ac)
 
-![Daily automated test suite growth: 1903 tests across 29 days](docs/images/test-growth.svg?v=1853930dfcf7)
+![Daily automated test suite growth: 1905 tests across 30 days](docs/images/test-growth.svg?v=4d4e15620e85)
 
 ### Subsystem status
 
 | Subsystem | What works today | What's still missing | Evidence |
 | --- | --- | --- | --- |
-| **Offline firmware & kernel** | Main camera binary reaches event dispatch; updater Linux kernel boots to its serial console (52,976 B captured) and mounts rootfs; user faults reach the kernel cleanly | Kernel page-fault handler does not yet resume user-space programs (`/bin/ash`); full camera boot unproven | [E0430](docs/evidence/0430-cxd90045-abt-sp-isolation-and-live-ash.md), [status data](tools/research/a6400_status_data.py) |
+| **Offline firmware & kernel** | QEMU boots the captured main kernel, filesystems and LIRO on four cores with a shell; the separate Unicorn path delivers user faults to the kernel | QEMU event/IRQ producers and a verified GUI frame; Unicorn's Thumb return path; full camera boot unproven | [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md), [L2 reference](docs/architecture/l2-kernel-boot-and-mmu.md) |
 | **Internal messaging & USB state** | Message routing and synchronous kernel-to-user callbacks run to completion offline | Remaining callback packet format is still unknown | [E0327](docs/evidence/0327-mwf-objmsg-wire-format.md), [E0332](docs/evidence/0332-sync-callback-delivery-first-invocation.md) |
 | **Offline USB enumeration** | Combined USB webcam + PTP descriptors decoded; configuration and endpoint selection modelled | Delivering an incoming USB configuration end-to-end on the sync lane | [E0337](docs/evidence/0337-emulator-uvc-ptp-preparation-and-0a4002-broadcast.md) |
 | **Display & GPU** | Camera screen layout confirmed (640×480); GPU memory/interrupt contracts decoded offline | Completing the GPU wait signal and rendering a verified firmware frame | [E0298](docs/evidence/0298-safe-osd-capture-and-sugilite-correction.md), [E0314](docs/evidence/0314-gpes-bar-irq-contract-engine-model.md) |
@@ -114,15 +133,16 @@ cores; this is QEMU, not the Unicorn emulator).
 | **USB Debugger v2** | Persistent Mass Storage debugger for reading live/warm-reboot kernel logs and USB state | Deploying the always-on WinUSB vendor interface | [E0401](docs/evidence/0401-usb-debugger-v2-ring-recover-and-mode-boundary.md), [E0405ab](docs/evidence/0405ab-device-desc-builder-and-msos2-subset.md) |
 | **Test UVC video pattern** | Streams a synthetic 720p MJPEG pattern at ~30 FPS; ZV-E10 USB video stack cataloged as reference | Wiring the live camera sensor feed | [E0143](docs/evidence/0143-uvc-720p-test-transport-and-30fps-verified.md), [E0321](docs/evidence/0321-zve10-uvc-enablement-manifest.md) |
 | **Multi-camera profiles** | Six sourced profiles, including `ilce_6400a` package/USB evidence | Only original a6400 is a verified execution target; a6400A bootstrap remains unqualified | [E0506](docs/evidence/0506-a6400a-offline-qualification-and-debugger-boundary.md), [`src/a6400/targets/`](src/a6400/targets/catalog.py), [Adding a camera](docs/ADDING_A_BIONZX_CAMERA.md) |
-| **Automated checks** | 1903 tests pass offline (structure, profiles, emulator contracts, doc sync) | Proves bounded contracts, not full compatibility | [tests/](tests/README.md) |
+| **Automated checks** | 1905 tests in the recorded offline suite (structure, profiles, emulator contracts, doc sync), plus native eMMC controls | See the receipt for skips; bounded contracts are not full compatibility | [tests/](tests/README.md), [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md) |
 
 ## How to help (no camera needed)
 
 **Top 3 open tasks right now**
 
-1. **Resume user-space programs after a page fault in the emulator** — trace why the
-   kernel's page-fault handler falls into the Sony exception monitor instead of resuming
-   the dynamic linker (`ld-linux.so.3`) so `/bin/ash` can start on the serial console.
+1. **Recover QEMU's real event producer for Task 43** — its flag-10 wait is
+   qualified and IRQs 101/102 are enabled but unasserted. Derive their original
+   register/status/timing contract rather than injecting an interrupt.
+   Start with the [captured-input workflow and status](qemu-a6400/README.md).
 2. **Decode the USB control callback packet format** — figure out the remaining message
    layout so an incoming USB configuration request reaches the firmware's USB state machine
    ([`usb_sync_callback.py`](src/a6400/execution/usb_sync_callback.py)).

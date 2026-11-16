@@ -123,15 +123,21 @@ class TestSdhciBridge(unittest.TestCase):
         self.assertFalse(hasattr(MemorySectorSource, 'write_sectors'))
 
     def test_report_generation(self):
-        with tempfile.TemporaryDirectory(dir=PROJECT_ROOT / 'artifacts') as td:
+        directory = PROJECT_ROOT / 'artifacts/tests'
+        directory.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=directory) as td:
             sub = Path(td) / 'sub'
             rel = sub.relative_to(PROJECT_ROOT)
-            with mock.patch('sys.argv', ['sdhci_bridge', '--report-dir', str(rel)]):
+            with mock.patch('sys.argv', ['sdhci_bridge', '--report-dir', str(rel)]), \
+                    mock.patch('tools.research.sdhci_bridge.PhysicalVolumeSource',
+                               side_effect=OSError('Physical storage disabled by the offline test fixture')):
                 main()
             report_file = sub / 'report.json'
             self.assertTrue(report_file.exists())
             data = json.loads(report_file.read_text(encoding='utf-8'))
             self.assertEqual(data['status'], 'verified')
+            self.assertEqual(data['source_type'], 'MemorySectorSource')
+            self.assertFalse(data['physical_available'])
             self.assertEqual(data['controller_base_phys'], '0xf2a00000')
             self.assertEqual(data['cmd17_single_block']['bytes_transferred'], 512)
 
