@@ -167,11 +167,16 @@ def prepare(config_path: Path, output: Path, *, allow_unacquired_zero_fill: bool
     config = json.loads(config_path.read_text(encoding='utf-8-sig'))
     if config.get('schema_version') != 1:
         raise ValueError('Unsupported workstation input configuration')
+    target_id = config.get('target_id', 'ilce_6400')
+    if target_id != 'ilce_6400':
+        raise ValueError(
+            f'Captured QEMU inputs are pinned to ilce_6400 and are not reused for {target_id}'
+        )
     root = Path(config['dump_dir']).resolve()
     if output.is_relative_to(root) or root.is_relative_to(output):
         raise ValueError('Boot outputs must not overlap the original capture')
     output.mkdir(parents=True, exist_ok=False)
-    report = dict(schema_version=2, status='running')
+    report = dict(schema_version=2, status='running', target_id=target_id, inputs=[])
     try:
         sums_data = _read_checked(root, 'SHA256SUMS.txt', config['checksums_sha256'], limit=1024 ** 2)
         sums = parse_checksums(sums_data)
@@ -208,9 +213,11 @@ def prepare(config_path: Path, output: Path, *, allow_unacquired_zero_fill: bool
         if gaps and not allow_unacquired_zero_fill:
             raise ValueError('Unacquired disk ranges require --allow-unacquired-zero-fill; '
                              'zero-filled emulator space is not observed camera content')
-        inputs = [dict(path=str(root / name), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
-                  for name, data in [('SHA256SUMS.txt', sums_data), ('manifest.json', manifest_data),
-                                     ('nflasha-head-1m.bin', header), ('system-inventory.json', inventory_data)]]
+        report['inputs'].extend(
+            dict(path=str(root / name), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+            for name, data in [('SHA256SUMS.txt', sums_data), ('manifest.json', manifest_data),
+                               ('nflasha-head-1m.bin', header), ('system-inventory.json', inventory_data)])
+        inputs = report['inputs']
         selected = {}
         with (output / 'emmc.img').open('xb') as disk:
             def copy_device(device, offset, size):

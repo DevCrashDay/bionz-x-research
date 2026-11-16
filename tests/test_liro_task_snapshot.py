@@ -39,6 +39,8 @@ class LiroTaskSnapshotTests(unittest.TestCase):
         self.assertTrue(result['dormant'])
         self.assertIn('does not distinguish', result['dormant_limit'])
         self.assertEqual(result['entry'], 0x635C8001)
+        self.assertEqual(len(result['control_block_words']), 40)
+        self.assertEqual(result['control_block_words'][0x18 // 4], 65)
         self.assertEqual([frame['pc'] for frame in result['stack_observation']['frames']],
                          [0x6011A33C, 0x635C9001, 0x6010EC28])
         self.assertEqual(result['stack_observation']['stop'], 'frame_pointer_outside_confirmed_stack')
@@ -75,6 +77,7 @@ class LiroTaskSnapshotTests(unittest.TestCase):
         result = snapshot_interrupts(self.read, self.table, (101,),
                                      kernel_sha256=KERNEL_SHA256, usr_sha256=USR_SHA256)[0]
         self.assertEqual((result['handler'], result['requested_cpu'], result['thumb']), (0x63D00001, 1, True))
+        self.assertTrue(result['handler_record'].startswith('65000000'))
         trace = ('gic_enable_irq irq 101 enabled\n'
                  'gic_disable_irq irq 101 disabled\n'
                  'gic_enable_irq irq 101 enabled\n'

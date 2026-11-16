@@ -11,7 +11,9 @@ import unittest
 from project_paths import PROJECT_ROOT
 from tests.test_guest_vfat import dir_entry
 from tools.research import qemu_boot_inputs as inputs
-from tools.research.qemu_boot_probe import guest_statuses, physical_range, serial_readiness
+from tools.research.qemu_boot_probe import (
+    console_snapshot, guest_statuses, physical_range, serial_readiness, split_qmp_reply,
+)
 
 
 def fat_image(files):
@@ -109,6 +111,7 @@ class QemuBootInputTests(unittest.TestCase):
         self.assertEqual(inputs.verify(self.root / 'first', check_sources=True), first)
         self.assertEqual(first['unacquired_ranges'], [
             {'start': user_area + 28672, 'bytes': first['emulated_disk_bytes'] - user_area - 28672}])
+        self.assertEqual(first['target_id'], 'ilce_6400')
         self.assertIn('console=ttyAM0,115200n8 amba2.console=1', first['boot_contract']['cmdline'])
         with tarfile.open(self.root / 'first/setting.tar') as archive:
             self.assertEqual(archive.getnames(), ['./Backup.bin', './kemco.txt'])
@@ -156,6 +159,14 @@ class QemuBootInputTests(unittest.TestCase):
             inputs.prepare(self.config, output, allow_unacquired_zero_fill=True)
         self.assertFalse(output.parent.exists())
 
+    def test_other_body_does_not_reuse_the_a6400_capture_builder(self):
+        config = json.loads(self.config.read_text(encoding='utf-8'))
+        config['target_id'] = 'zv_e10'
+        self.config.write_text(json.dumps(config), encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'not reused'):
+            self.prepare('other-body')
+        self.assertFalse((self.root / 'other-body').exists())
+
     def test_verify_detects_output_and_original_input_changes(self):
         self.prepare()
         path = self.root / 'prepared/av-cam.bin'
@@ -198,6 +209,20 @@ class QemuProbeProtocolTests(unittest.TestCase):
         transcript = ('/ # echo __QEMU_STATUS_0__:$?\r\n__QEMU_STATUS_0__:0\r\n'
                       '/ # missing\r\n__QEMU_STATUS_1__:127\r\n')
         self.assertEqual(guest_statuses(transcript), {0: 0, 1: 127})
+
+    def test_console_snapshot_keeps_a_status_outside_a_128_kib_tail(self):
+        blob = b'__QEMU_STATUS_0__:0\n' + (b'x' * (128 * 1024)) + b'\n__QEMU_STATUS_1__:1\n'
+        self.assertEqual(guest_statuses(console_snapshot(blob)), {0: 0, 1: 1})
+        with self.assertRaisesRegex(RuntimeError, '32 MiB'):
+            console_snapshot(b'x' * (32 * 1024 * 1024 + 1))
+
+    def test_qmp_events_stay_with_the_matching_reply(self):
+        result, events = split_qmp_reply(
+            [{'event': 'STOP'}, {'return': {'running': False}, 'id': 3}, {'event': 'SHUTDOWN'}], 3)
+        self.assertEqual(result, {'running': False})
+        self.assertEqual([item['event'] for item in events], ['STOP', 'SHUTDOWN'])
+        with self.assertRaisesRegex(RuntimeError, 'message bound'):
+            split_qmp_reply([{'event': 'STOP'}], 3)
 
     def test_memory_observations_cannot_cross_pages_or_touch_mmio(self):
         self.assertEqual(physical_range('0x20021000:4096'), (0x20021000, 4096))

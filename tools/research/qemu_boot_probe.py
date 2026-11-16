@@ -36,6 +36,33 @@ def physical_range(text: str) -> tuple[int, int]:
     return address, size
 
 
+def console_snapshot(data: bytes) -> str:
+    """Decode the whole bounded console log. A tail window can hide an earlier status."""
+    if len(data) > 32 * 1024 * 1024:
+        raise RuntimeError('Console output exceeded the 32 MiB observation bound')
+    return data.decode('utf-8', errors='replace')
+
+
+def split_qmp_reply(messages: list, ident: int):
+    """Return the matching reply and keep every other QMP object from the same batch."""
+    events = []
+    result = None
+    for response in messages:
+        if not isinstance(response, dict):
+            raise RuntimeError('QMP response is not an object')
+        if result is not None or response.get('id') != ident:
+            events.append(response)
+            continue
+        if 'error' in response:
+            raise RuntimeError(f'QMP error: {response["error"]}')
+        if 'return' not in response:
+            raise RuntimeError('QMP response has no return')
+        result = response['return']
+    if result is None:
+        raise RuntimeError('QMP response message bound exceeded')
+    return result, events
+
+
 def guest_statuses(text: str) -> dict[int, int]:
     return {int(index): int(status) for index, status in re.findall(
         r'^__QEMU_STATUS_(\d+)__:(\d+)\r?$', text, re.MULTILINE)}
@@ -55,6 +82,7 @@ class Qmp:
         self.socket.settimeout(5)
         self.socket.connect(str(path))
         self.stream = self.socket.makefile('rwb', buffering=0)
+        self.events = []
         self.greeting = self.read()
         if 'QMP' not in self.greeting:
             raise RuntimeError('QMP greeting is missing')
@@ -76,12 +104,15 @@ class Qmp:
         if arguments is not None:
             message['arguments'] = arguments
         self.socket.sendall((json.dumps(message) + '\n').encode('utf-8'))
+        pending = []
         for _ in range(128):
-            response = self.read()
-            if response.get('id') == self.ident:
-                if 'error' in response:
-                    raise RuntimeError(f'QMP {command}: {response["error"]}')
-                return response['return']
+            pending.append(self.read())
+            if any(isinstance(item, dict) and item.get('id') == self.ident for item in pending):
+                self.events.extend(item for item in pending
+                                   if not (isinstance(item, dict) and item.get('id') == self.ident))
+                result, _events = split_qmp_reply(pending, self.ident)
+                return result
+        self.events.extend(item for item in pending if not (isinstance(item, dict) and item.get('id') == self.ident))
         raise RuntimeError('QMP response message bound exceeded')
 
     def close(self):
@@ -178,11 +209,12 @@ def run(inputs: Path, output: Path, seconds: int, commands: tuple[str, ...],
                             'qemu-a6400/patches/qemu-v10.1.0-sony-a6400.patch')}
                     process.stdin.write(b'\n')
                     process.stdin.flush()
+                if log_path.stat().st_size > 32 * 1024 * 1024:
+                    raise RuntimeError('Console output exceeded the 32 MiB observation bound')
                 with log_path.open('rb') as current:
-                    current.seek(max(0, log_path.stat().st_size - 128 * 1024))
-                    tail = current.read().decode('utf-8', errors='replace')
-                shell_seen, marker_seen = serial_readiness(tail, shell_seen, marker_seen, wait_for)
-                observed_statuses.update(guest_statuses(tail))
+                    observed = console_snapshot(current.read())
+                shell_seen, marker_seen = serial_readiness(observed, shell_seen, marker_seen, wait_for)
+                observed_statuses.update(guest_statuses(observed))
                 if not sent and shell_seen and marker_seen:
                     send_serial('echo __QEMU_PROBE_BEGIN__\n')
                     sent = True
@@ -194,8 +226,6 @@ def run(inputs: Path, output: Path, seconds: int, commands: tuple[str, ...],
                 if sent and next_command == len(commands) and len(observed_statuses) == len(commands) and not end_sent:
                     send_serial('echo __QEMU_PROBE_END__\n')
                     end_sent = True
-                if log_path.stat().st_size > 32 * 1024 * 1024:
-                    raise RuntimeError('Console output exceeded the 32 MiB observation bound')
                 if trace_path.exists() and trace_path.stat().st_size > 16 * 1024 * 1024:
                     raise RuntimeError('Device trace exceeded the 16 MiB observation bound')
                 time.sleep(0.2)
@@ -290,6 +320,7 @@ def run(inputs: Path, output: Path, seconds: int, commands: tuple[str, ...],
         raise
     finally:
         if qmp is not None:
+            report['qmp_events'] = list(qmp.events)
             qmp.close()
         if process is not None and process.poll() is None:
             os.killpg(process.pid, signal.SIGTERM)

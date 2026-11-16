@@ -75,6 +75,7 @@ def snapshot_tasks(read: Callable[[int, int], bytes], table: int, task_ids: tupl
                       state_bits=words[2], wait_kind=words[3], wait_id=words[4],
                       linux_task=words[5], priority=words[7], pending_activations=words[8],
                       entry=words[0x4C // 4], entry_argument=words[0x48 // 4],
+                      control_block_words=list(words),
                       dormant=bool(words[2] & 0x10),
                       dormant_limit='Dormant alone does not distinguish an unstarted task from a returned entry.')
         linux_task = record['linux_task']
@@ -111,7 +112,8 @@ def snapshot_interrupts(read: Callable[[int, int], bytes], table: int, irq_ids: 
         if registered != irq or handler == 0:
             raise ValueError(f'LIRO IRQ {irq} handler-record identity mismatch')
         record = dict(irq=irq, control_address=control, wrapper=wrapper,
-                      handler=handler, requested_cpu=data[12], thumb=bool(handler & 1))
+                      handler=handler, requested_cpu=data[12], thumb=bool(handler & 1),
+                      handler_record=data.hex())
         result.append(record)
     return result
 
