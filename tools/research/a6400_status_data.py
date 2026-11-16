@@ -220,27 +220,43 @@ STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
     as_of="2026-11-16",
     latest=EvidenceRef(
-        evidence_id="E0524",
-        path="docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md",
+        evidence_id="E0541",
+        path="docs/evidence/0541-qemu-a6400-isoutputevf-does-not-switch-the-panel.md",
         date="2026-11-16",
-        title="Reproducible captured QEMU inputs and qualified LIRO event waits",
+        title="Forcing isOutputEvf false does not switch the QEMU panel skin",
         demonstrated=(
-            "Two hash-checked preparations from the captured boot areas and user partitions have "
-            "identical outputs. Correct native eMMC user-area offsets and CMD1 sector negotiation "
-            "restore original mounts, four CPUs, LIRO/stella startup and shell command roundtrips. "
-            "Stopped task snapshots and bounded original-code analysis identify Task 43 waiting on "
-            "flag 10 (mask 0x3373); its IRQ 101/102 paths are enabled but never asserted."
+            "On the captured-input QEMU boot, forcing CmnViewFocus::isOutputEvf to return 0 "
+            "changes 765 focus-mark pixels. Graphic console 0 stays the viewfinder readout."
         ),
         boundary=(
-            "Recover the real IRQ producer/register/timing contract; do not inject completion flags. "
-            "Task 65 is dormant with a finite entry target, not a proven sub-micro deadlock. Task 1's "
-            "lifecycle semaphore wait is not established as the sole blocker. No full camera boot, "
-            "verified emulator GUI frame or physical operation is claimed."
+            "The rear-LCD image set is still not selected, and the imager has not started a "
+            "sensor transfer or an SA function. No verified rear-LCD frame is claimed. The E0524 "
+            "captured-input qualification and its Task 43 / IRQ 101/102 waits stay in force."
         ),
-        tier="OFFLINE QEMU + ORIGINAL STATIC",
+        tier="OFFLINE QEMU",
     ),
-    headline="1905 offline suite cases | Reproducible captured QEMU boot + qualified LIRO waits | No verified emulator GUI frame",
+    headline="1905 offline suite cases | QEMU viewfinder console on the captured-input boot | No verified rear-LCD frame",
     cards=(
+        EvidenceRef(
+            evidence_id="E0524",
+            path="docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md",
+            date="2026-11-16",
+            title="Reproducible captured QEMU inputs and qualified LIRO event waits",
+            demonstrated=(
+                "Two hash-checked preparations from the captured boot areas and user partitions have "
+                "identical outputs. Correct native eMMC user-area offsets and CMD1 sector negotiation "
+                "restore original mounts, four CPUs, LIRO/stella startup and shell command roundtrips. "
+                "Stopped task snapshots and bounded original-code analysis identify Task 43 waiting on "
+                "flag 10 (mask 0x3373); its IRQ 101/102 paths are enabled but never asserted."
+            ),
+            boundary=(
+                "Recover the real IRQ producer/register/timing contract; do not inject completion flags. "
+                "Task 65 is dormant with a finite entry target, not a proven sub-micro deadlock. Task 1's "
+                "lifecycle semaphore wait is not established as the sole blocker. No full camera boot, "
+                "verified emulator GUI frame or physical operation is claimed."
+            ),
+            tier="OFFLINE QEMU + ORIGINAL STATIC",
+        ),
         EvidenceRef(
             evidence_id="E0523",
             path="docs/evidence/0523-mod-loader-ok-routing-diagnostics.md",
@@ -524,7 +540,7 @@ STATUS_SNAPSHOT = StatusSnapshot(
     suite=SuiteRecord(
         test_count=1905,
         recorded_at="2026-11-16",
-        evidence_id="E0524",
+        evidence_id="E0541",
         command="python -m unittest discover -s tests -q",
     ),
     footer=(

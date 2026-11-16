@@ -64,10 +64,42 @@ fi
 rm -f "$R/emmc-overlay.qcow2"
 "$Q/build/qemu-img" create -q -f qcow2 -F raw -b "$D/emmc.img" "$R/emmc-overlay.qcow2"
 
+# /setting/ulogio.bin (E0525): without it osal_ulogio.ko fails, nobody serves
+# the ulogio queue 0x13A, its message pool fills and every task that logs
+# (av-cam task 65, bootin, im.elf THREAD_INFRA*) blocks in vpool_alloc.
+# The a6400 package ships no ulogio.bin; the ZV-E10 (same CXD90045 platform)
+# copy is used as a stand-in [assumption]; its LOGB/PRTB buffers fall inside
+# the a6400 cmdline's wbimem=0x500000@0x03085000.  Set ULOGIO= to skip.
+# nflasha2 = user-area 0x00800000 (+8 MiB of eMMC boot partitions in the file).
+ULOGIO="${ULOGIO-$E/../firmware/extracted_zve10_v203_packman/firmware.tar_unpacked/0800_appli/setting/ulogio.bin}"
+if [ -n "$ULOGIO" ]; then
+    SET_OFF=$((0x1000000)); SET_LEN=$((0x1400000))
+    dd if="$D/emmc.img" of="$R/setting-part.img" bs=1M skip=$((SET_OFF >> 20)) \
+       count=$((SET_LEN >> 20)) status=none
+    python3 "$E/tools/fat_add_file.py" "$R/setting-part.img" "$ULOGIO" ulogio.bin >&2
+    "$Q/build/qemu-io" -f qcow2 -c "write -q -s $R/setting-part.img $SET_OFF $SET_LEN" \
+        "$R/emmc-overlay.qcow2"
+fi
+
+# Sub-micro frames (E0527): av-cam's micro->CPU RX slots A/C/B
+# (PA 0x034433A4, 0x03443424, 0x034434A4; 384 bytes), cut from the 4 KiB
+# /dev/mem page captured read-only on a
+# live ILCE-6400.  Replayed on SIO ch3 by the board.  Set SUBMICRO_PAGE= to
+# run without a micro (the power lever then reads OFF, off factor 7).
+SUBMICRO_PAGE="${SUBMICRO_PAGE-$E/../artifacts/qemu-a6400/e0526/camera-page-0x03443000.bin}"
+SUBMICRO_SHA=14fba4e607b0efdb76ced74e0463355a279146c96bbba0abec89776b8972fb54
+MACHINE=sony-a6400
+if [ -n "$SUBMICRO_PAGE" ]; then
+    echo "$SUBMICRO_SHA  $SUBMICRO_PAGE" | sha256sum -c --quiet - >&2
+    dd if="$SUBMICRO_PAGE" bs=1 skip=$((0x3A4)) count=384 status=none \
+        > "$R/submicro-frames.bin"
+    MACHINE="sony-a6400,submicro-frames=$R/submicro-frames.bin"
+fi
+
 echo "Backup.bin -> $BACKUP_PA, av-cam.bin -> $AVCAM_PA, overlay $R/emmc-overlay.qcow2" >&2
 T=()
 if [ "${TIMEOUT:-0}" != 0 ]; then T=(timeout "$TIMEOUT"); fi
-exec "${T[@]}" "$Q/build/qemu-system-arm" -M sony-a6400 -m 1G -nographic -serial mon:stdio \
+exec "${T[@]}" "$Q/build/qemu-system-arm" -M "$MACHINE" -m 1G -nographic -serial mon:stdio \
   -kernel "$D/nflasha3-Image" -initrd "$D/nflasha3-initrd" \
   -append "$CMD ${EXTRA:-}" \
   -drive if=sd,format=qcow2,file="$R/emmc-overlay.qcow2" \

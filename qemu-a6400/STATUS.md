@@ -1,5 +1,36 @@
 # QEMU `sony-a6400`: findings and next steps
 
+## Viewfinder console (2026-11-16 / E0541)
+
+This section continues the captured-input boot recorded in E0524. It does not
+replace that qualification. The hash-checked input set, CMD1 sector negotiation,
+Task 43 flag-10 wait, unasserted IRQ 101/102 observation, and dormant Task 65
+remain as stated below.
+
+Later records E0525–E0541, on that same machine:
+
+- E0525 puts a ZV-E10 `ulogio.bin` stand-in into the per-run overlay. Appframework
+  creates its objects and opens view 2. Without a sub-micro model the power lever
+  reads OFF (factor 7).
+- E0526–E0527 add SIO, GPIO, ADC, and a replay of one read-only 4 KiB sub-micro
+  page. With the timing-event block, the factor-7 power-off stops.
+- E0528–E0529: `ObjMic` was waiting on ADF `SetPath(0xA0)`. The ported VPH and
+  SYSV frame clock let boot reach `modelCamera ACTIVE`, `EEStart`, and `PIN_OPEN`.
+- E0530–E0536: Sugilite P3D/PPF draws the shooting-screen OSD. Console 0 is the
+  viewfinder readout, so the a5000 640→853 rear-LCD stretch stays off. The centre
+  stays black because VPH `0x144` bit0 stays clear. Leo PLL and MIPI D-PHY init
+  complete. The imager never writes SA GO and never kicks P2S.
+- E0537–E0541: the eye sensor is not the a5000 hinge pin. The finder predicates
+  and the two backup bytes do not switch the image set. Forcing `isOutputEvf` to
+  return 0 changes 765 focus-mark pixels and leaves the viewfinder skin in place.
+
+`tools/a6400_probe.py` waits for a `/proc/snsc_boot_time` checkpoint instead of a
+fixed sleep. A `/proc/snsc_boot_time` read can block for more than 30 seconds and
+then answer (E0530). That delay is not a hung shell.
+
+**Next:** find the loader that opens `image_DSC_Only_169.uxc` instead of
+`image_EVF.uxc`. Do not treat the viewfinder console as a verified rear-LCD frame.
+
 ## Captured-input qualification (2026-11-16 / E0524)
 
 The reproducible input builder now uses all 18 captured images: two 4 MiB
