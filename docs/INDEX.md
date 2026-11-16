@@ -20,6 +20,7 @@ Central navigation map for the Sony BIONZ X (`CXD90045`) universal emulator and 
 | --- | --- |
 | [CURRENT_STATE.md](CURRENT_STATE.md) | Active checkpoint across all four tracks (L2 Boot, L3 App/GUI, Track B UVC/PTP, Multi-Device) |
 | [REPOSITORY.md](REPOSITORY.md) | Repository layout, module launch paths, and structural CI checks |
+| [RELATED_REPOSITORIES.md](RELATED_REPOSITORIES.md) | Agent-facing catalog of related Sony research repositories, starting points, provenance rules and cross-model transfer limits |
 | [LIVE_CAMERA_EMULATOR_WORKFLOW.md](LIVE_CAMERA_EMULATOR_WORKFLOW.md) | Safe read-only live camera observation and emulator handoff workflow |
 | [NATIVE_USB_DEBUGGER.md](NATIVE_USB_DEBUGGER.md) | Native USB debugger protocol and safety rules |
 | [REA_WORKFLOW.md](REA_WORKFLOW.md) | Ghidra / WSL reverse-engineering workflow (`tools.research.rea_wsl_batch`) |
