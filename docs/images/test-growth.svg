@@ -71,7 +71,7 @@
 <rect x="25" y="71" width="162" height="3" rx="1.5" fill="#3fb950" />
 <text x="36" y="90" fill="#8b949e" font-size="8.2" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">CURRENT SUITE</text>
 <text x="36" y="113" fill="#f0f6fc" font-size="17" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="start">1,972</text>
-<text x="36" y="129" fill="#3fb950" font-size="8.2" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">+67 today · E0553</text>
+<text x="36" y="129" fill="#3fb950" font-size="8.2" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">+67 today · E0554</text>
 <rect x="201" y="70" width="164" height="68" rx="8" fill="url(#tg-card-bg)" stroke="#30363d" stroke-width="1" />
 <rect x="202" y="71" width="162" height="3" rx="1.5" fill="#39c5cf" />
 <text x="213" y="90" fill="#8b949e" font-size="8.2" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">NET EXPANSION</text>
@@ -91,7 +91,7 @@
 <rect x="733" y="71" width="162" height="3" rx="1.5" fill="#58a6ff" />
 <text x="744" y="90" fill="#8b949e" font-size="8.2" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">ACTIVE CADENCE</text>
 <text x="744" y="113" fill="#f0f6fc" font-size="17" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="start">23 / 31d</text>
-<text x="744" y="129" fill="#58a6ff" font-size="8.2" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">E0553 evidence track</text>
+<text x="744" y="129" fill="#58a6ff" font-size="8.2" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">E0554 evidence track</text>
 <rect x="24" y="154" width="872" height="376" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1" />
 <text x="40" y="176" fill="#f0f6fc" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">Cumulative Test Trajectory &amp; Daily Additions</text>
 <text x="40" y="192" fill="#8b949e" font-size="8.5" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">Smooth monotone curve (left axis) · daily net delta bars (lower band) · 3 project phases</text>

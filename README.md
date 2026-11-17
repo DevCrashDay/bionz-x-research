@@ -141,9 +141,9 @@ and [E0521](docs/evidence/0521-qemu-a6400-main-firmware-boots-to-avcam.md) (the 
 `sony-a6400` machine boots the main `nflasha3` firmware to a shell and brings up four Cortex-A5
 cores; this is QEMU, not the Unicorn emulator).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=b1dfec6e3334)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=1995245ec448)
 
-![Daily automated test suite growth: 1972 tests across 31 days](docs/images/test-growth.svg?v=cbc0be2265b7)
+![Daily automated test suite growth: 1972 tests across 31 days](docs/images/test-growth.svg?v=176fe0194f2d)
 
 ### Subsystem status
 

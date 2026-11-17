@@ -2,8 +2,7 @@
 
 The current SD build uses the jointly installed debugger as its startup host. It
 works through a separate camera-side worker and requires no USB connection during
-boot. See the offline status below. The earlier independent-entry research is
-preserved in [E0541](evidence/0541-mlv2-standalone-sd-startup-boundary.md).
+boot. See the offline status below.
 
 Status: proposal (2026-11-16). Nothing in this document has been built or tested yet.
 
