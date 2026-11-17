@@ -35,15 +35,15 @@ not a demonstrated sub-micro deadlock. The next step is the actual event-produce
 contract, not an injected completion. No camera access or emulator GUI frame is
 claimed.
 
-### Continued QEMU machine work ([E0525](docs/evidence/0525-qemu-a6400-ulogio-queue-unblocks-appframework.md)–[E0541](docs/evidence/0541-qemu-a6400-isoutputevf-does-not-switch-the-panel.md))
+### Continued QEMU machine work ([E0525](docs/evidence/0525-qemu-a6400-ulogio-queue-unblocks-appframework.md)–[E0544](docs/evidence/0544-qemu-a6400-mode-sequencer-waits-at-step-12.md))
 
 The same captured-input boot now continues through Appframework, a replayed
 sub-micro link, and a Sugilite console. Graphic console 0 shows the viewfinder
-readout (program mark, battery, exposure scale). Forcing `isOutputEvf` to
-return 0 changes the focus marks only. The YUV layer stays off because the
-imager has not started a sensor transfer or an SA function. This is still
-QEMU, not a verified rear-LCD frame. Details are in
-[qemu-a6400/STATUS.md](qemu-a6400/STATUS.md).
+readout (program mark, battery, exposure scale). `viewUnified2.so` has a
+monitor `LayoutST_NORMAL_*` class beside each `LayoutST_NORMAL_EVF_*` class.
+The YUV layer stays off because the imager has not started a sensor transfer
+or an SA function. This is still QEMU, not a verified rear-LCD frame. Details
+are in [qemu-a6400/STATUS.md](qemu-a6400/STATUS.md).
 
 Two RAM-only mods run on a live ILCE-6400 (`im.elf`): a guarded loader that enables `.mod`
 payloads from the SD card, and the MTF2 full-menu touch mod. Both live only in RAM — no flash
@@ -129,27 +129,27 @@ Earlier progress highlights are preserved in [docs/archives/readme-latest-progre
 
 ## Status overview
 
-Recorded suite: 1905 tests. The workstation run reports OK with 128 skipped;
-the separate native eMMC controls pass in WSL. Full receipts are reported in
+Recorded suite: 1972 tests. The E0524 captured-input receipt remains the boot
+qualification. The separate native eMMC controls pass in WSL. Full receipts are reported in
 [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md).
 Each result is bounded by its own dated evidence record; no UVC video frame and no
 flash write are claimed. Latest records: [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md)
-(reproducible captured QEMU inputs and qualified event waits), [E0541](docs/evidence/0541-qemu-a6400-isoutputevf-does-not-switch-the-panel.md)
-(the same boot continued to a viewfinder console; the rear LCD skin and the imager are still open), [E0523](docs/evidence/0523-mod-loader-ok-routing-diagnostics.md)
+(reproducible captured QEMU inputs and qualified event waits), [E0544](docs/evidence/0544-qemu-a6400-mode-sequencer-waits-at-step-12.md)
+(the same boot continued to a viewfinder console; the mode sequencer stays at step 12 with module 1 at `0x0100`. The updater at `0x639267BC` is skipped because the byte at `0x64354174` is 0, and its latch keeps the old halfword unless the request is `0x0112`, [E0553](docs/evidence/0553-qemu-a6400-module1-latch-skips-0x0105.md)), [E0523](docs/evidence/0523-mod-loader-ok-routing-diagnostics.md)
 (guarded RAM-only Mod Loader plus the MTF2 full-menu touch mod), [E0522](docs/evidence/0522-qemu-a6400-smp-four-cores-and-cxd4115-timers.md)
 and [E0521](docs/evidence/0521-qemu-a6400-main-firmware-boots-to-avcam.md) (the out-of-tree QEMU
 `sony-a6400` machine boots the main `nflasha3` firmware to a shell and brings up four Cortex-A5
 cores; this is QEMU, not the Unicorn emulator).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=15c44309418d)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=1995245ec448)
 
-![Daily automated test suite growth: 1905 tests across 30 days](docs/images/test-growth.svg?v=4d4e15620e85)
+![Daily automated test suite growth: 1972 tests across 31 days](docs/images/test-growth.svg?v=176fe0194f2d)
 
 ### Subsystem status
 
 | Subsystem | What works today | What's still missing | Evidence |
 | --- | --- | --- | --- |
-| **Offline firmware & kernel** | QEMU boots the captured main kernel, filesystems and LIRO on four cores with a shell, then continues to Appframework and a viewfinder OSD; the separate Unicorn path delivers user faults to the kernel | Rear-LCD skin and an imager start; Unicorn's Thumb return path; full camera boot unproven | [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md), [E0541](docs/evidence/0541-qemu-a6400-isoutputevf-does-not-switch-the-panel.md), [L2 reference](docs/architecture/l2-kernel-boot-and-mmu.md) |
+| **Offline firmware & kernel** | QEMU boots the captured main kernel, filesystems and LIRO on four cores with a shell, then continues to Appframework and a viewfinder OSD. The mode sequencer is waiting at step 12. The path selector has already accepted `0x3003`. The updater return window matches between Unicorn and QEMU except CPSR.A. The head's stub registers and entry flags are gone before the shared processor setup | Module 1 still reports `0x0100` from `0x64351898+0x690` against `0x0105`. The updater at `0x639267BC` is skipped because the byte at `0x64354174` is 0, and `0x63D3BD56` keeps the old halfword unless the request is `0x0112`; rear-LCD skin still open; setup still carries CPSR.A and the Cortex-A9 versus Cortex-A5 MIDR in `r9`; full camera boot unproven | [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md), [E0544](docs/evidence/0544-qemu-a6400-mode-sequencer-waits-at-step-12.md), [E0553](docs/evidence/0553-qemu-a6400-module1-latch-skips-0x0105.md), [E0545](docs/evidence/0545-unicorn-qemu-return-window-cpsr-a.md), [E0548](docs/evidence/0548-head-stub-registers-die-before-v7-setup.md) |
 | **Internal messaging & USB state** | Message routing and synchronous kernel-to-user callbacks run to completion offline | Remaining callback packet format is still unknown | [E0327](docs/evidence/0327-mwf-objmsg-wire-format.md), [E0332](docs/evidence/0332-sync-callback-delivery-first-invocation.md) |
 | **Offline USB enumeration** | Combined USB webcam + PTP descriptors decoded; configuration and endpoint selection modelled | Delivering an incoming USB configuration end-to-end on the sync lane | [E0337](docs/evidence/0337-emulator-uvc-ptp-preparation-and-0a4002-broadcast.md) |
 | **Display & GPU** | Camera screen layout confirmed (640×480); GPU memory/interrupt contracts decoded offline. The QEMU Sugilite model draws the shooting-screen OSD onto the viewfinder console | A verified rear-LCD frame, and the YUV layer, which stays off until the imager starts | [E0298](docs/evidence/0298-safe-osd-capture-and-sugilite-correction.md), [E0314](docs/evidence/0314-gpes-bar-irq-contract-engine-model.md), [E0536](docs/evidence/0536-qemu-a6400-viewfinder-readout-and-eye-sensor-command.md) |
@@ -157,19 +157,22 @@ cores; this is QEMU, not the Unicorn emulator).
 | **Composite USB webcam (real camera)** | Camera appears as both PTP and Video device in Windows, and disconnects cleanly without a battery pull | DirectShow times out during the USB control handshake status stage | [E0350](docs/evidence/0350-trackb-transport-enumerates-but-renderstream-fails.md), [E0398](docs/evidence/0398-runb21-status-stage-and-disconnect-verdict.md) |
 | **USB Debugger v2** | Persistent Mass Storage debugger for reading live/warm-reboot kernel logs and USB state | Deploying the always-on WinUSB vendor interface | [E0401](docs/evidence/0401-usb-debugger-v2-ring-recover-and-mode-boundary.md), [E0405ab](docs/evidence/0405ab-device-desc-builder-and-msos2-subset.md) |
 | **Test UVC video pattern** | Streams a synthetic 720p MJPEG pattern at ~30 FPS; ZV-E10 USB video stack cataloged as reference | Wiring the live camera sensor feed | [E0143](docs/evidence/0143-uvc-720p-test-transport-and-30fps-verified.md), [E0321](docs/evidence/0321-zve10-uvc-enablement-manifest.md) |
-| **Multi-camera profiles** | Six sourced profiles, including `ilce_6400a` package/USB evidence | Only original a6400 is a verified execution target; a6400A bootstrap remains unqualified | [E0506](docs/evidence/0506-a6400a-offline-qualification-and-debugger-boundary.md), [`src/a6400/targets/`](src/a6400/targets/catalog.py), [Adding a camera](docs/ADDING_A_BIONZX_CAMERA.md) |
-| **Automated checks** | 1905 tests in the recorded offline suite (structure, profiles, emulator contracts, doc sync), plus native eMMC controls | See the receipt for skips; bounded contracts are not full compatibility | [tests/](tests/README.md), [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md) |
+| **Multi-camera profiles** | Six sourced profiles, including `ilce_6400a` package/USB evidence. Packaged `libJiritsu.so` dispatches `GET_FILE` on halfword 8 | Only original a6400 is a verified execution target. The A6400A library map is not a sent Senser command, so the RAM bootstrap does not open USB | [E0506](docs/evidence/0506-a6400a-offline-qualification-and-debugger-boundary.md), [E0554](docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md), [`src/a6400/targets/`](src/a6400/targets/catalog.py) |
+| **Automated checks** | 1972 tests in the recorded offline suite (structure, profiles, emulator contracts, doc sync), plus native eMMC controls | See the receipt for skips; bounded contracts are not full compatibility | [tests/](tests/README.md), [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md) |
 
 ## How to help (no camera needed)
 
 **Top 3 open tasks right now**
 
-1. **Find the rear-LCD image set on the QEMU machine** — captured inputs, the
-   four-core boot, and the qualified Task 43 / IRQ 101/102 waits remain
+1. **Get the mode sequencer past step 12** — captured inputs and the
+   qualified waits remain
    [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md).
-   Later records reach a viewfinder console. Forcing `isOutputEvf` to return 0
-   does not select `image_DSC_Only_169.uxc`. Start from
-   [E0541](docs/evidence/0541-qemu-a6400-isoutputevf-does-not-switch-the-panel.md)
+   The sequencer is waiting because module 1 still reports `0x0100` against
+   request `0x0105`. The request is already stored at `0x64350F04`. The
+   updater at `0x639267BC` does not run while the byte at `0x64354174` is 0,
+   and `0x63D3BD56` returns the old halfword unless the request is `0x0112`.
+   Start from
+   [E0553](docs/evidence/0553-qemu-a6400-module1-latch-skips-0x0105.md)
    and [qemu-a6400/STATUS.md](qemu-a6400/STATUS.md).
 2. **Decode the USB control callback packet format** — figure out the remaining message
    layout so an incoming USB configuration request reaches the firmware's USB state machine

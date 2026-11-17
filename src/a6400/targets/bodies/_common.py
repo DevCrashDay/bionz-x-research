@@ -23,6 +23,8 @@ E0480 = "docs/evidence/0480-ten-bodies-gain-kernel-symbols-offline.md"
 E0482 = "docs/evidence/0482-three-stubs-gain-sourced-values.md"
 E0506 = "docs/evidence/0506-a6400a-offline-qualification-and-debugger-boundary.md"
 E0509 = "docs/evidence/0509-a6400a-msc-reply-lifetime-and-verified-native-identity.md"
+E0552 = "docs/evidence/0552-a6400a-nflasha5-wbi-jiritsu-names.md"
+E0554 = "docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md"
 ZVE10_ENABLEMENT = "src/a6400/execution/zve10_uvc_enablement.py"
 
 ILCE_6XXX_BOUNDARIES = (

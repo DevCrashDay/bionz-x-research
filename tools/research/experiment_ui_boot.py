@@ -225,7 +225,8 @@ def build_parser():
                         help='real-time boot progress heartbeat interval in instructions (0 to disable periodic heartbeats)')
     parser.add_argument('--quiet-boot', action='store_true',
                         help='disable real-time BootLogger milestone streaming and automatic boundary diagnosis')
-    parser.add_argument('--save-checkpoint', type=Path, default=None, help='save emulator snapshot to file upon completion')
+    parser.add_argument('--save-checkpoint', type=Path, default=None,
+                        help='replace the one retained Unicorn snapshot; a second filename under artifacts/checkpoints is refused')
     parser.add_argument('--load-checkpoint', type=Path, default=None, help='load emulator snapshot from file before execution')
     parser.add_argument('--display-contract', choices=('none', 'camera-e0074-e0044'), default='none',
                         help='opt-in read-only display surface extraction; camera-e0074-e0044 registers the evidence-backed OSD/Sugilite contract')

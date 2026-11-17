@@ -218,25 +218,41 @@ class StatusSnapshot:
 
 STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
-    as_of="2026-11-16",
+    as_of="2026-11-17",
     latest=EvidenceRef(
-        evidence_id="E0541",
-        path="docs/evidence/0541-qemu-a6400-isoutputevf-does-not-switch-the-panel.md",
-        date="2026-11-16",
-        title="Forcing isOutputEvf false does not switch the QEMU panel skin",
+        evidence_id="E0554",
+        path="docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md",
+        date="2026-11-17",
+        title="A6400A libJiritsu dispatches GET_FILE on halfword 8",
         demonstrated=(
-            "On the captured-input QEMU boot, forcing CmnViewFocus::isOutputEvf to return 0 "
-            "changes 765 focus-mark pixels. Graphic console 0 stays the viewfinder readout."
+            "The packaged ILCE-6400A 1.01 libJiritsu.so dispatcher at 0x7015 "
+            "selects GET_FILE for halfword 8, SET_FILE_PATH for 15 and SET_FILE2 "
+            "for 16. The public ZV-E10 GET_FILE value 0x4008 is not that halfword."
         ),
         boundary=(
-            "The rear-LCD image set is still not selected, and the imager has not started a "
-            "sensor transfer or an SA function. No verified rear-LCD frame is claimed. The E0524 "
-            "captured-input qualification and its Task 43 / IRQ 101/102 waits stay in force."
+            "No Senser packet was sent. The library map stays closed, and the "
+            "category store at 0x8A46 was not followed through the Senser parser."
         ),
-        tier="OFFLINE QEMU",
+        tier="OFFLINE FIRMWARE",
     ),
-    headline="1905 offline suite cases | QEMU viewfinder console on the captured-input boot | No verified rear-LCD frame",
+    headline="1972 offline suite cases | A6400A GET_FILE is halfword 8 | QEMU module 1 latch still skips 0x0105",
     cards=(
+        EvidenceRef(
+            evidence_id="E0553",
+            path="docs/evidence/0553-qemu-a6400-module1-latch-skips-0x0105.md",
+            date="2026-11-17",
+            title="The module 1 latch never publishes 0x0105",
+            demonstrated=(
+                "0x63922304 seeds 0x64351F28 with 0x0100. 0x639267BC stores only the value "
+                "returned by 0x63D3BD56, which keeps the old halfword unless the request is "
+                "0x0112. At step 12 the request at 0x64350F04 is 0x0105 and the enable byte is 0."
+            ),
+            boundary=(
+                "No device model changed. The index stays 12. A later store is not ruled out. "
+                "The next measurement is the writer of the byte at 0x64354174."
+            ),
+            tier="OFFLINE QEMU",
+        ),
         EvidenceRef(
             evidence_id="E0524",
             path="docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md",
@@ -538,9 +554,9 @@ STATUS_SNAPSHOT = StatusSnapshot(
         ),
     ),
     suite=SuiteRecord(
-        test_count=1905,
-        recorded_at="2026-11-16",
-        evidence_id="E0541",
+        test_count=1972,
+        recorded_at="2026-11-17",
+        evidence_id="E0553",
         command="python -m unittest discover -s tests -q",
     ),
     footer=(
@@ -992,6 +1008,7 @@ DAILY_TEST_HISTORY: tuple[DailyTestPoint, ...] = (
     DailyTestPoint("2026-11-14", 1895, 168, "E0510", "BusyBox ash shell, A5KU & UI boot"),
     DailyTestPoint("2026-11-15", 1903, 8, "E0523", "MTF2 touch mod, guarded Mod Loader & QEMU a6400 boot/SMP"),
     DailyTestPoint("2026-11-16", 1905, 2, "E0524", "Captured QEMU boot inputs, eMMC addressing & qualified LIRO waits"),
+    DailyTestPoint("2026-11-17", 1972, 67, "E0554", "A6400A GET_FILE is halfword 8; QEMU latch still skips 0x0105"),
 )
 
 

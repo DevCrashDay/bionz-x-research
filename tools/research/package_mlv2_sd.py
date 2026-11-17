@@ -1,0 +1,60 @@
+"""Package a Mod Loader v2 build for the camera-side SD worker."""
+
+import argparse
+import hashlib
+import io
+import tarfile
+from pathlib import Path
+
+from project_paths import PROJECT_ROOT
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--build", type=Path, required=True)
+    build = parser.parse_args().build
+
+    touch = PROJECT_ROOT / "mods/menu_touch_full/MenuTouchFull.mod"
+    icon = PROJECT_ROOT / (
+        "artifacts/publish/mod-loader-sd/artifacts/hardware/sd-standalone-v1/"
+        "boot-mod-loader/ModsTabIcon.rle"
+    )
+    verified_assets = {
+        touch: "334a3dd491d04a87e5318694ac652fca65dfe7cd2575e7e6886620bc282b1b80",
+        icon: "1690720dce59a39505284190f049425e8fcceef3c6c302288c19b3ff17ae0fc6",
+    }
+    members = {
+        "guard": (build / "mlv2_guard_arm").read_bytes(),
+        "mlv2.req": (build / "mlv2.req").read_bytes(),
+        "core.bin": (build / "core.bin").read_bytes(),
+    }
+    for path, expected in verified_assets.items():
+        data = path.read_bytes()
+        if hashlib.sha256(data).hexdigest() != expected:
+            raise ValueError(f"Asset identity mismatch: {path}")
+        members[path.name] = data
+
+    # Arrivederci's matrix can be persisted by Sony's backup. It stays outside
+    # the automatic package until a verified backup-safe implementation exists.
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w", format=tarfile.USTAR_FORMAT) as card:
+        for name, data in members.items():
+            member = tarfile.TarInfo(name)
+            member.size = len(data)
+            member.mode = 0o600
+            card.addfile(member, io.BytesIO(data))
+    payload = archive.getvalue()
+    if len(payload) > 1024 * 1024:
+        raise ValueError("SD archive exceeds the camera reader limit")
+
+    body = (PROJECT_ROOT / "tools/native_camera/mlv2/sd_boot.sh").read_text(encoding="ascii")
+    header, body = body.split("\n", 1)
+    digest = hashlib.sha256(payload).hexdigest()
+    with (build / "card/MLV2.TAR").open("xb") as output:
+        output.write(payload)
+    with (build / "companion/mlv2_sd_boot.sh").open("x", encoding="ascii", newline="\n") as output:
+        output.write(f"{header}\nset -- {digest}\n{body}")
+
+
+if __name__ == "__main__":
+    main()

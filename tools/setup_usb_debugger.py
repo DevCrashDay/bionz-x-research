@@ -152,14 +152,19 @@ def detect_msc_camera(driver_name: str | None = None) -> dict[str, str]:
             )
         ext = SonyExtCmdCamera(device)
         info = ext.getCameraInfo()
+        identity = {
+            'model_name': str(info.modelName).strip(),
+            'model_code': str(info.modelCode).strip(),
+            'firmware_version': '',
+        }
+        spec = find_debugger_target_by_model(identity['model_name'])
+        if spec is not None and spec.bootstrap_mode != 'senser_ff01':
+            return identity
         updater = SonyUpdaterCamera(device)
         updater.init()
         firmware_old, _ = updater.getFirmwareVersion()
-        return {
-            'model_name': str(info.modelName).strip(),
-            'model_code': str(info.modelCode).strip(),
-            'firmware_version': str(firmware_old).strip(),
-        }
+        identity['firmware_version'] = str(firmware_old).strip()
+        return identity
 
 
 def _safe_slug(text: str) -> str:
@@ -265,8 +270,19 @@ def run_setup(
 
     spec = find_debugger_target_by_model(
         identity['model_name'],
-        identity['firmware_version'],
+        identity['firmware_version'] or None,
     )
+    if spec is not None and spec.bootstrap_mode != 'senser_ff01':
+        print(
+            f"[RESULT] {spec.model_name} does not use the Senser FileControl installer. "
+            "No Senser session was started and no camera file was written."
+        )
+        print(
+            "The ILCE-6400A path is tools/research/a6400a_jiritsu_bootstrap.py. "
+            "audit-wbi is local. check, start-ram-debugger and jiritsu-dump stay closed "
+            "until the A6400A adjust-command IDs are verified."
+        )
+        return 2
     if spec is not None and not check_only:
         print('[2/4] Ensuring prebuilt debugger binaries...')
         ensure_payload_binaries(spec, root=root)

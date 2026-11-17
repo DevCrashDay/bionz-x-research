@@ -736,11 +736,11 @@ def render_test_growth_svg(
     # Micro-grid & frame inside plot
     layout.rect(plot_x, plot_y, plot_w, y_bot - plot_y, "url(#tg-grid)", COLORS["border"], rx=6)
 
-    # Three phase bands across the 28-day timeline
+    # Three phase bands. Phase III runs through the latest day.
     phases = (
         (0, 18, "PHASE I · CORE LOADER, FS & GLES", COLORS["blue"]),
         (18, 24, "PHASE II · DEBUGGER & UVC", COLORS["cyan"]),
-        (24, 28, "PHASE III · KERNEL BOOT", COLORS["violet"]),
+        (24, total_days, "PHASE III · KERNEL BOOT", COLORS["violet"]),
     )
     for start_idx, end_idx, label, tint in phases:
         bx0 = plot_x + start_idx * step_x
