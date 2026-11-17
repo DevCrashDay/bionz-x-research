@@ -42,6 +42,10 @@ class JiritsuGuardTests(unittest.TestCase):
 
     def test_crypt_round_trip_uses_the_documented_key_length(self):
         self.assertEqual(len(jiritsu_key()), 16)
+        try:
+            import Cryptodome.Cipher.AES  # noqa: F401
+        except ImportError:
+            self.skipTest("Cryptodome is not installed")
         payload = b"ILCE-6400A jiritsu fixture"
         self.assertEqual(jiritsu_crypt(jiritsu_crypt(payload)), payload)
 
