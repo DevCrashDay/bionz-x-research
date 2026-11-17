@@ -14,127 +14,174 @@ of "full firmware compatibility."
 
 | Goal | What it means | Current state |
 | --- | --- | --- |
-| **1 · Offline Firmware Emulator** | Run Sony's original camera software, bootloader, and Linux kernel on a PC with zero risk to hardware | Core camera software reaches startup and event dispatch; the updater Linux kernel boots to its serial console and root filesystem, though full camera boot is **not** yet reached |
+| **1 · Offline Firmware Emulator** | Run Sony's original camera software, bootloader, and Linux kernel on a PC with zero risk to hardware | Captured main firmware reaches four QEMU cores, original filesystem mounts, LIRO/application startup and a shell; no complete camera boot or verified emulator GUI frame |
 | **2 · Low-Latency Liveview & USB Video (`CinemaHUD`)** | Stream video from the camera with minimal delay over USB | **Android/PTP liveview** works on real hardware. **Native USB webcam (UVC) mode** shows up on the host and disconnects cleanly, but video streaming still stalls during USB setup |
-| **3 · Multi-Camera Support** | Share hardware and kernel knowledge across BIONZ X bodies, including the a6400A | Seven sourced profiles: original a6400 is the only verified execution target; the other six are reference profiles |
+| **3 · Multi-Camera Support** | Share hardware and kernel knowledge across BIONZ X bodies, including the a6400A | Eight sourced profiles: original a6400 is the only verified execution target; the other seven are reference profiles |
 
 ## Latest progress
 
-- **ILCE-7RM4A (a7R IVA) Reference Profile ([E0510](docs/evidence/0510-ilce-7rm4a-offline-sourced-profile.md)):**
-  Turned the a7R IVA row of the E0477 platform map into a registered `reference` profile,
-  contributed by an a7R IVA owner from the body's own packaged 1.13 updater (no camera
-  accessed). Seven gadget-core kernel symbols decoded from its own `vmlinux.bin`
-  (`8d02896458cd8927…`, confirming and extending [E0480](docs/evidence/0480-ten-bodies-gain-kernel-symbols-offline.md)),
-  a `CXD90045` identity and 18-pair stock USB set from its `config.yaml`, and an 88-entry
-  `devno.ko` table with **no** `usb/video` or `usb/audio` node. The kernel is distinct from the
-  a6400's, so no address is shared; `ilce_7rm4a` is a reference profile, not an execution target.
-- **ILCE-6400A Reference Qualification ([E0506](docs/evidence/0506-a6400a-offline-qualification-and-debugger-boundary.md)–[E0509](docs/evidence/0509-a6400a-msc-reply-lifetime-and-verified-native-identity.md)):**
-  Qualified the signed `ILCE-6400A 1.01` updater package offline (`bionzx_machine_map`: 30 partition rows, 8 MMIO mappings, moved kernel hook sites) and added a narrowly allowlisted read-only USBSTOR identity probe (`a6400a_native_readonly` + `msc_extcmd_trace`), verifying normal-mode `GetModelInfo` (`0032858730` in `2.727 ms`) while keeping `ilce_6400a` at `reference`.
-- **ISP Color & Gamma Pipeline ([E0505](docs/evidence/0505-av-cam-cc-3dlut-and-ec-gamma-pipeline.md)):**
-  Decoded the `av-cam.bin` `CC:` 3D LUT controller (`FUN_63ad0fc8` / `FUN_63ad0930`, YCbCr 5×9×9 LUT with Q14 BT.601/BT.709 matrix) and `EC_Gamma` pre-8-bit pipeline (`FUN_63ba8158` / `FUN_63b1f614`) statically, and added typed sensor/LUT table models in [`src/a6400/sensor/`](src/a6400/sensor/__init__.py).
-- **Update chain measured ([E0504](docs/evidence/0504-cxd90045-0x0402f666-pc-ldr-decode-fast-r0-vfp-and-busybox-entry.md), and the IPC edge inventory in [E0483](docs/evidence/0483-ipc-edge-inventory-libobj.md), and the platform model in [E0490](docs/evidence/0490-platform-model-and-flash-boundary.md)):**
-  The image is **not** AES-encrypted. 484 files under the a6400 tree are ELF objects readable
-  as-is; integrity is CRC32 (`uc_crc32sum.elf`, which imports no crypto at all) and MD5
-  (`md5sum -c` in `loader_writer.sh`), and none of the updater tree's 18 scripts verifies a
-  signature. The one AES helper uses the first 16 bytes of `sha256('')` as its key in ECB, and
-  that key is identical on all thirteen bodies. Whether the bootloader accepts a recomputed CRC
-  is still unknown and needs a camera.
-- **a6400A Normal Identity Verified ([E0509](docs/evidence/0509-a6400a-msc-reply-lifetime-and-verified-native-identity.md)):**
-  Original ARM/Thumb controls identify a finite reply lifetime, correcting the earlier
-  split-process test procedure. One fresh, uninterrupted query now returns **ILCE-6400A**
-  in **2.727 ms**, with no BUSY and no driver, mode or storage changes. Delayed response-only
-  continuation is refused. This verifies the normal USB identity API, **not debugger,
-  `/proc` or partition-dump access**; the a6400A remains a reference profile.
-- **a6400A Read-only Access Preflight ([E0508](docs/evidence/0508-a6400a-native-readonly-transport-and-model-info-busy.md)):**
-  A parent-verified native Windows probe works with the existing USBSTOR driver:
-  SCSI inquiry succeeds when the owner runs the narrow probe as Administrator.
-  The normal model-info query remains **BUSY**, including 40 bounded completion-only
-  reads, so physical probing stopped. No driver change, service mode, helper upload,
-  sector access or camera file write was used. This is a **historical failed procedure**:
-  E0509 supersedes the normal-query block, while debugger/root/dump access remains unverified.
-- **a6400A Machine Map ([E0507](docs/evidence/0507-a6400a-kernel-partition-mmio-and-hook-map.md)):**
-  Main and updater kernels have separate build identities and BusyBox versions.
-  Their recovered partition configuration and eight static MMIO mappings match the
-  original package, while several exception/TTBR hook addresses moved. A reusable,
-  hash-checked offline mapper preserves those differences and capture-only gaps.
-  With an explicitly selected PL011 fixture, the original updater stops at timer
-  MMIO after 3,017 instructions; **no boot, live `/proc` inventory or physical dump
-  is claimed**, and no camera was accessed.
-- **a6400A Qualification ([E0506](docs/evidence/0506-a6400a-offline-qualification-and-debugger-boundary.md)):**
-  The signed 1.01 package matches the modeled CXD90045 / ARM EABI5 family and machine
-  ID `0xDA9`. Its USB packing code passes offline; an original updater prefix executes
-  3,001 instructions before an unsupported UART access, without patches or MMIO replies.
-  Windows read-only metadata confirms Mass Storage `054C:0F0F`. A separately sourced
-  **reference** profile is registered, but all seven USB kernel addresses moved and the
-  driver differs. **Do not reuse the original a6400 installer, hooks or checkpoints**
-  without body-specific qualification; no debugger installation or partition dump was attempted.
-  Scoped checks pass; the full-suite rerun here is blocked by missing historical inputs.
-- **Cross-Model BIONZ X Platform Map ([E0477](docs/evidence/0477-bionz-x-platform-map-13-updaters.md)–[E0482](docs/evidence/0482-three-stubs-gain-sourced-values.md)):**
-  Thirteen official updaters unpacked offline: a6400, a6600, a6100A, ZV-E10, A7 III, A7C,
-  A7R III, A7R IV, A7R IVA, A9, A9 II, ZV-1 and RX0 II. They run **nine kernels**, not thirteen:
-  ZV-E10 and A7C put all 14,460 function symbols at the same address and differ in 9 data
-  addresses, while a6400/a6600 share all 14,401 function symbols; a6100A/A7 III/A7R IVA share
-  one symbol set but 4,033 of their 4,042 differing addresses are functions, so they are three
-  separate kernels. The `av-cam` command table is a monotone ladder (285 records on the a6400,
-  286 on the a6600 with exactly `0x413b` added, 337 on the ZV-E10/A7C). Six USB-side kernel
-  symbols now resolve for every body **without a camera**, and for the a6400 the offline
-  decode matches the existing live `/proc/kallsyms` read on all seven symbols. The
-  `ilce_6100`, `ilce_6600` and `ilce_7m3` profiles stop being stubs and carry sourced values.
-- **Offline Linux Kernel Boot ([E0414](docs/evidence/0414-nflasha-readonly-device-check-and-boot-area-dumps.md)–[E0504](docs/evidence/0504-cxd90045-0x0402f666-pc-ldr-decode-fast-r0-vfp-and-busybox-entry.md)):**
-  Decoded the camera's first-stage bootloader and updater boot images, and emulated the
-  interrupt controller, system timers, clock hardware, and serial console. The updater
-  Linux kernel now boots through delay calibration, mounts its compressed root filesystem,
-  captures **52,976 bytes** of live serial output, and accepts Sony's custom boot-argument
-  override. User-space demand paging, fast-syscall return, and ARM VFP context save now
-  carry `ld-2.11.2.so` through `/lib/libc.so.6` linking into **BusyBox `_start` (`0x0000C439`)**
-  with 71 user syscalls and 35 kuser helper calls before a `libc.so.6` branch to `0x041F2000`
-  (so an interactive shell is not open yet).
-- **Persistent USB Debugger ([E0400](docs/evidence/0400-usb-debugger-and-runtime-probe-infra.md)–[E0405ab](docs/evidence/0405ab-device-desc-builder-and-msos2-subset.md)):**
-  A v2 USB debugger runs in Mass Storage mode, letting us read kernel logs (including
-  logs preserved across warm reboots), check USB state, and recover cleanly without pulling
-  the SD card or battery. Offline contracts and a safe RAM-only round-trip check for
-  automatic Windows WinUSB driver binding are also verified.
-- **USB Video (UVC) Teardown & Stall Diagnosis ([E0352](docs/evidence/0352-offline-teardown-soft-disconnect-fix.md)–[E0476](docs/evidence/0476-status-prearm-fix-build-audit-unicorn.md)):**
-  Fixed the USB disconnect sequence so the camera returns to Mass Storage mode cleanly
-  without needing a battery pull. Live tests confirmed the camera can serve 29.8 FPS JPEG
-  frames alongside PTP, and USB packet/kernel traces narrowed the remaining DirectShow
-  streaming timeout down to the final status stage of a USB control handshake. The latest
-  analysis shows the camera prepares that final step in time but the PC's reply never completes
-  it; a fix that prepares it earlier is built and passes offline checks, awaiting a supervised
-  camera test.
-- **Wi-Fi & Bluetooth Chip Analysis ([E0406](docs/evidence/0406-bcm4339-wifi-bt-tuning-surface-readonly.md), [E0408](docs/evidence/0408-clm-blob-and-wlan-baseline.md)):**
-  Identified and cataloged the Broadcom Wi-Fi/Bluetooth firmware, kernel drivers, and
-  regulatory configuration blobs offline against the ZV-E10.
+### Reproducible captured QEMU boot inputs ([E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md))
+
+The [QEMU workflow](qemu-a6400/README.md) now rebuilds its inputs from hash-checked
+camera dumps without mixing in updater-package libraries or default settings.
+Two independent preparations have identical output hashes, and the original
+captures remain unchanged. The native eMMC backing layout and CMD1 sector-mode
+negotiation are corrected and regression-tested.
+
+Original firmware reaches four cores, LIRO/stella startup and a working shell.
+Qualified snapshots identify Task 43 waiting on flag 10 (`0x3373`), with its
+IRQ 101/102 pathways enabled but never asserted by the model. Task 65 is dormant,
+not a demonstrated sub-micro deadlock. The next step is the actual event-producer
+contract, not an injected completion. No camera access or emulator GUI frame is
+claimed.
+
+### Continued QEMU machine work ([E0525](docs/evidence/0525-qemu-a6400-ulogio-queue-unblocks-appframework.md)–[E0544](docs/evidence/0544-qemu-a6400-mode-sequencer-waits-at-step-12.md))
+
+The same captured-input boot now continues through Appframework, a replayed
+sub-micro link, and a Sugilite console. Graphic console 0 shows the viewfinder
+readout (program mark, battery, exposure scale). `viewUnified2.so` has a
+monitor `LayoutST_NORMAL_*` class beside each `LayoutST_NORMAL_EVF_*` class.
+The YUV layer stays off because the imager has not started a sensor transfer
+or an SA function. This is still QEMU, not a verified rear-LCD frame. Details
+are in [qemu-a6400/STATUS.md](qemu-a6400/STATUS.md).
+
+### ILCE-7RM4A reference profile ([E0570](docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md))
+
+The a7R IVA row of the E0477 platform map is now a registered reference profile,
+sourced from that body's own packaged 1.13 updater. Seven gadget-core symbols
+come from its own `vmlinux.bin`. Its kernel addresses are not the a6400's, and
+`probe_interpreter` does not reuse the a6400 inventory or the ILCE-7C manifest
+for it. No camera was accessed.
+
+Two RAM-only mods run on a live ILCE-6400 (`im.elf`): a guarded loader that enables `.mod`
+payloads from the SD card, and the MTF2 full-menu touch mod. Both live only in RAM — no flash
+writes and no boot-time persistence; a camera restart restores stock behaviour.
+
+### RAM-only Mod Loader ([E0523](docs/evidence/0523-mod-loader-ok-routing-diagnostics.md))
+
+A reversible 7th `Mods` tab in the camera menu plus an SD-card `.mod` loader, housed in
+`/libmprctrl.so` RX padding with a writable anchor and three hooks in
+`viewUnified2.so`, installed through the Mass Storage debugger. It scans `/mnt/mmca1/mods`
+(and `/media/mmca1/mods`, `/mnt/sd/mods`, `/tmp_bt/mods`) for SMOD v1 `.mod` files, lists up
+to 12 of them as ON/OFF rows, and toggles a row only after verifying the original hook bytes:
+it copies the payload and its state block into RAM and writes Thumb trampolines over the
+three hooks; toggling off restores the original bytes. The loader copies a per-mod
+state-init blob instead of zero-filling state, and flushes every CPU
+(`sched_setaffinity` + `cacheflush`) because the camera runs a 4-core SMP kernel. It is
+fail-closed: an invalid mod is shown as `ERR` and nothing is patched.
+Sources: [`mod_loader.c`](tools/native_camera/mod_loader.c),
+[`native_mod_loader_guard.c`](tools/native_camera/native_mod_loader_guard.c),
+[`pack_mod.py`](tools/research/pack_mod.py).
+
+The Mod Loader includes [the Mods tab artwork](docs/evidence/0522-mods-tab-icon-and-uxd-image-container.md).
+The camera's menu selects inactive, active, and tab-bar focus images through its existing
+resource properties. Each image has 192-byte rows clipped to the stock tab rectangle.
+
+### MTF2 full-menu touch mod ([E0520](docs/evidence/0520-mtf2-full-menu-touch-verified-on-a6400.md))
+
+A RAM-only touch layer for the main menu, housed in `/libObj.so` RX padding. Two hooks on
+the press/release handlers in `/libObj.so` feed the camera's own event queue, so taps and
+swipes drive the original state machine: tap tabs and page dots, swipe horizontally to page,
+first tap selects a row and a second tap opens it, and in a popup a tap selects and applies
+the option without closing, a vertical swipe scrolls, and an outside tap closes only the
+popup. Verified on a physical ILCE-6400 with all 175 `im.elf` threads resumed; not handled:
+My Menu (tab 6), the injected Mods tab (7), and tab-bar focus.
+Sources: [`menu_touch_full.c`](tools/native_camera/menu_touch_full.c),
+[`native_menu_touch_full_guard.c`](tools/native_camera/native_menu_touch_full_guard.c),
+verified snapshot in [`mods/menu_touch_full/`](mods/menu_touch_full/README.md).
+
+### Arrivederci look mod
+
+[Arrivederci](mods/arri_isp/arrivederci/README.md) is an SMOD v1 Mods-tab entry for the
+same loader. The loader calls its Thumb entry with 1 on ON and 0 on OFF when the
+mod's flag bit 1 is set. It was checked on a live ILCE-6400 on 2026-11-16 with
+Picture Profile gamma S-Log3 and color mode S-Gamut3.Cine. The tone curve is
+reloaded from the read-only image at boot. The color matrix is part of Sony's
+backup and can remain until it is toggled back and the camera saves stock.
+Rebuild with [`mods/arri_isp/arrivederci/build_wsl.sh`](mods/arri_isp/arrivederci/build_wsl.sh).
+The offline ISP staging component and the LUT converter stay separate:
+[`mods/arri_isp/`](mods/arri_isp/README.md),
+[`a6400-lut-converter/`](a6400-lut-converter/README.md),
+[ISP transform catalog](docs/ISP_TRANSFORM_CATALOG.md).
+
+### Short tutorial — load a mod from the SD card
+
+1. **Get the touch mod:** use the tested [MenuTouchFull.mod](mods/menu_touch_full/MenuTouchFull.mod)
+   or follow its [build instructions](mods/menu_touch_full/README.md#rebuild).
+2. **Copy it to the SD card:** create a `mods/` folder at the card root and put the `.mod`
+   file in it. The loader scans for it on every boot (up to 12 mods).
+3. **Install the loader RAM-only:** run `wsl.exe --exec bash tools/native_camera/build_mod_loader_wsl.sh`
+   from the repository root. It emits the combined `mod-loader-{check,install,remove}.req`
+   files and the ARM guard under `artifacts/hardware/`. Drive the Mass Storage debugger client
+   ([guide](docs/NATIVE_USB_DEBUGGER.md)): `push` the guard and the check `.req` to
+   `/tmp_bt/native_mod_loader_guard` and `/tmp_bt/mod_loader.req` after a fresh MSC boot.
+   Confirm readback for both uploads. Run `chmod 700 /tmp_bt/native_mod_loader_guard` and
+   execute the guard. After it reports both `CHECK_OK` and `THEME_OK`, push
+   `mod-loader-install.req` to the same request path, confirm readback, and run the guard
+   again. Successful installation reports `INSTALLED` and resumes the camera threads.
+4. **Toggle and use:** open `MENU` → tab 7 (`Mods`) and press the center button on
+   `Menu Touch Full` to switch it on or off. The Mods artwork appears as soon as the
+   loader is installed.
+5. **Undo:** restart the camera to unload the loader and its mods. The combined remove
+   request also restores the patched bytes during the same boot before the loader first
+   builds its menu.
+
+Safety: RAM-only, one boot at a time. The guard verifies the exact firmware mapping and
+original hook bytes before any write, refuses on any mismatch, and restores what it changed;
+do not reuse these addresses on a different firmware body without new evidence. Full details:
+[E0523](docs/evidence/0523-mod-loader-ok-routing-diagnostics.md),
+[E0520](docs/evidence/0520-mtf2-full-menu-touch-verified-on-a6400.md) and
+[mods/menu_touch_full/README.md](mods/menu_touch_full/README.md).
+
+Earlier progress highlights are preserved in [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
 
 ## Status overview
 
-Recorded suite: 1782 tests. Each result is bounded by its own dated evidence record; no
-UVC video frame, no flash write, and no full firmware boot is claimed.
+Recorded suite: 1972 tests. The E0524 captured-input receipt remains the boot
+qualification. The separate native eMMC controls pass in WSL. Full receipts are reported in
+[E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md).
+Each result is bounded by its own dated evidence record; no UVC video frame and no
+flash write are claimed. Latest records: [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md)
+(reproducible captured QEMU inputs and qualified event waits), [E0544](docs/evidence/0544-qemu-a6400-mode-sequencer-waits-at-step-12.md)
+(the same boot continued to a viewfinder console; the mode sequencer stays at step 12 with module 1 at `0x0100`. The updater at `0x639267BC` is skipped because the byte at `0x64354174` is 0, and its latch keeps the old halfword unless the request is `0x0112`, [E0553](docs/evidence/0553-qemu-a6400-module1-latch-skips-0x0105.md)), [E0523](docs/evidence/0523-mod-loader-ok-routing-diagnostics.md)
+(guarded RAM-only Mod Loader plus the MTF2 full-menu touch mod), [E0522](docs/evidence/0522-qemu-a6400-smp-four-cores-and-cxd4115-timers.md)
+and [E0521](docs/evidence/0521-qemu-a6400-main-firmware-boots-to-avcam.md) (the out-of-tree QEMU
+`sony-a6400` machine boots the main `nflasha3` firmware to a shell and brings up four Cortex-A5
+cores; this is QEMU, not the Unicorn emulator).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=7a0d90c63a55)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=f3ead8a6af7a)
+
+![Daily automated test suite growth: 1972 tests across 31 days](docs/images/test-growth.svg?v=176fe0194f2d)
 
 ### Subsystem status
 
 | Subsystem | What works today | What's still missing | Evidence |
 | --- | --- | --- | --- |
-| **Offline firmware & kernel** | Main camera binary reaches event dispatch; updater Linux kernel boots to its serial console (52,976 B captured) and mounts rootfs; user faults reach the kernel cleanly | Kernel page-fault handler does not yet resume user-space programs (`/bin/ash`); full camera boot unproven | [E0430](docs/evidence/0430-cxd90045-abt-sp-isolation-and-live-ash.md), [status data](tools/research/a6400_status_data.py) |
+| **Offline firmware & kernel** | QEMU boots the captured main kernel, filesystems and LIRO on four cores with a shell, then continues to Appframework and a viewfinder OSD. The mode sequencer is waiting at step 12. The path selector has already accepted `0x3003`. The updater return window matches between Unicorn and QEMU except CPSR.A. The head's stub registers and entry flags are gone before the shared processor setup | Module 1 still reports `0x0100` from `0x64351898+0x690` against `0x0105`. The updater at `0x639267BC` is skipped because the byte at `0x64354174` is 0, and `0x63D3BD56` keeps the old halfword unless the request is `0x0112`; rear-LCD skin still open; setup still carries CPSR.A and the Cortex-A9 versus Cortex-A5 MIDR in `r9`; full camera boot unproven | [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md), [E0544](docs/evidence/0544-qemu-a6400-mode-sequencer-waits-at-step-12.md), [E0553](docs/evidence/0553-qemu-a6400-module1-latch-skips-0x0105.md), [E0545](docs/evidence/0545-unicorn-qemu-return-window-cpsr-a.md), [E0548](docs/evidence/0548-head-stub-registers-die-before-v7-setup.md) |
 | **Internal messaging & USB state** | Message routing and synchronous kernel-to-user callbacks run to completion offline | Remaining callback packet format is still unknown | [E0327](docs/evidence/0327-mwf-objmsg-wire-format.md), [E0332](docs/evidence/0332-sync-callback-delivery-first-invocation.md) |
 | **Offline USB enumeration** | Combined USB webcam + PTP descriptors decoded; configuration and endpoint selection modelled | Delivering an incoming USB configuration end-to-end on the sync lane | [E0337](docs/evidence/0337-emulator-uvc-ptp-preparation-and-0a4002-broadcast.md) |
-| **Display & GPU** | Camera screen layout confirmed (640×480); GPU memory/interrupt contracts decoded offline | Completing the GPU wait signal and rendering a verified firmware frame | [E0298](docs/evidence/0298-safe-osd-capture-and-sugilite-correction.md), [E0314](docs/evidence/0314-gpes-bar-irq-contract-engine-model.md) |
+| **Display & GPU** | Camera screen layout confirmed (640×480); GPU memory/interrupt contracts decoded offline. The QEMU Sugilite model draws the shooting-screen OSD onto the viewfinder console | A verified rear-LCD frame, and the YUV layer, which stays off until the imager starts | [E0298](docs/evidence/0298-safe-osd-capture-and-sugilite-correction.md), [E0314](docs/evidence/0314-gpes-bar-irq-contract-engine-model.md), [E0536](docs/evidence/0536-qemu-a6400-viewfinder-readout-and-eye-sensor-command.md) |
 | **PTP liveview (real camera)** | PC Remote streams 1024×680 sensor JPEGs; custom reader captures 29.8 FPS alongside PTP | Running UVC + PTP together with reliable teardown | [E0349](docs/evidence/0349-p1-foreign-get-jpeg-succeeds-in-pc-remote.md), [E0151](docs/evidence/0151-pc-remote-liveview-and-uvc-verified.md) |
 | **Composite USB webcam (real camera)** | Camera appears as both PTP and Video device in Windows, and disconnects cleanly without a battery pull | DirectShow times out during the USB control handshake status stage | [E0350](docs/evidence/0350-trackb-transport-enumerates-but-renderstream-fails.md), [E0398](docs/evidence/0398-runb21-status-stage-and-disconnect-verdict.md) |
 | **USB Debugger v2** | Persistent Mass Storage debugger for reading live/warm-reboot kernel logs and USB state | Deploying the always-on WinUSB vendor interface | [E0401](docs/evidence/0401-usb-debugger-v2-ring-recover-and-mode-boundary.md), [E0405ab](docs/evidence/0405ab-device-desc-builder-and-msos2-subset.md) |
 | **Test UVC video pattern** | Streams a synthetic 720p MJPEG pattern at ~30 FPS; ZV-E10 USB video stack cataloged as reference | Wiring the live camera sensor feed | [E0143](docs/evidence/0143-uvc-720p-test-transport-and-30fps-verified.md), [E0321](docs/evidence/0321-zve10-uvc-enablement-manifest.md) |
-| **Multi-camera profiles** | Seven sourced profiles, including `ilce_6400a` and `ilce_7rm4a` (a7R IVA) package/USB evidence | Only original a6400 is a verified execution target; the other six are reference profiles | [E0506](docs/evidence/0506-a6400a-offline-qualification-and-debugger-boundary.md), [E0510](docs/evidence/0510-ilce-7rm4a-offline-sourced-profile.md), [`src/a6400/targets/`](src/a6400/targets/catalog.py), [Adding a camera](docs/ADDING_A_BIONZX_CAMERA.md) |
-| **Automated checks** | 1782 tests pass offline (structure, profiles, emulator contracts, doc sync) | Proves bounded contracts, not full compatibility | [tests/](tests/README.md) |
+| **Multi-camera profiles** | Eight sourced profiles, including `ilce_6400a` and reference `ilce_7rm4a`. Packaged `libJiritsu.so` dispatches `GET_FILE` on halfword 8 | Only original a6400 is a verified execution target. The A6400A library map is not a sent Senser command, so the RAM bootstrap does not open USB. `ilce_7rm4a` has no process images of its own | [E0506](docs/evidence/0506-a6400a-offline-qualification-and-debugger-boundary.md), [E0554](docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md), [E0570](docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md), [`src/a6400/targets/`](src/a6400/targets/catalog.py) |
+| **Automated checks** | 1972 tests in the recorded offline suite (structure, profiles, emulator contracts, doc sync), plus native eMMC controls | See the receipt for skips; bounded contracts are not full compatibility | [tests/](tests/README.md), [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md) |
 
 ## How to help (no camera needed)
 
 **Top 3 open tasks right now**
 
-1. **Resume user-space programs after a page fault in the emulator** — trace why the
-   kernel's page-fault handler falls into the Sony exception monitor instead of resuming
-   the dynamic linker (`ld-linux.so.3`) so `/bin/ash` can start on the serial console.
+1. **Get the mode sequencer past step 12** — captured inputs and the
+   qualified waits remain
+   [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md).
+   The sequencer is waiting because module 1 still reports `0x0100` against
+   request `0x0105`. The request is already stored at `0x64350F04`. The
+   updater at `0x639267BC` does not run while the byte at `0x64354174` is 0,
+   and `0x63D3BD56` returns the old halfword unless the request is `0x0112`.
+   Start from
+   [E0553](docs/evidence/0553-qemu-a6400-module1-latch-skips-0x0105.md)
+   and [qemu-a6400/STATUS.md](qemu-a6400/STATUS.md).
 2. **Decode the USB control callback packet format** — figure out the remaining message
    layout so an incoming USB configuration request reaches the firmware's USB state machine
    ([`usb_sync_callback.py`](src/a6400/execution/usb_sync_callback.py)).
@@ -180,6 +227,8 @@ Firmware images, backups, and captured artifacts stay local and are excluded fro
 | `tools/research/` | Firmware analysis scripts, emulator runners, and status-card generator |
 | `tools/native_camera/` | C helpers, kernel-module sources, and USB/UVC transport code |
 | `probes/` | Safe, read-only ARM probe for other BIONZ X cameras |
+| [`a6400-lut-converter/`](a6400-lut-converter/README.md) | Offline ISP table fitting, ARRI presets, and 8-bit 4:2:0 preview |
+| [`mods/arri_isp/`](mods/arri_isp/README.md) | Conditional ISP staging component, Arrivederci v1 mod, and read-only camera notes |
 | `tests/` | Automated contract, regression, and structure checks |
 | `docs/evidence/` | Dated research logs with exact observations and boundaries |
 | `docs/` | Architecture notes, workflows, and contributor guides |
@@ -197,6 +246,12 @@ Firmware images, backups, and captured artifacts stay local and are excluded fro
 
 ## Links & attribution
 
+[Related research repositories](docs/RELATED_REPOSITORIES.md): an agent-facing catalog
+of Sony emulation, firmware-format, service-interface and cross-generation research,
+with starting points and limits on transferring upstream findings.
+
 [Evidence index](docs/evidence/README.md) · [Architecture](docs/ARCHITECTURE.md) · [UVC monitor architecture](docs/ARCHITECTURE_UVC_MONITOR.md) · [Roadmap](docs/ROADMAP.md) · [Live camera / emulator workflow](docs/LIVE_CAMERA_EMULATOR_WORKFLOW.md) · [Contributing](CONTRIBUTING.MD) · [Repository layout](docs/REPOSITORY.md) · [Agent rules](AGENTS.MD) · [Archived README](docs/archives/README-2026-11-09.md)
+
+- **Cross-generation BIONZ X research:** [Oein/a5000-emulator](https://github.com/Oein/a5000-emulator) by Park SungHyun (Oein) — clean-room reference for DMP SMAPH/P3D command-list format and 8×8 Morton tiling (`docs/RE_GPU_P3D_CMD.md`, CC BY 4.0), `GICD_ITARGETSR` bootloader pre-routing (`docs/HARDWARE.md`), and `im.elf` UI bringup gates (`docs/RE_UI_BRINGUP.md`).
 
 Independent research; not affiliated with or endorsed by Sony. Sony, a6400, ILCE-6400, and BIONZ X are trademarks of their respective owners.

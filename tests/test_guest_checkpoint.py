@@ -1,3 +1,4 @@
+import stat
 import struct
 import tempfile
 import unittest
@@ -6,7 +7,9 @@ from pathlib import Path
 import unicorn
 from unicorn import arm_const as arm
 
-from src.a6400.execution.guest_checkpoint import restore_checkpoint, save_checkpoint
+from src.a6400.execution.guest_checkpoint import (reject_extra_checkpoint,
+                                                 restore_checkpoint, save_checkpoint)
+from src.a6400.execution.guest_filesystem import GuestFilesystem
 from src.a6400.execution.guest_threads import GuestThreads
 from src.a6400.execution.guest_uipc import GuestUipc
 
@@ -159,5 +162,81 @@ class TestGuestCheckpoint(unittest.TestCase):
         self.assertEqual(p3.uipc.callback_proxy_owners, p1.uipc.callback_proxy_owners)
 
 
+    def test_checkpoint_saves_and_restores_filesystem_cwd(self):
+        d = {'kind': 'directory', 'mode': stat.S_IFDIR | 0o755, 'uid': 0, 'gid': 0}
+        nodes = {'/': dict(d), '/lib': dict(d),
+                 '/lib/file': {'kind': 'file', 'mode': stat.S_IFREG | 0o644, 'uid': 0, 'gid': 0, 'size': 1}}
+
+        def make_probe():
+            probe = MockProbe()
+            probe.mu.mem_map(0x10000, 0x1000, unicorn.UC_PROT_ALL)
+            probe.filesystem = GuestFilesystem(probe.mu, dict(nodes), lambda path, node: b'x')
+            return probe
+
+        p1 = make_probe()
+        p1.mu.mem_write(0x10100, b'/lib' + bytes(1))
+        self.assertEqual(p1.filesystem.request(12, [0x10100, 0, 0])['returned'], 0)
+        self.assertEqual(p1.filesystem.cwd, '/lib')
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt_path = Path(tmpdir) / 'cwd.ckpt'
+            save_checkpoint(p1, ckpt_path)
+            p2 = make_probe()
+            restore_checkpoint(p2, ckpt_path)
+            self.assertEqual(p2.filesystem.cwd, '/lib')
+            p2.mu.mem_write(0x10200, b'file' + bytes(1))
+            opened = p2.filesystem.request(5, [0x10200, 0, 0])
+            self.assertIn(opened['returned'], p2.filesystem.fds)
+            self.assertEqual(opened['path'], '/lib/file')
+
+            # a checkpoint without a cwd leaves cwd unset, so relative paths still stop
+            p3 = make_probe()
+            save_checkpoint(make_probe(), ckpt_path)
+            restore_checkpoint(p3, ckpt_path)
+            self.assertFalse(hasattr(p3.filesystem, 'cwd'))
+
+    def test_snapshot_drops_zero_pages_and_keeps_only_the_syscall_tail(self):
+        probe = MockProbe()
+        probe.mu.mem_map(0x200000, 0x100000, unicorn.UC_PROT_ALL)
+        probe.mu.mem_write(0x200010, b'kept')
+        probe.report['serviced_syscalls'] = [
+            {'syscall': 'read', 'n': index} for index in range(500)]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 'sparse.ckpt'
+            size = save_checkpoint(probe, path)
+            self.assertLess(size, 64 * 1024)
+            restored = MockProbe()
+            restore_checkpoint(restored, path)
+        self.assertEqual(bytes(restored.mu.mem_read(0x200000, 16)), b'\x00' * 16)
+        self.assertEqual(bytes(restored.mu.mem_read(0x200010, 4)), b'kept')
+        self.assertEqual(bytes(restored.mu.mem_read(0x2FFFF0, 16)), b'\x00' * 16)
+        log = restored.report['serviced_syscalls']
+        self.assertEqual(log.total, 500)
+        self.assertEqual(log[-1]['n'], 499)
+        self.assertLessEqual(len(log), 64)
+
+    def test_a_second_retained_snapshot_name_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            retained = Path(tmpdir)
+            first = retained / 'boot.ckpt'
+            first.write_bytes(b'kept')
+            reject_extra_checkpoint(first, retained)
+            with self.assertRaises(ValueError):
+                reject_extra_checkpoint(retained / 'boot-next.ckpt', retained)
+
+
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestRunGuardThumb(unittest.TestCase):
+    def test_budget_stop_keeps_thumb_state(self):
+        from types import SimpleNamespace
+        from src.a6400.execution.interpreter_probe import InterpreterProbe
+        for cpsr in (0x30, 0x10):
+            uc = unicorn.Uc(unicorn.UC_ARCH_ARM, unicorn.UC_MODE_ARM)
+            uc.mem_map(0x1000, 0x1000)
+            uc.reg_write(arm.UC_ARM_REG_CPSR, cpsr)
+            stub = SimpleNamespace(PROGRESS_SYSCALLS=(5,), stall_syscalls=0, report={'instruction_budget': 1}, instructions=1)
+            self.assertTrue(InterpreterProbe._run_guard(stub, uc, 5, 0x1000))
+            self.assertEqual(uc.reg_read(arm.UC_ARM_REG_CPSR) & 0x20, cpsr & 0x20)

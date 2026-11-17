@@ -14,6 +14,39 @@ Use REA with Ghidra through WSL as the preferred analysis tool for substantial A
 - The Windows REA/Ghidra provider rejected this ARM ELF in the recorded trial. Prefer the verified WSL route. If WSL returns `E_ACCESSDENIED` under the sandbox, retry through the normal tool escalation mechanism before diagnosing a broken installation. Report actual approval-review rejection if it occurs.
 - Do not run REA setup, register agent integrations, install unrelated providers, change global configuration or reinstall the working environment as an incidental analysis step. Check the existing installation first if a tool fails. See `docs/experiments/0008-rea-tool-trial.md` for the original setup and limitations.
 
+### Fresh Windows contributor installation
+
+Use the [official WSL installation instructions](https://learn.microsoft.com/windows/wsl/install) to install WSL 2 and Ubuntu 26.04 LTS. Installing WSL can require administrator approval and a restart; do not restart automatically. Native Windows Node.js and Ghidra alone do not remove REA's recorded ARM ELF restriction.
+
+The current launcher uses fixed Linux paths under `/home/administrator/a6400-rea-tools`. A normal Linux user named `administrator` reproduces this layout; it need not match the Windows account name. Keep the tool directory owned by that Linux user, not root. Install only missing prerequisites, and do not replace an existing working environment.
+
+In the new Ubuntu distribution, install these packages as root:
+
+```bash
+apt-get update
+apt-get install --no-install-recommends -y ca-certificates curl unzip procps nodejs npm openjdk-21-jdk binutils-arm-linux-gnueabi
+```
+
+Use a full JDK 21, not only a JRE. Check that the Linux Node version satisfies REA 6.7.0's requirement: Node 22.x (>=22.19), 24.x (>=24.11), or 26+. Then, as the normal Linux `administrator` user, install the matching tools in a fresh directory:
+
+```bash
+set -e
+mkdir -p "$HOME/a6400-rea-tools"
+cd "$HOME/a6400-rea-tools"
+npm install --prefix runtime --ignore-scripts --no-save --no-audit --no-fund --package-lock=false --registry=https://registry.npmjs.org rea-agents@6.7.0
+curl --fail --location --output ghidra_12.1.4_PUBLIC_20260921.zip https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.4_build/ghidra_12.1.4_PUBLIC_20260921.zip
+printf '%s  %s\n' ddac49f903da9d5bac833e5cc79395098b9c33cfd3279be5f31bd00387d2d4db ghidra_12.1.4_PUBLIC_20260921.zip | sha256sum --check
+unzip -q ghidra_12.1.4_PUBLIC_20260921.zip
+export GHIDRA_INSTALL_DIR="$HOME/a6400-rea-tools/ghidra_12.1.4_PUBLIC"
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+node runtime/node_modules/rea-agents/scripts/rea.mjs --version
+node runtime/node_modules/rea-agents/scripts/rea.mjs doctor --provider ghidra --json
+```
+
+The scoped doctor must report `healthy: true` and no failed `scope_checks`. Missing optional providers or agent skills can still make `environment_healthy` false; they are not prerequisites for this workflow. No REA setup or global agent registration is required.
+
+Confirm that this is the distribution selected by `wsl.exe --list --verbose`: the Windows launcher uses WSL's default distribution. Do not silently change another working default. Finally, run the bounded example below with a locally supplied, inventoried target and a new report directory, without `--reuse-evidence`, to verify actual decompilation and unchanged input hashes. Ghidra's GUI can be started through WSLg using `"$GHIDRA_INSTALL_DIR/ghidraRun"` from the configured Linux shell.
+
 ### Query and evidence workflow
 
 Use `python -m tools.research.dependency_plan --target <inventoried-module> --function <name> --depth 1 --max-nodes 32 --report-dir artifacts/analysis/<new-directory>` to prepare targeted queries and reuse verified analysis. `--pc-offset` accepts .text-relative offsets only; `--cross-module` follows unique static symbol candidates, not proven loaded exports. Follow `docs/DEPENDENCY_WORKFLOW.md`; keep unsupported/indirect/IPC dependencies explicit. Generated batches use native WSL and `rea_wsl_batch --reuse-evidence`; failed, mismatched, changed or incompatible-profile evidence must not be reused.
@@ -34,4 +67,21 @@ $reaReport = 'artifacts/tools/rea/workflow-' + (Get-Date -Format 'yyyyMMdd-HHmms
 ```
 
 `python -m tools.research.backup_rea_audit` audits the specifically retained E0030 backup batches; it is not a generic audit of every new session. `python -m tools.research.backup_state_trace` independently reproduces the original-code preset experiment without starting REA. Neither command services the blocked startup request.
+
+### Large raw ARM/Thumb images
+
+E0524's full captured av-cam import exceeded REA's 330-second startup budget.
+That failed run remains failed. For a narrow question, the separate
+`tools/research/ghidra/BoundedThumbProcedures.java` script supports a distinct
+headless profile: an explicit raw ARM base, observed Thumb entries, at most
+16 queries / 4 KiB per query / 32 KiB total, and no global auto-analysis.
+It preserves original bytes and records external or undecoded control-flow
+boundaries alongside pseudocode and instructions. It is not a completed default
+REA analysis or compatible evidence-cache reuse.
+
+Declare all Thumb contexts before disassembly when query windows overlap.
+Use a new project/output receipt and inspect status, body bounds, source hash
+and original instructions; a zero headless-process exit code is insufficient.
+The exact captured query plan and failed/successful receipts are linked from
+[E0524](evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md).
 

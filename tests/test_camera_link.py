@@ -26,10 +26,10 @@ class TestCameraLinkAndBootLogger(unittest.TestCase):
         self.assertEqual(usb_ioc['size'], 36)
 
     def test_boundary_analyzer_resolves_libc_and_libinfrahdmi(self):
-        from project_paths import PROJECT_ROOT
-        if not (PROJECT_ROOT / 'firmware').is_dir():
-            self.skipTest('Local firmware tree not present')
         analyzer = BoundaryAnalyzer()
+        if not analyzer._resolve_guest_file('/lib/libc-2.11.2.so') or not analyzer._resolve_guest_file(
+                '//usr/lib/libInfraHdmi.so'):
+            self.skipTest('Local A6400 guest ELF inputs not present')
         sample_report = {
             'status': 'syscall_boundary',
             'instructions_executed': 86810403,

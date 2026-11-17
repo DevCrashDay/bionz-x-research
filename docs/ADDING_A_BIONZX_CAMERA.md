@@ -221,17 +221,17 @@ boundaries listed) and add claims as evidence arrives. That is a mergeable contr
 
 ## Step 4 — Run the target in the universal emulator (L2 & L3)
 
-Once your body's `TargetProfile` (and optional `BootLayoutSpec`) is registered, both execution runners accept `--target <target_id>`:
+Once your body's `TargetProfile` (and optional `BootLayoutSpec`) is registered, the L2 runner accepts `--target <target_id>`. L3 process execution accepts only a body that has its own inputs: `ilce_6400` uses the inventory bundle, and `ilce_7c` uses its hash-pinned manifest plus an explicit interpreter candidate. Any other registered body stops. The runner does not substitute the ILCE-6400 inventory or the ILCE-7C manifest.
 
 ```powershell
 # L2: Full-system updater/kernel boot via UnicornMachine.from_target()
 .\venv\Scripts\python.exe -m tools.research.run_nflasha1_boot --target <target_id>
 
-# L3: User-space process execution via InterpreterProbe
-.\venv\Scripts\python.exe -m tools.research.probe_interpreter --target <target_id> --syscalls stop
+# L3: ILCE-6400 inventory path. Another body needs its own process-input manifest.
+.\venv\Scripts\python.exe -m tools.research.probe_interpreter --target ilce_6400 --syscalls stop
 ```
 
-Unsupported symbols, UIPC queues, or device nodes stop fail-closed with a `boundary` report telling you exactly what needs to be decoded for your body.
+Unsupported symbols, UIPC queues, or device nodes stop fail-closed with a `boundary` report telling you exactly what needs to be decoded for your body. A body without process inputs stops with a configuration error before any image is loaded.
 
 ---
 
@@ -271,4 +271,4 @@ PR checklist:
 
 ## Where the current profiles are
 
-Per-body modules live under `src/a6400/targets/bodies/` (`ilce_6400.py`, `ilce_6400a.py`, `zv_e10.py`, `ilce_6100.py`, `ilce_6600.py`, `ilce_7m3.py`, `ilce_7rm4a.py`) and are assembled into `DEFAULT_REGISTRY` in `src/a6400/targets/catalog.py`. `src/a6400/targets/profile.py` holds the schema (`TargetProfile`, `BootLayoutSpec`, `EvidenceRef`) and fail-closed validation. A profile is evidence metadata, not an automatic port of every emulator or camera helper.
+Per-body modules live under `src/a6400/targets/bodies/` (`ilce_6400.py`, `ilce_6400a.py`, `zv_e10.py`, `ilce_6100.py`, `ilce_6600.py`, `ilce_7c.py`, `ilce_7m3.py`, `ilce_7rm4a.py`) and are assembled into `DEFAULT_REGISTRY` in `src/a6400/targets/catalog.py`. `src/a6400/targets/profile.py` holds the schema (`TargetProfile`, `BootLayoutSpec`, `EvidenceRef`) and fail-closed validation. A profile is evidence metadata, not an automatic port of every emulator or camera helper.

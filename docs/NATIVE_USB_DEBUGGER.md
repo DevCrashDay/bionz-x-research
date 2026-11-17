@@ -28,6 +28,20 @@ counts request time in one bounded transaction budget. This is **not** debugger
 or partition access. Do not interpret the successful model query as permission
 for service mode, uploads, startup changes or driver replacement.
 
+[E0552](evidence/0552-a6400a-nflasha5-wbi-jiritsu-names.md) reads the local
+`nflasha5` dump as a WBI1 snapshot. The expanded strings name `libJiritsu.so`,
+`JIRITSU_GET_FILE` and `/tmp/jiritsu/libJit.so`. That is why a stock
+FileControl installer cannot stage the debugger, and why a whole-file Jiritsu
+read can return small firmware files without becoming a raw-flash reader.
+`python -m tools.research.a6400a_jiritsu_bootstrap --mode audit-wbi` recounts
+those strings. [E0554](evidence/0554-a6400a-v101-jiritsu-command-dispatch.md)
+then reads the official 1.01 `libJiritsu.so`: its dispatcher selects
+`GET_FILE` with halfword 8, not the public ZV-E10 value `0x4008`.
+`check`, `start-ram-debugger` and `jiritsu-dump` still return before
+USB. `A6400_EPHEMERAL_RAM=1` keeps a
+future daemon log on `/tmp_bt` or `/tmp` and waits longer for
+`/dev/usb/usb_extcmd`; it has not been started on a camera.
+
 ## Protocol v2 (E0401): warm log readout, recover, and the PC Remote boundary
 
 The installed daemon now speaks protocol v2 (same 4096-byte frame, feature

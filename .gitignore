@@ -7,9 +7,11 @@ __pycache__/
 node_modules/
 
 # Firmware, device state, dumps and generated outputs
-firmware/
+/firmware
+a6400-nflasha-readonly*/
 backups/
-artifacts/
+/artifacts
+/qemu-a6400/inputs.local.json
 scratch/
 assets/reference/*
 !assets/reference/README.md
@@ -78,6 +80,11 @@ tools/native_camera/zve10_uvc_tree.h
 
 # Local Android tool downloads
 /.android-tools/
+
+# QEMU build checkout and local runtime data
+/qemu-a6400/qemu/
+/qemu-a6400/data/
+
 
 # User-owned LUT pack: bundled only in local APKs
 /android/cinemahud/assets/user_luts/

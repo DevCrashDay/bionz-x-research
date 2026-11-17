@@ -25,6 +25,7 @@ See [docs/INDEX.md](docs/INDEX.md) and [docs/CURRENT_STATE.md](docs/CURRENT_STAT
 ## 4. Fidelity and evidence invariants
 
 - Separate observations, inference, assumptions, fixtures, and physical verification. Bound execution; stop with PC, arguments, and reason at unsupported imports, syscalls, devices, memory, or metadata. Faults and limits are not success.
+- **English-only repository policy:** Exclusively English (among human spoken languages) must be used for all repository content, including documentation, evidence records, code comments, docstrings, UI strings, and commit messages. Non-English human text is not permitted anywhere in the repository.
 - No silent zero/success replies, automatic mappings, fabricated queues/UI, or weakened guards to advance execution. Add contracts via explicit opt-in policies; retain default no-response and earlier regression baselines.
 - Guest access uses a declared namespace and allowlisted hash-checked inputs, never arbitrary host paths/syscalls. Unsupplied runtime mounts are unknown, not verified absent.
 - Original code owns application logic/rendering in fidelity experiments. A bounded instruction probe is not a booted kernel, timing model, complete machine, or proof of deployment safety.
@@ -33,6 +34,7 @@ See [docs/INDEX.md](docs/INDEX.md) and [docs/CURRENT_STATE.md](docs/CURRENT_STAT
 
 ## 5. Implementation, verification, and research tooling
 
+- Before deriving a new contract or repeating research, consult [docs/RELATED_REPOSITORIES.md](docs/RELATED_REPOSITORIES.md) for relevant upstream work. Pin useful findings to exact commits and identity-matched evidence; upstream claims are leads, not verified local contracts or authorization to run tools.
 - Use small components and shared path/memory rules (`project_paths.py`). Prefer `rg`, constructed fixtures, and focused ABI/state/error/provenance/ARM checks. Generated fixtures belong under `artifacts/tests/`.
 - Launch first-party scripts as modules from the repository root (`python -m tools.research.<tool>`, `python -m legacy.<prototype>`).
 

@@ -1,0 +1,52 @@
+#!/bin/bash
+# Build Mod Loader v2 (shim + core). Usage: build_wsl.sh NEW_OUTPUT_DIR
+set -euo pipefail
+cd "$(dirname "$0")/../../.."
+OUT=$1
+mkdir "$OUT"
+D=tools/native_camera/mlv2
+CC=arm-linux-gnueabi-gcc
+common=(-mthumb -mcpu=cortex-a5 -mfloat-abi=softfp -Os -ffreestanding -fno-builtin -nostdlib
+        -nostartfiles -fno-stack-protector -fomit-frame-pointer -Wall -Wextra -Werror
+        -Wno-unused-parameter)
+
+# Shim: fixed address in the cave.
+"$CC" "${common[@]}" -fno-pic -Wl,--build-id=none -T "$D/shim.ld" \
+    "$D/shim.c" "$D/mlv2_trampoline.S" -o "$OUT/shim.elf"
+
+# Core: position-independent. Compile to an object first and reject absolute relocations.
+"$CC" "${common[@]}" -fpie -fvisibility=hidden -c "$D/core.c" -o "$OUT/core.o"
+if arm-linux-gnueabi-readelf -rW "$OUT/core.o" | grep -E "R_ARM_(ABS32|GOT|TARGET1|PLT32|JUMP_SLOT|GLOB_DAT)"; then
+    echo "core.o has absolute or GOT relocations; it would not be position-independent" >&2
+    exit 1
+fi
+arm-linux-gnueabi-ld --build-id=none -T "$D/core.ld" "$OUT/core.o" -o "$OUT/core.elf" \
+    "$(arm-linux-gnueabi-gcc -mthumb -print-libgcc-file-name)"
+
+for f in "$OUT/shim.elf" "$OUT/core.elf"; do
+    if arm-linux-gnueabi-objdump -d "$f" | grep -qE "<(memcpy|memset|__aeabi_[a-z]*div[a-z]*)>"; then
+        echo "Unexpected runtime helper in $f" >&2
+        exit 1
+    fi
+done
+python3 tools/native_camera/mlv2/package.py "$OUT"
+
+# On-camera guard (static ARM binary, runs as root over ptrace).
+"$CC" -static -O2 -Wall -Wextra -Werror -march=armv7-a -mfloat-abi=softfp \
+    "$D/mlv2_guard.c" -o "$OUT/mlv2_guard_arm"
+
+# The joint debugger package invokes this separate worker in the background.
+# Only the matching archive can supply executable code to it.
+mkdir "$OUT/companion" "$OUT/card"
+"$CC" -static -O2 -Wall -Wextra -Werror -march=armv7-a -mfloat-abi=softfp \
+    "$D/card_read.c" -o "$OUT/companion/mlv2_card_read.elf"
+"$CC" -O2 -Wall -Wextra -Werror -march=armv7-a -mfloat-abi=softfp -nostdlib \
+    -fPIC -shared -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -U_TIME_BITS -D_TIME_BITS=32 \
+    -Wl,-soname,mlv2_sd_boot_hook.so,-z,defs,-z,max-page-size=4096 \
+    "$D/sd_boot_hook.c" tools/sony_sysroot/lib/libc.so -o "$OUT/companion/mlv2_sd_boot_hook.so"
+python3 -m tools.research.package_mlv2_sd --build "$OUT"
+
+# SMOD v2 test mod for the Unicorn harness (hook target lives only in the harness).
+"$CC" "${common[@]}" -fpie -fvisibility=hidden -c "$D/test_mod.c" -o "$OUT/test_mod.o"
+arm-linux-gnueabi-ld --build-id=none -T "$D/mod_v2.ld" "$OUT/test_mod.o" -o "$OUT/test_mod.elf"
+python3 -m tools.research.pack_mod_v2 --elf "$OUT/test_mod.elf" --name "Test Mod" --on t_life --off t_life     --hook 0x33000100:2de9f04788b04ff014080122:t_hook --out "$OUT/TestMod.mod" > /dev/null

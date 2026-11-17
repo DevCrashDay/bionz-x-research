@@ -20,6 +20,13 @@ Consolidated hardware reference from `E0222`, `E0298`, `E0305–E0314`, `E0414�
 
 **Runtime writable mounts (`E0486`)**: `/setting`, `/system`, `/tmp`, `/log`, `/android/data`, `/lens`.
 
+**Offline QEMU backing layout (`E0524`)**: the native eMMC model expects the
+captured `nflashaB0` and `nflashaB1` images first (4 MiB each), followed by the
+user area. Its SDM header belongs at backing offset 8 MiB; user partition data
+belongs at `8 MiB + SDM.start`. The [reproducible builder](../../qemu-a6400/README.md)
+checks every original hash and records unacquired zero-filled ranges explicitly.
+This constructed disk is not a complete physical-disk capture.
+
 ## 2. Display & GPU (`E0298`, `E0313–E0314`)
 
 - **Verified Display**: OSD A/B `640×480` RGBA4444 (captured safely via `im.elf` ptrace in `E0298`). `gl_common+0x1000` (`960×540`) is an internal buffer, not the screen.

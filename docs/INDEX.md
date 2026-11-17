@@ -20,9 +20,11 @@ Central navigation map for the Sony BIONZ X (`CXD90045`) universal emulator and 
 | --- | --- |
 | [CURRENT_STATE.md](CURRENT_STATE.md) | Active checkpoint across all four tracks (L2 Boot, L3 App/GUI, Track B UVC/PTP, Multi-Device) |
 | [REPOSITORY.md](REPOSITORY.md) | Repository layout, module launch paths, and structural CI checks |
+| [RELATED_REPOSITORIES.md](RELATED_REPOSITORIES.md) | Agent-facing catalog of related Sony research repositories, starting points, provenance rules and cross-model transfer limits |
 | [LIVE_CAMERA_EMULATOR_WORKFLOW.md](LIVE_CAMERA_EMULATOR_WORKFLOW.md) | Safe read-only live camera observation and emulator handoff workflow |
 | [NATIVE_USB_DEBUGGER.md](NATIVE_USB_DEBUGGER.md) | Native USB debugger protocol and safety rules |
 | [REA_WORKFLOW.md](REA_WORKFLOW.md) | Ghidra / WSL reverse-engineering workflow (`tools.research.rea_wsl_batch`) |
+| [QEMU workflow](../qemu-a6400/README.md) | Reproducible captured boot inputs, native eMMC regression checks, and the later device-model records through the viewfinder console |
 | [DEPENDENCY_WORKFLOW.md](DEPENDENCY_WORKFLOW.md) | Dependency and call-chain tracing workflow |
 | [VALIDATION.md](VALIDATION.md) | Differential validation and fidelity rules |
 
@@ -35,6 +37,7 @@ Central navigation map for the Sony BIONZ X (`CXD90045`) universal emulator and 
 | [ARCHITECTURE_UVC_MONITOR.md](ARCHITECTURE_UVC_MONITOR.md) | UVC monitor architecture (hash-pinned by `E0348`) |
 | [UVC_HANDOVER_PLAN.md](UVC_HANDOVER_PLAN.md) | UVC/PTP handover plan |
 | [CINEMAHUD_STOCK_PTP.md](CINEMAHUD_STOCK_PTP.md) | CinemaHUD stock PTP reference |
+| [ISP_TRANSFORM_CATALOG.md](ISP_TRANSFORM_CATALOG.md) | Transform formats, control dependencies, evidence, and open verification for ARRI tuning |
 | [ROADMAP.md](ROADMAP.md) | Long-term project roadmap |
 
 ## 4. Evidence, Decisions & Archives

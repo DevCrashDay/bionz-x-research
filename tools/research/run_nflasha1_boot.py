@@ -10,6 +10,7 @@ This is a bounded bring-up experiment, not a booted camera: see the run report f
 stop reason and the labelled MMIO stubs.
 """
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -22,6 +23,8 @@ from src.a6400.execution.nflasha_boot_set import NflashaBootSet  # noqa: E402
 from src.a6400.execution.unicorn_machine import UnicornMachine  # noqa: E402
 from src.a6400.targets import get_profile  # noqa: E402
 from tools.research.decode_kernel_kallsyms import decode  # noqa: E402
+from tools.research.thumb_boundary import (arm_user_address, capture_unicorn,  # noqa: E402
+                                           identity, parse_stop)
 
 OUT = ROOT / 'artifacts/analysis/e0421-ttyam0-init'
 
@@ -52,6 +55,13 @@ def main():
     parser.add_argument('--serial-input', default='')
     parser.add_argument('--svc-dispatch', action='store_true')
     parser.add_argument('--trace-user-mode', action='store_true')
+    parser.add_argument('--trace-thumb-boundary', action='store_true',
+                        help='capture the E0467 return and loader instruction windows')
+    parser.add_argument('--thumb-loader-entry', type=arm_user_address,
+                        help='override the historical loader VA for --trace-thumb-boundary')
+    parser.add_argument('--thumb-stop', action='append', default=[], type=parse_stop,
+                        help='extra stop recorded with --trace-thumb-boundary: '
+                             'user-return, kernel-entry, or pc:ADDRESS')
     parser.add_argument('--trace-reg', action='append', default=[],
                         metavar='PC:REGS')
     parser.add_argument('--cmdline-bootparams', action='store_true')
@@ -62,11 +72,38 @@ def main():
     parser.add_argument('--serial-output', type=Path, default=OUT / 'nflasha1-ttyAM0.log')
     parser.add_argument('--target', default='ilce_6400',
                         help='registered CXD90045 target_id from src/a6400/targets/')
+    parser.add_argument('--boot-set', choices=('nflasha1', 'nflasha3'),
+                        default='nflasha1',
+                        help='boot set to load (nflasha1 updater or nflasha3 main)')
     args = parser.parse_args()
+    if args.thumb_loader_entry is not None and not args.trace_thumb_boundary:
+        parser.error('--thumb-loader-entry requires --trace-thumb-boundary')
+    if args.thumb_stop and not args.trace_thumb_boundary:
+        parser.error('--thumb-stop requires --trace-thumb-boundary')
+    log_directory = OUT
+    if args.trace_thumb_boundary:
+        log_directory = args.output.resolve().parent
+        artifacts = (ROOT / 'artifacts').resolve()
+        paths = {args.output.resolve(), args.serial_output.resolve(),
+                 log_directory / 'dmesg-klog.txt'}
+        if len(paths) != 3 or any(path.exists() or not path.is_relative_to(artifacts)
+                                  for path in paths):
+            parser.error('Thumb traces require distinct new output files under artifacts')
+        for path in paths:
+            path.parent.mkdir(parents=True, exist_ok=True)
     target_profile = get_profile(args.target)
 
-    boot_set = NflashaBootSet.from_evidence(ROOT, 'nflasha1')
-    contract = UpdaterBootContract(boot_set, cmdline_extra=args.cmdline_extra)
+    boot_set = NflashaBootSet.from_evidence(ROOT, args.boot_set)
+    config_boot_set = (
+        NflashaBootSet.from_evidence(ROOT, 'nflasha1')
+        if args.boot_set != 'nflasha1'
+        else None
+    )
+    contract = UpdaterBootContract(
+        boot_set,
+        cmdline_extra=args.cmdline_extra,
+        config_boot_set=config_boot_set,
+    )
     verification = contract.verify()
     print(json.dumps({key: verification[key] for key in
                       ('machine', 'load_addresses', 'kernel_raw_bytes', 'initrd_bytes',
@@ -185,7 +222,19 @@ def main():
         trace_points=trace_points,
         instruction_limit=args.limit,
         symbols=symbols)
+    if args.trace_thumb_boundary:
+        boundary = capture_unicorn(machine, args.thumb_loader_entry, args.thumb_stop)
     report = machine.run()
+    if args.trace_thumb_boundary:
+        report['thumb_boundary'] = {
+            'engine': 'unicorn',
+            'identity': identity(contract, args.target, args.boot_set),
+            'tool_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            'argv': sys.argv[1:],
+            'windows': boundary,
+            'stop': {'reason': report['stop_reason'], 'pc': report['stop_pc'],
+                     'error': report['stop_error'], 'exception_state': report['exception_state']},
+        }
     # E0421: locate candidate uart_port fields (mapbase/membase) in kernel data.
     uart_probe = []
     try:
@@ -225,7 +274,9 @@ def main():
         import re as _re
         for line in _re.findall(r'[ -~]{16,}', text):
             klog_lines.append(line)
-        (OUT / 'dmesg-klog.txt').write_text('\n'.join(klog_lines), encoding='latin1')
+        log_mode = 'x' if args.trace_thumb_boundary else 'w'
+        with (log_directory / 'dmesg-klog.txt').open(log_mode, encoding='latin1') as log:
+            log.write('\n'.join(klog_lines))
     except Exception:
         klog_lines = []
     report['klog_lines'] = klog_lines[-120:]
@@ -259,9 +310,10 @@ def main():
                 hits += 1
                 start = index + 1
     report['ram_strings'] = found
-    OUT.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, indent=2), encoding='utf-8')
-    args.serial_output.write_text(report['serial_text'], encoding='latin1')
+    log_directory.mkdir(parents=True, exist_ok=True)
+    output_mode = 'x' if args.trace_thumb_boundary else 'w'
+    with args.serial_output.open(output_mode, encoding='latin1') as serial:
+        serial.write(report['serial_text'])
     print('\nstop:', report['stop_reason'], 'pc', hex(report['stop_pc']),
           report['stop_symbol'])
     print('serial bytes:', report['serial_bytes'])
@@ -274,7 +326,8 @@ def main():
                            'reserved_regions', 'cmdline', 'atags')},
                     'contract_checks': verification['checks'],
                     'kernel_sha256_zimage': boot_set.kernel_file().sha256})
-    args.output.write_text(json.dumps(report, indent=2), encoding='utf-8')
+    with args.output.open(output_mode, encoding='utf-8') as output:
+        json.dump(report, output, indent=2)
     print('ram strings found:', len(report['ram_strings']))
     for item in report['ram_strings'][:20]:
         print(' ', item['needle'], item['excerpt'])

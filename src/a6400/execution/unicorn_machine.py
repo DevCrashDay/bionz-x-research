@@ -63,10 +63,17 @@ GIC_CPU = 0xF8000100
 TIMER_BASE = 0xF2403000
 TIMER_COUNTER_OFFSET = 0x10C
 TIMER_IRQ = 153  # 0x99: ext_timer_setup setup_irq(irq = context[4] + 0x99)
+UART_IRQ = 150   # ttyAM0 PL011 UART0 interrupt
 TIMER_HZ = 100  # clock_event period 0x2710 on a 1 MHz timer
 TIMER_TICKS_PER_JIFFY = 0x2710
 VECTORS_BASE = 0xFFFF0000
 CRCDC_BASE = 0xF2A31000
+#: CXD90045 Sugilite GPU BAR0 and clock/reset block (verified in grm_gles.ko E0510).
+SUGILITE_BASE = 0xF1000000
+SUGILITE_SIZE = 0x4000
+SUGILITE_IRQ = 76
+SUGILITE_CLK_BASE = 0xF3400000
+SUGILITE_CLK_SIZE = 0x1000
 # ARM PL011 PrimeCell identification registers (+0xFE0..+0xFFC).
 PL011_ID_REGS = {
     0xFE0: 0x11, 0xFE4: 0x10, 0xFE8: 0x14, 0xFEC: 0x00,   # 0x00141011
@@ -281,8 +288,17 @@ class UnicornMachine:
         self._soft_pending_irqs: set[int] = set()
         self._gic_active_irq = None
         self._gic_iar_served = False
-        self._gic_regs: dict[int, int] = {}
+        self._gic_regs: dict[tuple[str, int], int] = {
+            # Bootloader pre-routes all SPIs (IRQ >= 32, GICD_ITARGETSR 0x820..0xBFF)
+            # to CPU0; Sony's gic_dist_init only toggles GICD_CTLR without setting
+            # ITARGETSR (cross-checked with Oein/a5000-emulator docs/HARDWARE.md).
+            ('dist', offset): 0x01010101
+            for offset in range(0x820, 0xC00, 4)
+        }
         self._timer_regs: dict[int, int] = {}
+        from src.a6400.execution.dmp_p3d import SugiliteMmioModel
+        self._sugilite_clk_regs: dict[int, int] = {}
+        self._sugilite_mmio = SugiliteMmioModel()
         self._gic_enabled = False
         self._jiffies_injected = 0
         self._timer_counter_reads = 0
@@ -800,7 +816,8 @@ class UnicornMachine:
                 target = frame['pc']
                 if (spsr & 0x1F) != 0x10:
                     return
-                if not (0x1000 <= (target or 0) < 0x60000000):
+                if not ((0x1000 <= (target or 0) < 0x60000000)
+                        or (0xFFFF0000 <= (target or 0) < 0xFFFF1000)):
                     self.pt_frame_consumed = frame['gen']
                     return
                 if not (0x1000 <= (frame['sp'] or 0) < 0x60000000):
@@ -824,8 +841,12 @@ class UnicornMachine:
                     uc.reg_write(UC_ARM_REG_SP, frame['sp'])
                     uc.reg_write(UC_ARM_REG_LR, frame['lr'])
                     self._set_pc_and_cpsr(target, spsr)
+                    self._pending_cputlb_flush = True
+                    self._pte_dirty = False
                     self._pending_user_resume = (
                         self.thumb_pc(target, spsr), spsr)
+                    self._pending_user_frame = frame
+                    self._restore_user_sp = False
                     try:
                         uc.emu_stop()
                     except Exception:
@@ -953,8 +974,13 @@ class UnicornMachine:
         def uart_register_value(offset):
             if offset == PL011_DR:
                 if self.serial_input:
-                    self._uart_regs[PL011_RIS] = self._uart_regs.get(PL011_RIS, 0) | 0x10  # RX interrupt status
-                    return self.serial_input.pop(0)
+                    ch = self.serial_input.pop(0)
+                    if self.serial_input:
+                        self._uart_regs[PL011_RIS] = self._uart_regs.get(PL011_RIS, 0) | 0x10
+                    else:
+                        self._uart_regs[PL011_RIS] = self._uart_regs.get(PL011_RIS, 0) & ~0x10
+                    self._sync_uart_irq()
+                    return ch
                 return 0
             if offset == PL011_FR:
                 rxfe = 0x10 if not self.serial_input else 0
@@ -983,6 +1009,18 @@ class UnicornMachine:
                 # CRCDC/clock block: update_crdm writes +0x30=1 and polls bit0;
                 # report completion immediately (bit0 clear) instead of timing out.
                 uc.mem_write(address, struct.pack('<I', 0))
+                return True
+            if in_range(address, SUGILITE_CLK_BASE, SUGILITE_CLK_SIZE):
+                offset = address - SUGILITE_CLK_BASE
+                stored = self._sugilite_clk_regs.get(offset, 0)
+                uc.mem_write(address, (stored & ((1 << (size * 8)) - 1))
+                             .to_bytes(size, 'little'))
+                return True
+            if in_range(address, SUGILITE_BASE, SUGILITE_SIZE):
+                offset = address - SUGILITE_BASE
+                stored = self._sugilite_mmio.read_reg(offset)
+                uc.mem_write(address, (stored & ((1 << (size * 8)) - 1))
+                             .to_bytes(size, 'little'))
                 return True
             if uart_reads(address):
                 offset = address - self.uart_base
@@ -1050,6 +1088,7 @@ class UnicornMachine:
                 if cpu_side and offset == GIC_ICCEOIR:
                     self._gic_active_irq = None
                     self._gic_eoir_writes += 1
+                    self._sync_uart_irq()
                 if cpu_side and offset == GIC_ICCICR:
                     self._gic_enabled = bool(
                         (value & 1) and (self._gic_regs.get(('dist', 0x000), 0) & 1))
@@ -1070,14 +1109,36 @@ class UnicornMachine:
             if in_range(address, CRCDC_BASE, 0x1000):
                 self._crcdc_regs[address - CRCDC_BASE] = value & 0xFFFFFFFF
                 return True
+            if in_range(address, SUGILITE_CLK_BASE, SUGILITE_CLK_SIZE):
+                offset = address - SUGILITE_CLK_BASE
+                val32 = value & 0xFFFFFFFF
+                if offset in (0x080, 0x280):
+                    self._sugilite_clk_regs[offset] = self._sugilite_clk_regs.get(offset, 0) | val32
+                elif offset in (0x084, 0x284):
+                    base_off = offset - 4
+                    self._sugilite_clk_regs[base_off] = self._sugilite_clk_regs.get(base_off, 0) & ~val32
+                else:
+                    self._sugilite_clk_regs[offset] = val32
+                return True
+            if in_range(address, SUGILITE_BASE, SUGILITE_SIZE):
+                offset = address - SUGILITE_BASE
+                self._sugilite_mmio.write_reg(offset, value & 0xFFFFFFFF)
+                if self._sugilite_mmio.irq_asserted:
+                    self._soft_pending_irqs.add(SUGILITE_IRQ)
+                else:
+                    self._soft_pending_irqs.discard(SUGILITE_IRQ)
+                return True
             if in_range(address, self.uart_base):
                 offset = address - self.uart_base
                 if offset == PL011_DR:
                     self.serial.append(value & 0xFF)
                 elif offset == PL011_ICR:
                     self._uart_regs[PL011_RIS] = self._uart_regs.get(PL011_RIS, 0) & ~value
+                    self._sync_uart_irq()
                 else:
                     self._uart_regs[offset] = value & 0xFFFFFFFF
+                    if offset == PL011_IMSC:
+                        self._sync_uart_irq()
             if size <= 4:
                 stream = self.mmio_write_bytes.setdefault(address, bytearray())
                 if len(stream) < 2048:
@@ -1332,7 +1393,9 @@ class UnicornMachine:
             self.uc.hook_add(UC_HOOK_CODE, page_fault_hook,
                              begin=page_fault, end=page_fault + 3)
         self._install_fault_mrc_hooks()
-        if self.enable_svc_dispatch and self.virtual_tlb:
+        if self.enable_svc_dispatch and (
+                self.virtual_tlb or self.virtual_tlb_enabled
+                or self.virtual_tlb_on_userspace):
             self._install_kuser_hooks(tls_only=True)
         else:
             self._install_kuser_hooks()
@@ -1408,6 +1471,17 @@ class UnicornMachine:
         dist_ctlr = self._gic_regs.get(('dist', 0x000), 0)
         return bool((cpu_ctlr & 1) and (dist_ctlr & 1))
 
+    def _sync_uart_irq(self) -> None:
+        """Assert or clear PL011 UART0 IRQ 150 from masked interrupt status."""
+        ris = self._uart_regs.get(PL011_RIS, 0) | 0x20  # TXRIS always ready
+        if self.serial_input:
+            ris |= 0x10  # RXRIS while RX FIFO non-empty
+        mis = ris & self._uart_regs.get(PL011_IMSC, 0)
+        if mis and self._gic_irq_enabled():
+            self._soft_pending_irqs.add(UART_IRQ)
+        else:
+            self._soft_pending_irqs.discard(UART_IRQ)
+
     def _try_inject_irq(self) -> bool:
         """Deliver a pending software or timer IRQ by emulating ARM IRQ entry."""
         has_soft = bool(self._soft_pending_irqs)
@@ -1418,7 +1492,34 @@ class UnicornMachine:
             return False
         cpsr = self.uc.reg_read(UC_ARM_REG_CPSR)
         if cpsr & 0x80:  # CPSR.I: interrupts masked
-            return False
+            # ARMv7 WFI wakes on a pending IRQ even with CPSR.I=1; the kernel
+            # then executes the post-WFI return + `cpsie i` to take the IRQ.
+            # Unicorn exits emu_start right after WFI, so step up to 8 insns
+            # until CPSR.I clears rather than stalling indefinitely at WFI+4.
+            pc_now = self.uc.reg_read(UC_ARM_REG_PC)
+            is_wfi = False
+            try:
+                if cpsr & 0x20:
+                    is_wfi = (pc_now >= 2 and int.from_bytes(
+                        self._guest_read(pc_now - 2, 2), 'little') == 0xBF30)
+                else:
+                    is_wfi = (pc_now >= 4 and int.from_bytes(
+                        self._guest_read(pc_now - 4, 4), 'little') == 0xE320F003)
+            except Exception:
+                is_wfi = False
+            if is_wfi:
+                for _ in range(8):
+                    cur_pc = self.uc.reg_read(UC_ARM_REG_PC)
+                    cur_cpsr = self.uc.reg_read(UC_ARM_REG_CPSR)
+                    if not (cur_cpsr & 0x80):
+                        cpsr = cur_cpsr
+                        break
+                    thumb = cur_cpsr & 0x20
+                    self.uc.emu_start(cur_pc | (1 if thumb else 0), 0, count=1)
+                else:
+                    cpsr = self.uc.reg_read(UC_ARM_REG_CPSR)
+            if cpsr & 0x80:
+                return False
         if has_soft:
             irq = min(self._soft_pending_irqs)
             self._soft_pending_irqs.discard(irq)
@@ -1620,7 +1721,6 @@ class UnicornMachine:
 
         def memory_barrier(uc, address, size, user):
             record(0xFFFF0FA0, 'memory_barrier')
-            uc.reg_write(UC_ARM_REG_R0, 0)
             uc.reg_write(UC_ARM_REG_PC, uc.reg_read(UC_ARM_REG_LR))
 
         def cmpxchg(uc, address, size, user):
@@ -1830,11 +1930,10 @@ class UnicornMachine:
         directly: r0/r1 are filled from the saved fault state and the MRC is
         skipped.
         """
-        pabt_ifar = self._symbol_address('__pabt_usr')
-        dabt_ifar = self._symbol_address('__dabt_usr')
-        # Fall back to the verified constants when symbols are absent.
-        pabt_mrc_r0, pabt_mrc_r1 = 0x60119B60, 0x60119B64
-        dabt_mrc_r1, dabt_mrc_r0 = 0x60119B44, 0x60119B48
+        pabt_base = self._symbol_address('v7_pabort') or 0x60119B60
+        dabt_base = self._symbol_address('v7_early_abort') or 0x60119B40
+        pabt_mrc_r0, pabt_mrc_r1 = pabt_base, pabt_base + 4
+        dabt_mrc_r1, dabt_mrc_r0 = dabt_base + 4, dabt_base + 8
 
         def make_hook(reg, getter, counter):
             def hook(uc, address, size, user):
@@ -2714,6 +2813,8 @@ class UnicornMachine:
                     if len(self.switch_mm_values) < 8:
                         self.switch_mm_values.append(pgd)
                     if 0x1000 <= pgd < 0x80000000:
+                        if pgd != self._cached_ttbr0:
+                            self._pending_cputlb_flush = True
                         self._last_switch_mm_pgd = pgd
                         self._cached_ttbr0 = pgd
                 except Exception:
@@ -3542,7 +3643,17 @@ class UnicornMachine:
                             if (0x1000 <= (_rpc & ~1) < 0x60000000
                                     and (_rcpsr & 0x1F) != 0x10):
                                 _rcpsr = ((_rcpsr & ~0x3F) | 0x10 | 0x20)
+                            self._apply_pending_tlb_work()
                             self._set_pc_and_cpsr(_rpc, _rcpsr)
+                            _uframe = getattr(self, '_pending_user_frame', None)
+                            self._pending_user_frame = None
+                            if _uframe is not None and (_rcpsr & 0x1F) == 0x10:
+                                for _ri in range(13):
+                                    self.uc.reg_write(UC_ARM_REG_R0 + _ri,
+                                                      _uframe['words'][_ri])
+                                self.uc.reg_write(UC_ARM_REG_SP, _uframe['sp'])
+                                self.uc.reg_write(UC_ARM_REG_LR, _uframe['lr'])
+                                self._restore_user_sp = False
                             try:
                                 self.uc.ctl_flush_tb()
                             except Exception:
@@ -3552,7 +3663,6 @@ class UnicornMachine:
                                 self.uc.ctl_remove_cache(_page, _page + 0x1000)
                             except Exception:
                                 pass
-                            self._apply_pending_tlb_work()
                             self.uc.emu_start(_rpc, 0, count=slice_size)
                         if self._user_refresh_requested:
                             self._user_refresh_requested = False
@@ -3736,8 +3846,9 @@ class UnicornMachine:
                                     self.insn_invalid_unsupported.append({
                                         'pc': f'0x{pc:08x}', 'bytes': _hex,
                                         'mnemonic': _mn})
+                            in_kuser = (0xFFFF0000 <= pc < 0xFFFF1000)
                             if (not is_mem and not is_fetch and user_mode
-                                    and 0x1000 <= pc < 0x60000000):
+                                    and (0x1000 <= pc < 0x60000000 or in_kuser)):
                                 # E0443: distinguish a real CPU exception (SWI/UNDEF)
                                 # from an instruction-fetch page fault by checking
                                 # whether the faulting page is mapped in the guest
@@ -3745,11 +3856,14 @@ class UnicornMachine:
                                 # unmapped -> fall through to the prefetch abort path.
                                 # E0444: decode is unconditional for a mapped page;
                                 # the capped dump is only for diagnostics.
-                                info = self._walk_user_va(pc)
-                                self._capture_live_fault_page(pc)
-                                page_pa = None
-                                if info is not None and 'pa' in info:
-                                    page_pa = int(info['pa'], 16)
+                                if in_kuser:
+                                    page_pa = self._walk_kernel_pt(pc)
+                                else:
+                                    info = self._walk_user_va(pc)
+                                    self._capture_live_fault_page(pc)
+                                    page_pa = None
+                                    if info is not None and 'pa' in info:
+                                        page_pa = int(info['pa'], 16)
                                 is_svc = False
                                 if page_pa is not None:
                                     try:
@@ -3773,6 +3887,40 @@ class UnicornMachine:
                                                 'address': f'0x{target:08x}',
                                                 'kind': 'data-decoded',
                                                 'write': bool(is_write)})
+                                        _walk = (
+                                            self._walk_page_tables_phys_with_perms(target)
+                                            if user_mode and 0x1000 <= target < 0x60000000
+                                            else None
+                                        )
+                                        _need_perm = 2 if is_write else 1
+                                        if _walk is not None and (_walk[1] & _need_perm) == _need_perm:
+                                            self._flush_cputlb()
+                                            self._flush_tlb()
+                                            self._set_pc_and_cpsr(pc, cpsr)
+                                            page = target & ~0xFFF
+                                            pc_page = pc & ~0xFFF
+                                            remove = getattr(self.uc, 'ctl_remove_cache', None)
+                                            if remove is not None:
+                                                try:
+                                                    remove(page, page + 0x1000)
+                                                    if pc_page != page:
+                                                        remove(pc_page, pc_page + 0x1000)
+                                                    self._page_cache_drops += 1
+                                                except Exception:
+                                                    pass
+                                            try:
+                                                self.uc.emu_start(
+                                                    pc | (1 if (cpsr & 0x20) else 0),
+                                                    0, count=1)
+                                                executed += 1
+                                                remaining = max(0, remaining - 1)
+                                                continue
+                                            except Exception:
+                                                pass
+                                            if self._note_fault(pc, target, cpsr):
+                                                stop_reason = 'repeated_fault'
+                                                break
+                                            continue
                                         if self._deliver_data_abort(
                                                 pc, cpsr, target, is_write):
                                             page = target & ~0xFFF

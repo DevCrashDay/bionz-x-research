@@ -210,7 +210,7 @@ class StatusSnapshot:
     @property
     def description(self) -> str:
         return (
-            f"{self.suite.test_count} tests recorded passing. Offline original-code execution, "
+            f"{self.suite.test_count} tests in the recorded offline suite. Offline original-code execution, "
             "read-only physical observation and authored demonstrations are reported separately. "
             "No emulator GUI frame and no UVC frame are claimed."
         )
@@ -218,30 +218,115 @@ class StatusSnapshot:
 
 STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
-    as_of="2026-11-14",
+    as_of="2026-11-17",
     latest=EvidenceRef(
-        evidence_id="E0510",
-        path="docs/evidence/0510-ilce-7rm4a-offline-sourced-profile.md",
-        date="2026-11-14",
-        title="ILCE-7RM4A (a7R IVA) gains a sourced reference profile",
+        evidence_id="E0570",
+        path="docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md",
+        date="2026-11-17",
+        title="ILCE-7RM4A gains a sourced reference profile",
         demonstrated=(
-            "The a7R IVA row of the E0477 platform map becomes a registered reference profile, "
-            "sourced only from the body's own packaged 1.13 updater. Seven gadget-core kernel "
-            "symbols are decoded from its own vmlinux.bin (8d02896458cd8927..., confirming and "
-            "extending E0480), with a CXD90045 identity and an 18-pair stock USB set from its "
-            "config.yaml and an 88-entry devno table that publishes no usb/video or usb/audio "
-            "node. No camera was accessed and no address is shared with the a6400."
+            "The a7R IVA row of the E0477 platform map is a registered reference profile, "
+            "sourced only from that body's packaged 1.13 updater. Seven gadget-core symbols "
+            "are decoded from its own vmlinux.bin, with a CXD90045 identity, an 18-pair stock "
+            "USB set, and an 88-entry devno table that publishes no usb/video or usb/audio node."
         ),
         boundary=(
-            "Offline packaged firmware only: no USB, no updater execution, no boot, no live "
-            "/proc or physical dump. A resolved symbol is presence evidence, not loadability. "
-            "This body's kernel is distinct from the a6400's (E0477); ilce_7rm4a stays a "
-            "reference profile, not an execution or installation target."
+            "Offline packaged firmware only. No camera, USB, boot, or live dump is claimed. "
+            "The kernel addresses are not the a6400's, and ilce_7rm4a is not an execution target. "
+            "The E0554 A6400A dispatch map and the QEMU module 1 latch remain as recorded."
         ),
         tier="OFFLINE",
     ),
-    headline="1782 tests recorded passing | No verified emulator GUI frame",
+    headline="1972 offline suite cases | A6400A GET_FILE is halfword 8 | QEMU module 1 latch still skips 0x0105",
     cards=(
+        EvidenceRef(
+            evidence_id="E0554",
+            path="docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md",
+            date="2026-11-17",
+            title="A6400A libJiritsu dispatches GET_FILE on halfword 8",
+            demonstrated=(
+                "The packaged ILCE-6400A 1.01 libJiritsu.so dispatcher at 0x7015 "
+                "selects GET_FILE for halfword 8, SET_FILE_PATH for 15 and SET_FILE2 "
+                "for 16. The public ZV-E10 GET_FILE value 0x4008 is not that halfword."
+            ),
+            boundary=(
+                "No Senser packet was sent. The library map stays closed, and the "
+                "category store at 0x8A46 was not followed through the Senser parser."
+            ),
+            tier="OFFLINE FIRMWARE",
+        ),
+        EvidenceRef(
+            evidence_id="E0553",
+            path="docs/evidence/0553-qemu-a6400-module1-latch-skips-0x0105.md",
+            date="2026-11-17",
+            title="The module 1 latch never publishes 0x0105",
+            demonstrated=(
+                "0x63922304 seeds 0x64351F28 with 0x0100. 0x639267BC stores only the value "
+                "returned by 0x63D3BD56, which keeps the old halfword unless the request is "
+                "0x0112. At step 12 the request at 0x64350F04 is 0x0105 and the enable byte is 0."
+            ),
+            boundary=(
+                "No device model changed. The index stays 12. A later store is not ruled out. "
+                "The next measurement is the writer of the byte at 0x64354174."
+            ),
+            tier="OFFLINE QEMU",
+        ),
+        EvidenceRef(
+            evidence_id="E0524",
+            path="docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md",
+            date="2026-11-16",
+            title="Reproducible captured QEMU inputs and qualified LIRO event waits",
+            demonstrated=(
+                "Two hash-checked preparations from the captured boot areas and user partitions have "
+                "identical outputs. Correct native eMMC user-area offsets and CMD1 sector negotiation "
+                "restore original mounts, four CPUs, LIRO/stella startup and shell command roundtrips. "
+                "Stopped task snapshots and bounded original-code analysis identify Task 43 waiting on "
+                "flag 10 (mask 0x3373); its IRQ 101/102 paths are enabled but never asserted."
+            ),
+            boundary=(
+                "Recover the real IRQ producer/register/timing contract; do not inject completion flags. "
+                "Task 65 is dormant with a finite entry target, not a proven sub-micro deadlock. Task 1's "
+                "lifecycle semaphore wait is not established as the sole blocker. No full camera boot, "
+                "verified emulator GUI frame or physical operation is claimed."
+            ),
+            tier="OFFLINE QEMU + ORIGINAL STATIC",
+        ),
+        EvidenceRef(
+            evidence_id="E0523",
+            path="docs/evidence/0523-mod-loader-ok-routing-diagnostics.md",
+            date="2026-11-15",
+            title="Guarded RAM-only Mod Loader and MTF2 menu touch",
+            demonstrated=(
+                "The owner-run physical checkpoint verifies Mod Loader OK routing, MTF2 state-init "
+                "packaging, SMP cache flushing and touch through the loader in ordinary menu tabs."
+            ),
+            boundary=(
+                "Historical physical checkpoint: RAM-only, no persistence or flash write. Its recorded "
+                "My Menu, injected Mods-tab and tab-bar-focus limitations remain; no new camera test "
+                "was performed for the offline QEMU work."
+            ),
+            tier="PHYSICAL RAM-ONLY + OFFLINE STATIC",
+        ),
+        EvidenceRef(
+            evidence_id="E0509",
+            path="docs/evidence/0509-a6400a-msc-reply-lifetime-and-verified-native-identity.md",
+            date="2026-11-13",
+            title="a6400A normal identity query succeeds within its reply window",
+            demonstrated=(
+                "Original ARM/Thumb controls identify a finite 10,000 ms reply timeout. The client "
+                "now keeps one request and bounded polling together and refuses stale continuation. "
+                "One owner-run transaction returns ILCE-6400A and opaque product code 0032858730 "
+                "in 2.727 ms through unchanged Windows USBSTOR, with three SCSI operations, no "
+                "BUSY, no request replay, no driver/mode change and no sector/file operation."
+            ),
+            boundary=(
+                "This verifies normal model information, not a debugger, live kernel identity, "
+                "/proc, /setting or physical dumps. The exact first-BUSY cause and cold-session "
+                "repeatability remain unproven; the delayed E0508 test could miss a finite reply. "
+                "The target remains reference."
+            ),
+            tier="READ-ONLY PHYSICAL + OFFLINE",
+        ),
         EvidenceRef(
             evidence_id="E0505",
             path="docs/evidence/0505-av-cam-cc-3dlut-and-ec-gamma-pipeline.md",
@@ -487,9 +572,9 @@ STATUS_SNAPSHOT = StatusSnapshot(
         ),
     ),
     suite=SuiteRecord(
-        test_count=1782,
-        recorded_at="2026-11-14",
-        evidence_id="E0510",
+        test_count=1972,
+        recorded_at="2026-11-17",
+        evidence_id="E0553",
         command="python -m unittest discover -s tests -q",
     ),
     footer=(
@@ -662,7 +747,7 @@ class TelemetryDashboard:
 
     def description(self) -> str:
         return (
-            f"{DASHBOARD_TITLE}: {self.test_count:,} tests recorded passing, "
+            f"{DASHBOARD_TITLE}: {self.test_count:,} tests in the recorded suite, "
             f"{self.receipt_count} evidence receipts through {self.latest_evidence}. "
             "Bounded telemetry, not a firmware compatibility percentage."
         )
@@ -721,7 +806,7 @@ def _build_telemetry() -> TelemetryDashboard:
     test_count = STATUS_SNAPSHOT.suite.test_count
 
     pills = (
-        KpiPill("contract tests", f"{test_count:,} passing", "green", "offline suite receipts"),
+        KpiPill("contract tests", f"{test_count:,} recorded", "green", "offline suite receipts"),
         KpiPill("evidence receipts", f"{receipt_count} recorded", "blue", "docs/evidence/"),
         KpiPill("teardown sequencer", f"{TEARDOWN_PHASES}/{TEARDOWN_PHASES} phases ({TEARDOWN_PHASE_MASK})", "green", "E0353"),
         KpiPill("task phases", f"{phases.done}/{phases.total} observed", "amber", "task94_phases"),
@@ -892,3 +977,87 @@ def _build_telemetry() -> TelemetryDashboard:
 
 
 TELEMETRY = _build_telemetry()
+
+
+# ===========================================================================
+# Daily test suite history (single source of truth for docs/images/test-growth.svg)
+# ===========================================================================
+
+
+@dataclass(frozen=True)
+class DailyTestPoint:
+    """One calendar day's recorded cumulative suite count and net additions."""
+
+    date: str
+    total: int
+    delta: int
+    evidence_id: str
+    milestone: str = ""
+
+
+DAILY_TEST_HISTORY: tuple[DailyTestPoint, ...] = (
+    DailyTestPoint("2026-10-18", 204, 204, "E0022", "ARM loader, UIPC & task94 boot"),
+    DailyTestPoint("2026-10-19", 331, 127, "E0041", "DMM/timer ABI & preset backup"),
+    DailyTestPoint("2026-10-20", 362, 31, "E0058", "SD DMA/IOCTL & GRM contracts"),
+    DailyTestPoint("2026-10-21", 362, 0, "E0058"),
+    DailyTestPoint("2026-10-22", 362, 0, "E0058"),
+    DailyTestPoint("2026-10-23", 362, 0, "E0058"),
+    DailyTestPoint("2026-10-24", 446, 84, "E0066", "GLES kernel binding & backup decoder"),
+    DailyTestPoint("2026-10-25", 446, 0, "E0066"),
+    DailyTestPoint("2026-10-26", 446, 0, "E0066"),
+    DailyTestPoint("2026-10-27", 468, 22, "E0067", "GPIO contract & GLES ownership"),
+    DailyTestPoint("2026-10-28", 476, 8, "E0068", "USB buspower module boundary"),
+    DailyTestPoint("2026-10-29", 486, 10, "E0070", "Sugilite render loop & surface"),
+    DailyTestPoint("2026-10-30", 486, 0, "E0070"),
+    DailyTestPoint("2026-10-31", 486, 0, "E0070"),
+    DailyTestPoint("2026-11-01", 486, 0, "E0070"),
+    DailyTestPoint("2026-11-02", 498, 12, "E0071", "GuestUsbEvent & MediaCommon"),
+    DailyTestPoint("2026-11-03", 506, 8, "E0072", "GuestUsbOtgCore & HDMI boundary"),
+    DailyTestPoint("2026-11-04", 546, 40, "E0082", "DMP PICA200 rasterizer & CEC/pipe"),
+    DailyTestPoint("2026-11-05", 561, 15, "E0095", "Root USB debugger & menu model"),
+    DailyTestPoint("2026-11-06", 566, 5, "E0116", "Native row entry & allocator"),
+    DailyTestPoint("2026-11-07", 599, 33, "E0150", "Authentic 720p30 CinemaHUD UVC"),
+    DailyTestPoint("2026-11-08", 605, 6, "E0204", "Entry bridge & caller drain"),
+    DailyTestPoint("2026-11-09", 778, 173, "E0298", "Safe OSD capture & monitor rings"),
+    DailyTestPoint("2026-11-10", 881, 103, "E0314", "GPES BAR/IRQ model & UIPC wire"),
+    DailyTestPoint("2026-11-11", 1312, 431, "E0369", "Multi-body targets & sync callbacks"),
+    DailyTestPoint("2026-11-12", 1510, 198, "E0440", "WinUSB debugger v2 & nflasha dump"),
+    DailyTestPoint("2026-11-13", 1727, 217, "E0500", "UC_TLB_VIRTUAL & 13-body map"),
+    DailyTestPoint("2026-11-14", 1895, 168, "E0510", "BusyBox ash shell, A5KU & UI boot"),
+    DailyTestPoint("2026-11-15", 1903, 8, "E0523", "MTF2 touch mod, guarded Mod Loader & QEMU a6400 boot/SMP"),
+    DailyTestPoint("2026-11-16", 1905, 2, "E0524", "Captured QEMU boot inputs, eMMC addressing & qualified LIRO waits"),
+    DailyTestPoint("2026-11-17", 1972, 67, "E0554", "A6400A GET_FILE is halfword 8; QEMU latch still skips 0x0105"),
+)
+
+
+def _validate_daily_test_history(
+    history: tuple[DailyTestPoint, ...] = DAILY_TEST_HISTORY,
+) -> None:
+    if not history:
+        raise ValueError("DAILY_TEST_HISTORY must not be empty")
+    prev_total = 0
+    for index, point in enumerate(history):
+        if point.total < prev_total:
+            raise ValueError(f"DAILY_TEST_HISTORY regressed at {point.date}: {point.total} < {prev_total}")
+        expected_delta = point.total - prev_total
+        if point.delta != expected_delta:
+            raise ValueError(
+                f"DAILY_TEST_HISTORY delta mismatch at {point.date}: "
+                f"got {point.delta}, expected {expected_delta}"
+            )
+        if index > 0 and point.date <= history[index - 1].date:
+            raise ValueError(f"DAILY_TEST_HISTORY dates not strictly increasing at {point.date}")
+        prev_total = point.total
+    if history[-1].total != STATUS_SNAPSHOT.suite.test_count:
+        raise ValueError(
+            f"DAILY_TEST_HISTORY[-1].total ({history[-1].total}) != "
+            f"STATUS_SNAPSHOT.suite.test_count ({STATUS_SNAPSHOT.suite.test_count})"
+        )
+    if history[-1].date != STATUS_SNAPSHOT.as_of:
+        raise ValueError(
+            f"DAILY_TEST_HISTORY[-1].date ({history[-1].date}) != "
+            f"STATUS_SNAPSHOT.as_of ({STATUS_SNAPSHOT.as_of})"
+        )
+
+
+_validate_daily_test_history()

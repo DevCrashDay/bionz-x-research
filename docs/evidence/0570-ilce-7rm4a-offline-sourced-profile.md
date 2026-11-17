@@ -1,6 +1,6 @@
-# E0510 — ILCE-7RM4A (a7R IVA) gains a sourced reference profile
+# E0570 — ILCE-7RM4A (a7R IVA) gains a sourced reference profile
 
-Date: 2026-11-14. Offline packaged firmware only: no camera, no USB, no updater executed.
+Date: 2026-11-17. The packaged-image measurements were read on 2026-11-14. Offline packaged firmware only: no camera, no USB, no updater executed.
 This record registers the `ilce_7rm4a` target profile that `docs/ADDING_A_BIONZX_CAMERA.md`
 describes, using only the a7R IVA's own packaged updater. It is contributed by an a7R IVA
 owner who reports the body running the current release; no value here is taken from that

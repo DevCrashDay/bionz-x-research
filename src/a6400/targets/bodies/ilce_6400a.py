@@ -1,7 +1,7 @@
 """Sony ILCE-6400A (a6400A) offline-qualified reference target profile."""
 from __future__ import annotations
 
-from src.a6400.targets.bodies._common import E0506, E0509, ref
+from src.a6400.targets.bodies._common import E0506, E0509, E0552, E0554, ref
 from src.a6400.targets.profile import (
     EvidenceRef,
     ModuleComponent,
@@ -88,6 +88,8 @@ ILCE_6400A = TargetProfile(
         "The camera's displayed 1.01 version and USB identity do not establish its live kernel/module bytes.",
         "All seven listed USB kernel entry addresses differ from the original a6400; do not reuse old hooks or checkpoints.",
         "The native debugger bootstrap is not qualified for this body. usb_extcmd.ko fails the old strict identity comparison.",
+        "E0552: the local nflasha5 image is a WBI1 warm-boot snapshot that names libJiritsu and /tmp/jiritsu/libJit.so. It is not a root filesystem and it does not prove adjust-command IDs.",
+        "E0554: packaged libJiritsu.so dispatches GET_FILE on halfword 8, SET_FILE_PATH on 15 and SET_FILE2 on 16. That is not a sent Senser packet, so the RAM bootstrap stays closed.",
         "The updater prefix stops at unsupported UART MMIO after 3001 instructions; no kernel boot, shell or GUI is claimed.",
         "uipc_queues stays empty and live_build_version stays unknown; no live kernel, memory or partition reads were performed.",
         "Stock descriptor membership does not identify a USB mode. Only Mass Storage was observed; PC Remote and UVC were not tested.",
@@ -98,6 +100,8 @@ ILCE_6400A = TargetProfile(
         "static partition/MMIO contracts and moved exception hooks; no physical dumps or "
         "first-class runnable-machine profile are claimed. E0509 verifies normal model information "
         "through unchanged Windows USBSTOR; the earlier delayed-read boundary is superseded, "
-        "but root/debugger/dump access remains unverified."
+        "but root/debugger/dump access remains unverified. "
+        f"{E0552} records the local nflasha5 WBI string audit. "
+        f"{E0554} reads the packaged libJiritsu.so dispatcher; camera modes stay closed."
     ),
 )
