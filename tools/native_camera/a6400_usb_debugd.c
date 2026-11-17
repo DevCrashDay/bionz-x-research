@@ -577,6 +577,11 @@ static void dispatch(const struct packet *q,struct packet *r) {
     }
 }
 
+static int ephemeral_ram_session(void) {
+    const char *value=getenv("A6400_EPHEMERAL_RAM");
+    return value && value[0]=='1' && value[1]==0;
+}
+
 int main(void) {
     const char *inherited_lock=getenv("A6400_LAUNCH_LOCK_FD");
     if(inherited_lock) {
@@ -585,7 +590,10 @@ int main(void) {
         if(*inherited_lock && !*end && fd>=3 && fd<=0x7fffffff)
             fcntl((int)fd,F_SETFD,FD_CLOEXEC);
     }
-    int log=open("/setting/a6400_usb_debugd.log",O_WRONLY|O_CREAT|O_APPEND,0600);
+    int ephemeral=ephemeral_ram_session();
+    const char *log_path=ephemeral?"/tmp_bt/a6400_usb_debugd.log":"/setting/a6400_usb_debugd.log";
+    int log=open(log_path,O_WRONLY|O_CREAT|O_APPEND,0600);
+    if(log<0 && ephemeral) log=open("/tmp/a6400_usb_debugd.log",O_WRONLY|O_CREAT|O_APPEND,0600);
     if(log>=0) { dup2(log,2); if(log!=2) close(log); }
     int lock=open("/tmp/a6400_usb_debugd.lock",O_WRONLY|O_CREAT|O_NOFOLLOW,0600);
     if(lock<0) { dprintf(2,"debug lock open failed errno=%d\n",errno); return 2; }
@@ -604,7 +612,8 @@ int main(void) {
      * previous instance still owns feature 0x23 and take over immediately after
      * it unregisters (duplicate registration returns EALREADY=114). */
     int fd=-1, registered=0;
-    for (unsigned attempt=0;attempt<100 && !stopping;attempt++) {
+    unsigned registration_budget=ephemeral?600u:100u;
+    for (unsigned attempt=0;attempt<registration_budget && !stopping;attempt++) {
         fd=open("/dev/usb/usb_extcmd",O_RDWR);
         if (fd>=0) {
             fcntl(fd,F_SETFD,FD_CLOEXEC);
@@ -612,7 +621,8 @@ int main(void) {
             if (ioctl(fd,0xc00ceb00u,&reg)==0) { registered=1; break; }
             int error=errno;
             close(fd); fd=-1;
-            if (error!=EALREADY && error!=EBUSY && error!=EAGAIN && error!=ENODEV) break;
+            if (error!=EALREADY && error!=EBUSY && error!=EAGAIN && error!=ENODEV
+                && !(ephemeral && (error==ENOENT || error==ENXIO))) break;
         }
         if (attempt==0 || attempt%20==0) dprintf(2,"debug registration retry attempt=%u errno=%d\n",attempt,errno);
         usleep(100000);

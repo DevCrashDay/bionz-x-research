@@ -68,6 +68,11 @@ def upload_and_verify_debugger(
 
 
 def deploy(cam, spec: DebuggerTargetSpec, *, check_only: bool = False):
+    if spec.bootstrap_mode != 'senser_ff01':
+        raise RuntimeError(
+            f'{spec.model_name} uses bootstrap {spec.bootstrap_mode}; '
+            'the Senser FileControl installer was not started.'
+        )
     destination = ROOT / 'artifacts/hardware' / (
         f"native-usb-debug-{'check' if check_only else 'deploy'}-{spec.target_id}-"
         + datetime.now().strftime('%Y%m%d-%H%M%S')
@@ -133,8 +138,15 @@ def main(argv=None):
         help='Read-only pull and compatibility check without writing to /setting or /etc/ld.so.preload.',
     )
     args = parser.parse_args(argv)
-    from pmca.commands.usb import senserShellCommand  # noqa: E402
     spec = get_debugger_target(args.target)
+    if spec.bootstrap_mode != 'senser_ff01':
+        print(
+            f'{spec.model_name} is not a Senser FileControl target. '
+            'Use python -m tools.research.a6400a_jiritsu_bootstrap --mode audit-wbi '
+            'for the local ILCE-6400A image.'
+        )
+        return 2
+    from pmca.commands.usb import senserShellCommand  # noqa: E402
     state = {'completed': False}
 
     def run(cam):

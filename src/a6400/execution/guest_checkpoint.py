@@ -14,6 +14,10 @@ from unicorn import arm_const as arm
 
 from src.a6400.execution.capped_log import CappedLog
 
+# Diagnostic traces are not machine state. A snapshot keeps the tail and the totals.
+SNAPSHOT_LOG_LIMIT = 64
+PAGE = 4096
+
 ARM_CHECKPOINT_REGS = (
     arm.UC_ARM_REG_R0, arm.UC_ARM_REG_R1, arm.UC_ARM_REG_R2, arm.UC_ARM_REG_R3,
     arm.UC_ARM_REG_R4, arm.UC_ARM_REG_R5, arm.UC_ARM_REG_R6, arm.UC_ARM_REG_R7,
@@ -53,9 +57,72 @@ def checkpoint_resume_state(probe):
     return result
 
 
+def capped_trace(items, count_key):
+    """Keep the last records and the exact total, instead of an unbounded list."""
+    if isinstance(items, CappedLog) and items.maxlen is not None and items.maxlen <= SNAPSHOT_LOG_LIMIT:
+        return items
+    return CappedLog.wrap(items or [], SNAPSHOT_LOG_LIMIT, count_key)
+
+
+def pack_region(begin, end, perms, data):
+    """Store only non-zero pages. A fresh mapping is already zero-filled."""
+    pages = []
+    for offset in range(0, len(data), PAGE):
+        page = data[offset:offset + PAGE]
+        if any(page):
+            pages.append((offset, zlib.compress(page, 6)))
+    return {'begin': begin, 'end': end, 'perms': perms, 'size': len(data), 'pages': pages}
+
+
+def unpack_region(region):
+    if 'pages' in region:
+        data = bytearray(region['size'])
+        for offset, blob in region['pages']:
+            page = zlib.decompress(blob)
+            data[offset:offset + len(page)] = page
+        return data
+    return zlib.decompress(region['data'])
+
+
+def pack_cache(cache):
+    if isinstance(cache, (bytes, bytearray)):
+        return bytes(cache)
+    return zlib.compress(pickle.dumps(dict(cache)), 6)
+
+
+def unpack_cache(cache):
+    if isinstance(cache, (bytes, bytearray)):
+        return pickle.loads(zlib.decompress(cache))
+    return cache
+
+
+def pack_trace_object(blob, attribute, count_key):
+    """Cap one pickled object's diagnostic list without touching the live probe."""
+    obj = pickle.loads(blob)
+    if hasattr(obj, attribute):
+        setattr(obj, attribute, capped_trace(getattr(obj, attribute), count_key))
+    return pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def reject_extra_checkpoint(filepath, retained):
+    """One retained Unicorn snapshot. A second filename is how the directory filled up."""
+    target = Path(filepath).resolve()
+    root = Path(retained).resolve()
+    if target.parent != root and root not in target.parents:
+        return
+    others = [path for path in root.glob('*.ckpt') if path.resolve() != target]
+    if others:
+        raise ValueError(
+            f'{root} already holds {others[0].name}. Replace that snapshot or delete it '
+            'before saving another.')
+
+
 def save_checkpoint(probe, filepath: Path) -> int:
     """Serializes the exact Unicorn memory mappings, CPU context, and Python subsystem state."""
+    from project_paths import PROJECT_ROOT
+
     filepath = Path(filepath)
+    reject_extra_checkpoint(filepath, PROJECT_ROOT / 'artifacts' / 'checkpoints')
     filepath.parent.mkdir(parents=True, exist_ok=True)
 
     # 1. Sync active thread registers and capture all ARM registers
@@ -69,14 +136,7 @@ def save_checkpoint(probe, filepath: Path) -> int:
     for begin, end, perms in probe.mu.mem_regions():
         size = end - begin + 1
         data = bytes(probe.mu.mem_read(begin, size))
-        compressed = zlib.compress(data, level=1)
-        regions.append({
-            'begin': begin,
-            'end': end,
-            'perms': perms,
-            'size': size,
-            'data': compressed,
-        })
+        regions.append(pack_region(begin, end, perms, data))
 
     uipc_bytes = None
     if hasattr(probe, 'uipc') and probe.uipc:
@@ -90,8 +150,7 @@ def save_checkpoint(probe, filepath: Path) -> int:
 
     # 3. Python Subsystem State
     # A CappedLog keeps its totals and counts; a BootLogger wrapper must not be pickled (callback, stream, probe).
-    raw_serviced = probe.report.get('serviced_syscalls', [])
-    serviced_log = raw_serviced if isinstance(raw_serviced, CappedLog) else list(raw_serviced)
+    serviced_log = capped_trace(probe.report.get('serviced_syscalls', []), 'syscall')
     subsystems: Dict[str, Any] = {
         'instructions': probe.instructions,
         'runtime': {
@@ -103,11 +162,11 @@ def save_checkpoint(probe, filepath: Path) -> int:
         'syscall_responses_supplied': probe.report.get('syscall_responses_supplied', 0),
         'loaded_modules': list(probe.report.get('loaded_modules', [])),
         'filesystem_fds': dict(probe.filesystem.fds),
-        'filesystem_cache': dict(probe.filesystem.cache),
+        'filesystem_cache': pack_cache(probe.filesystem.cache),
         'filesystem_cwd': getattr(probe.filesystem, 'cwd', None),
         'threads': pickle.dumps(probe.threads) if hasattr(probe, 'threads') and probe.threads else None,
         'sem': pickle.dumps(probe.sem) if hasattr(probe, 'sem') and probe.sem else None,
-        'uipc': uipc_bytes,
+        'uipc': pack_trace_object(uipc_bytes, 'transactions', 'type') if uipc_bytes else None,
         'heap': {
             'current': probe.heap.current,
             'start': probe.heap.start,
@@ -139,8 +198,12 @@ def save_checkpoint(probe, filepath: Path) -> int:
     for dev_attr in ('gpio', 'kikilog', 'usb_buspower', 'usb_event', 'usb_otgcore', 'hdmi', 'cec', 'mmca_char', 'pipes', 'fb', 'gles'):
         if hasattr(probe, dev_attr):
             val = getattr(probe, dev_attr)
-            if val is not None:
-                devices[dev_attr] = pickle.dumps(val)
+            if val is None:
+                continue
+            blob = pickle.dumps(val)
+            if dev_attr == 'gles':
+                blob = pack_trace_object(blob, 'transactions', 'operation')
+            devices[dev_attr] = blob
     dump = getattr(probe, 'nflasha4_dump', None)
     if getattr(dump, 'modified', False):  # only a written image differs from the policy's fresh one
         devices['nflasha4_dump'] = pickle.dumps(dump)
@@ -150,7 +213,7 @@ def save_checkpoint(probe, filepath: Path) -> int:
     subsystems['devices'] = devices
 
     payload = {
-        'version': 2,
+        'version': 3,
         'context': ctx_bytes,
         'registers': regs,
         'regions': regions,
@@ -158,9 +221,36 @@ def save_checkpoint(probe, filepath: Path) -> int:
         'resume_state': checkpoint_resume_state(probe),
     }
 
-    raw_bundle = pickle.dumps(payload)
+    raw_bundle = pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)
     filepath.write_bytes(raw_bundle)
     return len(raw_bundle)
+
+
+def compact_checkpoint(path: Path) -> int:
+    """Rewrite a snapshot so zero pages and diagnostic traces are not stored in full."""
+    path = Path(path)
+    payload = pickle.loads(path.read_bytes())
+    if payload.get('version') not in (1, 2, 3):
+        raise ValueError(f"Unsupported checkpoint version: {payload.get('version')}")
+    sub = payload['subsystems']
+    sub['serviced_syscalls'] = capped_trace(sub.get('serviced_syscalls') or [], 'syscall')
+    sub['filesystem_cache'] = pack_cache(unpack_cache(sub.get('filesystem_cache') or {}))
+    if sub.get('uipc'):
+        sub['uipc'] = pack_trace_object(sub['uipc'], 'transactions', 'type')
+    devices = sub.get('devices') or {}
+    if devices.get('gles'):
+        devices['gles'] = pack_trace_object(devices['gles'], 'transactions', 'operation')
+    payload['regions'] = [
+        region if 'pages' in region else pack_region(
+            region['begin'], region['end'], region['perms'], unpack_region(region))
+        for region in payload['regions']
+    ]
+    payload['version'] = 3
+    raw = pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)
+    temporary = path.with_suffix(path.suffix + '.tmp')
+    temporary.write_bytes(raw)
+    temporary.replace(path)
+    return len(raw)
 
 
 def restore_checkpoint(probe, filepath: Path, *, exact=False) -> None:
@@ -169,10 +259,10 @@ def restore_checkpoint(probe, filepath: Path, *, exact=False) -> None:
     raw_bundle = filepath.read_bytes()
     payload = pickle.loads(raw_bundle)
 
-    if payload.get('version') not in (1, 2):
+    if payload.get('version') not in (1, 2, 3):
         raise ValueError(f"Unsupported checkpoint version: {payload.get('version')}")
-    if exact and payload.get('version') != 2:
-        raise ValueError('Exact resume requires a version-2 checkpoint with recorded stop semantics; use a fresh boot')
+    if exact and payload.get('version') not in (2, 3):
+        raise ValueError('Exact resume requires a recorded stop; use a fresh boot')
     resume = payload.get('resume_state', {})
     if resume.get('retry_error'):
         raise ValueError('Checkpoint cannot safely resume: ' + resume['retry_error'])
@@ -189,10 +279,10 @@ def restore_checkpoint(probe, filepath: Path, *, exact=False) -> None:
         begin = reg['begin']
         size = reg['size']
         perms = reg['perms']
-        data = zlib.decompress(reg['data'])
+        data = unpack_region(reg)
         # stream alias VAs restore as copies here; GuestStream.from_state re-links them to one buffer
         probe.mu.mem_map(begin, size, perms)
-        probe.mu.mem_write(begin, data)
+        probe.mu.mem_write(begin, bytes(data))
 
     if getattr(probe, 'null_page_policy', None) == 'read-zero':
         try:
@@ -236,7 +326,7 @@ def restore_checkpoint(probe, filepath: Path, *, exact=False) -> None:
         probe.report['loaded_modules'] = sub['loaded_modules']
 
     probe.filesystem.fds = sub['filesystem_fds']
-    probe.filesystem.cache = sub['filesystem_cache']
+    probe.filesystem.cache = unpack_cache(sub['filesystem_cache'])
     # cwd is absent from pre-cwd checkpoints; leave it unset so relative paths fail as before
     if sub.get('filesystem_cwd') is not None:
         probe.filesystem.cwd = sub['filesystem_cwd']

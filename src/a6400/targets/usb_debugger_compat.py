@@ -67,6 +67,7 @@ class DebuggerTargetSpec:
     libusbcmd_sha256: str
     payload_daemon: str = DEFAULT_PAYLOAD_DAEMON
     payload_launcher: str = DEFAULT_PAYLOAD_LAUNCHER
+    bootstrap_mode: str = "senser_ff01"
     notes: str = ""
 
 
@@ -108,6 +109,26 @@ USB_DEBUGGER_TARGETS: Mapping[str, DebuggerTargetSpec] = {
         notes=(
             "Verified on live ILCE-7C (FW 2.00): libusbcmd.so is byte-identical to ILCE-6400; "
             "usb_extcmd.ko is metadata-only equivalent; info/ps/exec verified in normal MSC."
+        ),
+    ),
+    "ilce_6400a": DebuggerTargetSpec(
+        target_id="ilce_6400a",
+        model_name="ILCE-6400A",
+        firmware_versions=("1.01",),
+        qualification="reference",
+        usb_extcmd_size=14796,
+        usb_extcmd_normalized_sha256="unverified",
+        usb_extcmd_exact_sha256s=(
+            "d47d05ec891d18c8582baf19e413967c5d3fd5c36438d76f6d2e8a7f112428e3",
+        ),
+        usb_extcmd_reference_paths=(),
+        libusbcmd_size=15996,
+        libusbcmd_sha256="23b94deb094d31f160cfe1d46330f2425e94d4801dfccb66720c4cf4b81cfb7e",
+        bootstrap_mode="jiritsu_ram_only",
+        notes=(
+            "E0506 package identity. The Senser FileControl installer does not apply. "
+            "Normalized usb_extcmd equivalence is intentionally unverified, so the old "
+            "installer cannot treat this body as compatible."
         ),
     ),
 }

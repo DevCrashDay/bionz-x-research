@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="920" height="844" viewBox="0 0 920 844" role="img" aria-labelledby="title desc">
-<title id="title">Automated Test Suite Growth — 2026-10-18 to 2026-11-16 (1,905 passing)</title>
-<desc id="desc">Daily cumulative test suite growth across 30 days from 204 tests on 2026-10-18 to 1,905 tests on 2026-11-16. Bounded offline and hardware checks, not a firmware compatibility percentage.</desc>
+<title id="title">Automated Test Suite Growth — 2026-10-18 to 2026-11-17 (1,972 passing)</title>
+<desc id="desc">Daily cumulative test suite growth across 31 days from 204 tests on 2026-10-18 to 1,972 tests on 2026-11-17. Bounded offline and hardware checks, not a firmware compatibility percentage.</desc>
 <defs>
   <linearGradient id="tg-area-grad" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0%" stop-color="#2ea043" stop-opacity="0.42" />
@@ -62,21 +62,21 @@
 </g>
 <g>
 <text x="24" y="38" fill="#f0f6fc" font-size="19" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">Automated Test Suite Growth &amp; Daily Velocity</text>
-<text x="24" y="54" fill="#9da7b3" font-size="8.8" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">Daily cumulative offline checks &amp; net additions · 2026-10-18 to 2026-11-16 (30 days · deterministic suite)</text>
+<text x="24" y="54" fill="#9da7b3" font-size="8.8" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">Daily cumulative offline checks &amp; net additions · 2026-10-18 to 2026-11-17 (31 days · deterministic suite)</text>
 <rect x="694.352" y="22" width="201.648" height="24" rx="12" fill="#1c222b" stroke="#30363d" stroke-width="1" />
 <circle cx="707.352" cy="34" r="6.5" fill="#3fb950" opacity="0.2" />
 <circle cx="707.352" cy="34" r="3.5" fill="#3fb950" />
-<text x="885" y="37.5" fill="#f0f6fc" font-size="10" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="end">2026-11-16 | 1,905 PASSING</text>
+<text x="885" y="37.5" fill="#f0f6fc" font-size="10" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="end">2026-11-17 | 1,972 PASSING</text>
 <rect x="24" y="70" width="164" height="68" rx="8" fill="url(#tg-card-bg)" stroke="#30363d" stroke-width="1" />
 <rect x="25" y="71" width="162" height="3" rx="1.5" fill="#3fb950" />
 <text x="36" y="90" fill="#8b949e" font-size="8.2" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">CURRENT SUITE</text>
-<text x="36" y="113" fill="#f0f6fc" font-size="17" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="start">1,905</text>
-<text x="36" y="129" fill="#3fb950" font-size="8.2" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">+2 today · E0524</text>
+<text x="36" y="113" fill="#f0f6fc" font-size="17" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="start">1,972</text>
+<text x="36" y="129" fill="#3fb950" font-size="8.2" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">+67 today · E0553</text>
 <rect x="201" y="70" width="164" height="68" rx="8" fill="url(#tg-card-bg)" stroke="#30363d" stroke-width="1" />
 <rect x="202" y="71" width="162" height="3" rx="1.5" fill="#39c5cf" />
 <text x="213" y="90" fill="#8b949e" font-size="8.2" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">NET EXPANSION</text>
-<text x="213" y="113" fill="#f0f6fc" font-size="17" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="start">+1,701</text>
-<text x="213" y="129" fill="#39c5cf" font-size="8.2" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">204 -&gt; 1,905 (30d)</text>
+<text x="213" y="113" fill="#f0f6fc" font-size="17" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="start">+1,768</text>
+<text x="213" y="129" fill="#39c5cf" font-size="8.2" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">204 -&gt; 1,972 (31d)</text>
 <rect x="378" y="70" width="164" height="68" rx="8" fill="url(#tg-card-bg)" stroke="#30363d" stroke-width="1" />
 <rect x="379" y="71" width="162" height="3" rx="1.5" fill="#bc8cff" />
 <text x="390" y="90" fill="#8b949e" font-size="8.2" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">PEAK DAY SURGE</text>
@@ -85,13 +85,13 @@
 <rect x="555" y="70" width="164" height="68" rx="8" fill="url(#tg-card-bg)" stroke="#30363d" stroke-width="1" />
 <rect x="556" y="71" width="162" height="3" rx="1.5" fill="#f0883e" />
 <text x="567" y="90" fill="#8b949e" font-size="8.2" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">7-DAY VELOCITY</text>
-<text x="567" y="113" fill="#f0f6fc" font-size="17" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="start">+1,127</text>
-<text x="567" y="129" fill="#f0883e" font-size="8.2" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">avg +161.0/d · Nov 08-14</text>
+<text x="567" y="113" fill="#f0f6fc" font-size="17" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="start">+1,091</text>
+<text x="567" y="129" fill="#f0883e" font-size="8.2" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">avg +155.9/d · Nov 08-14</text>
 <rect x="732" y="70" width="164" height="68" rx="8" fill="url(#tg-card-bg)" stroke="#30363d" stroke-width="1" />
 <rect x="733" y="71" width="162" height="3" rx="1.5" fill="#58a6ff" />
 <text x="744" y="90" fill="#8b949e" font-size="8.2" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">ACTIVE CADENCE</text>
-<text x="744" y="113" fill="#f0f6fc" font-size="17" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="start">22 / 30d</text>
-<text x="744" y="129" fill="#58a6ff" font-size="8.2" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">E0524 evidence track</text>
+<text x="744" y="113" fill="#f0f6fc" font-size="17" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="start">23 / 31d</text>
+<text x="744" y="129" fill="#58a6ff" font-size="8.2" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">E0553 evidence track</text>
 <rect x="24" y="154" width="872" height="376" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1" />
 <text x="40" y="176" fill="#f0f6fc" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">Cumulative Test Trajectory &amp; Daily Additions</text>
 <text x="40" y="192" fill="#8b949e" font-size="8.5" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">Smooth monotone curve (left axis) · daily net delta bars (lower band) · 3 project phases</text>
@@ -107,17 +107,17 @@
 <rect x="808.08" y="168.5" width="8" height="8" rx="2" fill="#bc8cff" />
 <text x="820.08" y="176" fill="#8b949e" font-size="8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="start">+300+</text>
 <rect x="70" y="206" width="806" height="264" rx="6" fill="url(#tg-grid)" stroke="#30363d" stroke-width="1" />
-<rect x="70" y="206" width="483.6" height="264" rx="0" fill="#1f6feb" opacity="0.045" />
-<rect x="70" y="206" width="483.6" height="22" rx="0" fill="#1f6feb" opacity="0.08" />
-<text x="311.8" y="220" fill="#9da7b3" font-size="7.6" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="middle">PHASE I · CORE LOADER, FS &amp; GLES</text>
-<rect x="553.6" y="206" width="161.2" height="264" rx="0" fill="#39c5cf" opacity="0.045" />
-<rect x="553.6" y="206" width="161.2" height="22" rx="0" fill="#39c5cf" opacity="0.08" />
-<line x1="553.6" y1="206" x2="553.6" y2="470" stroke="#30363d" stroke-width="1" stroke-dasharray="3 3" />
-<text x="634.2" y="220" fill="#9da7b3" font-size="7.6" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="middle">PHASE II · DEBUGGER &amp; UVC</text>
-<rect x="714.8" y="206" width="107.467" height="264" rx="0" fill="#8957e5" opacity="0.045" />
-<rect x="714.8" y="206" width="107.467" height="22" rx="0" fill="#8957e5" opacity="0.08" />
-<line x1="714.8" y1="206" x2="714.8" y2="470" stroke="#30363d" stroke-width="1" stroke-dasharray="3 3" />
-<text x="768.533" y="220" fill="#9da7b3" font-size="7.6" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="middle">PHASE III · KERNEL BOOT</text>
+<rect x="70" y="206" width="468" height="264" rx="0" fill="#1f6feb" opacity="0.045" />
+<rect x="70" y="206" width="468" height="22" rx="0" fill="#1f6feb" opacity="0.08" />
+<text x="304" y="220" fill="#9da7b3" font-size="7.6" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="middle">PHASE I · CORE LOADER, FS &amp; GLES</text>
+<rect x="538" y="206" width="156" height="264" rx="0" fill="#39c5cf" opacity="0.045" />
+<rect x="538" y="206" width="156" height="22" rx="0" fill="#39c5cf" opacity="0.08" />
+<line x1="538" y1="206" x2="538" y2="470" stroke="#30363d" stroke-width="1" stroke-dasharray="3 3" />
+<text x="616" y="220" fill="#9da7b3" font-size="7.6" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="middle">PHASE II · DEBUGGER &amp; UVC</text>
+<rect x="694" y="206" width="182" height="264" rx="0" fill="#8957e5" opacity="0.045" />
+<rect x="694" y="206" width="182" height="22" rx="0" fill="#8957e5" opacity="0.08" />
+<line x1="694" y1="206" x2="694" y2="470" stroke="#30363d" stroke-width="1" stroke-dasharray="3 3" />
+<text x="785" y="220" fill="#9da7b3" font-size="7.6" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="middle">PHASE III · KERNEL BOOT</text>
 <line x1="70" y1="470" x2="876" y2="470" stroke="#30363d" stroke-width="1" opacity="0.85" />
 <text x="62" y="473" fill="#8b949e" font-size="8.5" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="end">0</text>
 <line x1="70" y1="422" x2="876" y2="422" stroke="#30363d" stroke-width="0.75" stroke-dasharray="2 4" opacity="0.55" />
@@ -130,151 +130,155 @@
 <text x="62" y="281" fill="#8b949e" font-size="8.5" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="end">1,600</text>
 <line x1="70" y1="230" x2="876" y2="230" stroke="#30363d" stroke-width="0.75" stroke-dasharray="2 4" opacity="0.55" />
 <text x="62" y="233" fill="#8b949e" font-size="8.5" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="end">2,000</text>
-<rect x="75.4333" y="429.295" width="16" height="40.7053" rx="3" fill="url(#tg-bar-emerald)" opacity="0.82" />
-<rect x="102.3" y="444.659" width="16" height="25.3411" rx="3" fill="url(#tg-bar-amber)" opacity="0.82" />
-<rect x="129.167" y="463.814" width="16" height="6.18561" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
-<rect x="156.033" y="468" width="16" height="2" rx="1" fill="#30363d" opacity="0.7" />
-<rect x="182.9" y="468" width="16" height="2" rx="1" fill="#30363d" opacity="0.7" />
-<rect x="209.767" y="468" width="16" height="2" rx="1" fill="#30363d" opacity="0.7" />
-<rect x="236.633" y="453.239" width="16" height="16.761" rx="3" fill="url(#tg-bar-amber)" opacity="0.82" />
-<rect x="263.5" y="468" width="16" height="2" rx="1" fill="#30363d" opacity="0.7" />
-<rect x="290.367" y="468" width="16" height="2" rx="1" fill="#30363d" opacity="0.7" />
-<rect x="317.233" y="465.61" width="16" height="4.38979" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
-<rect x="344.1" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
-<rect x="370.967" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
-<rect x="397.833" y="468" width="16" height="2" rx="1" fill="#30363d" opacity="0.7" />
-<rect x="424.7" y="468" width="16" height="2" rx="1" fill="#30363d" opacity="0.7" />
-<rect x="451.567" y="468" width="16" height="2" rx="1" fill="#30363d" opacity="0.7" />
-<rect x="478.433" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
-<rect x="505.3" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
-<rect x="532.167" y="462.019" width="16" height="7.98144" rx="3" fill="url(#tg-bar-amber)" opacity="0.82" />
-<rect x="559.033" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
-<rect x="585.9" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
-<rect x="612.767" y="463.415" width="16" height="6.58469" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
-<rect x="639.633" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
-<rect x="666.5" y="435.48" width="16" height="34.5197" rx="3" fill="url(#tg-bar-emerald)" opacity="0.82" />
-<text x="674.5" y="430.48" fill="#f0883e" font-size="7.6" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">+173</text>
-<rect x="693.367" y="449.448" width="16" height="20.5522" rx="3" fill="url(#tg-bar-amber)" opacity="0.82" />
-<text x="701.367" y="444.448" fill="#f0883e" font-size="7.6" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">+103</text>
-<rect x="720.233" y="384" width="16" height="86" rx="3" fill="url(#tg-bar-peak)" opacity="0.82" />
-<text x="728.233" y="379" fill="#bc8cff" font-size="7.6" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">+431</text>
-<rect x="747.1" y="430.492" width="16" height="39.5081" rx="3" fill="url(#tg-bar-emerald)" opacity="0.82" />
-<text x="755.1" y="425.492" fill="#f0883e" font-size="7.6" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">+198</text>
-<rect x="773.967" y="426.701" width="16" height="43.2993" rx="3" fill="url(#tg-bar-emerald)" opacity="0.82" />
-<text x="781.967" y="421.701" fill="#f0883e" font-size="7.6" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">+217</text>
-<rect x="800.833" y="436.478" width="16" height="33.522" rx="3" fill="url(#tg-bar-emerald)" opacity="0.82" />
-<text x="808.833" y="431.478" fill="#f0883e" font-size="7.6" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">+168</text>
-<rect x="827.7" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
-<rect x="854.567" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
-<path d="M 83.43 445.52 C 92.39 440.44, 101.34 432.27, 110.30 430.28 C 119.26 428.29, 128.21 426.56, 137.17 426.56 C 146.12 426.56, 155.08 426.56, 164.03 426.56 C 172.99 426.56, 181.94 426.56, 190.90 426.56 C 199.86 426.56, 208.81 426.56, 217.77 426.56 C 226.72 426.56, 235.68 416.48, 244.63 416.48 C 253.59 416.48, 262.54 416.48, 271.50 416.48 C 280.46 416.48, 289.41 416.48, 298.37 416.48 C 307.32 416.48, 316.28 414.31, 325.23 413.84 C 334.19 413.37, 343.14 413.24, 352.10 412.88 C 361.06 412.52, 370.01 411.68, 378.97 411.68 C 387.92 411.68, 396.88 411.68, 405.83 411.68 C 414.79 411.68, 423.74 411.68, 432.70 411.68 C 441.66 411.68, 450.61 411.68, 459.57 411.68 C 468.52 411.68, 477.48 410.62, 486.43 410.24 C 495.39 409.86, 504.34 409.81, 513.30 409.28 C 522.26 408.75, 531.21 405.35, 540.17 404.48 C 549.12 403.61, 558.08 402.98, 567.03 402.68 C 575.99 402.38, 584.94 402.43, 593.90 402.08 C 602.86 401.73, 611.81 398.53, 620.77 398.12 C 629.72 397.71, 638.68 397.86, 647.63 397.40 C 656.59 396.94, 665.54 381.80, 674.50 376.64 C 683.46 371.48, 692.41 370.93, 701.37 364.28 C 710.32 357.63, 719.28 323.41, 728.23 312.56 C 737.19 301.71, 746.14 297.08, 755.10 288.80 C 764.06 280.52, 773.01 270.34, 781.97 262.76 C 790.92 255.18, 799.88 243.21, 808.83 242.60 C 817.79 241.99, 826.74 241.77, 835.70 241.64 C 844.66 241.51, 853.61 241.48, 862.57 241.40 L 862.57 470.00 L 83.43 470.00 Z" fill="url(#tg-area-grad)" />
-<path d="M 83.43 445.52 C 92.39 440.44, 101.34 432.27, 110.30 430.28 C 119.26 428.29, 128.21 426.56, 137.17 426.56 C 146.12 426.56, 155.08 426.56, 164.03 426.56 C 172.99 426.56, 181.94 426.56, 190.90 426.56 C 199.86 426.56, 208.81 426.56, 217.77 426.56 C 226.72 426.56, 235.68 416.48, 244.63 416.48 C 253.59 416.48, 262.54 416.48, 271.50 416.48 C 280.46 416.48, 289.41 416.48, 298.37 416.48 C 307.32 416.48, 316.28 414.31, 325.23 413.84 C 334.19 413.37, 343.14 413.24, 352.10 412.88 C 361.06 412.52, 370.01 411.68, 378.97 411.68 C 387.92 411.68, 396.88 411.68, 405.83 411.68 C 414.79 411.68, 423.74 411.68, 432.70 411.68 C 441.66 411.68, 450.61 411.68, 459.57 411.68 C 468.52 411.68, 477.48 410.62, 486.43 410.24 C 495.39 409.86, 504.34 409.81, 513.30 409.28 C 522.26 408.75, 531.21 405.35, 540.17 404.48 C 549.12 403.61, 558.08 402.98, 567.03 402.68 C 575.99 402.38, 584.94 402.43, 593.90 402.08 C 602.86 401.73, 611.81 398.53, 620.77 398.12 C 629.72 397.71, 638.68 397.86, 647.63 397.40 C 656.59 396.94, 665.54 381.80, 674.50 376.64 C 683.46 371.48, 692.41 370.93, 701.37 364.28 C 710.32 357.63, 719.28 323.41, 728.23 312.56 C 737.19 301.71, 746.14 297.08, 755.10 288.80 C 764.06 280.52, 773.01 270.34, 781.97 262.76 C 790.92 255.18, 799.88 243.21, 808.83 242.60 C 817.79 241.99, 826.74 241.77, 835.70 241.64 C 844.66 241.51, 853.61 241.48, 862.57 241.40" fill="none" stroke="url(#tg-line-grad)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" filter="url(#tg-glow)" />
-<circle cx="83.4333" cy="445.52" r="3.8" fill="#3fb950" stroke="#0d1117" stroke-width="1.5" />
-<circle cx="110.3" cy="430.28" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
-<circle cx="137.167" cy="426.56" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
-<circle cx="164.033" cy="426.56" r="1.8" fill="#8b949e" opacity="0.7" />
-<circle cx="190.9" cy="426.56" r="1.8" fill="#8b949e" opacity="0.7" />
-<circle cx="217.767" cy="426.56" r="1.8" fill="#8b949e" opacity="0.7" />
-<circle cx="244.633" cy="416.48" r="3.8" fill="#3fb950" stroke="#0d1117" stroke-width="1.5" />
-<circle cx="271.5" cy="416.48" r="1.8" fill="#8b949e" opacity="0.7" />
-<circle cx="298.367" cy="416.48" r="1.8" fill="#8b949e" opacity="0.7" />
-<circle cx="325.233" cy="413.84" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
-<circle cx="352.1" cy="412.88" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
-<circle cx="378.967" cy="411.68" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
-<circle cx="405.833" cy="411.68" r="1.8" fill="#8b949e" opacity="0.7" />
-<circle cx="432.7" cy="411.68" r="1.8" fill="#8b949e" opacity="0.7" />
-<circle cx="459.567" cy="411.68" r="1.8" fill="#8b949e" opacity="0.7" />
-<circle cx="486.433" cy="410.24" r="3.8" fill="#3fb950" stroke="#0d1117" stroke-width="1.5" />
-<circle cx="513.3" cy="409.28" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
-<circle cx="540.167" cy="404.48" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
-<circle cx="567.033" cy="402.68" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
-<circle cx="593.9" cy="402.08" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
-<circle cx="620.767" cy="398.12" r="3.8" fill="#3fb950" stroke="#0d1117" stroke-width="1.5" />
-<circle cx="647.633" cy="397.4" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
-<circle cx="674.5" cy="376.64" r="3.8" fill="#3fb950" stroke="#0d1117" stroke-width="1.5" />
-<circle cx="701.367" cy="364.28" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
-<circle cx="728.233" cy="312.56" r="3.8" fill="#bc8cff" stroke="#0d1117" stroke-width="1.5" />
-<circle cx="755.1" cy="288.8" r="3.8" fill="#3fb950" stroke="#0d1117" stroke-width="1.5" />
-<circle cx="781.967" cy="262.76" r="3.8" fill="#3fb950" stroke="#0d1117" stroke-width="1.5" />
-<circle cx="808.833" cy="242.6" r="3.8" fill="#3fb950" stroke="#0d1117" stroke-width="1.5" />
-<circle cx="835.7" cy="241.64" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
-<circle cx="862.567" cy="241.4" r="9" fill="#3fb950" opacity="0.22" />
-<circle cx="862.567" cy="241.4" r="4.8" fill="#3fb950" stroke="#0d1117" stroke-width="2" />
-<text x="83.4333" y="420.52" fill="#f0f6fc" font-size="8.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">204</text>
-<text x="244.633" y="404.48" fill="#f0f6fc" font-size="8.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">446</text>
-<text x="486.433" y="398.24" fill="#f0f6fc" font-size="8.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">498</text>
-<text x="620.767" y="386.12" fill="#f0f6fc" font-size="8.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">599</text>
-<text x="674.5" y="364.64" fill="#f0f6fc" font-size="8.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">778</text>
-<line x1="723.233" y1="312.56" x2="713.233" y2="312.56" stroke="#8b949e" stroke-width="0.9" opacity="0.7" />
-<text x="710.233" y="314.56" fill="#f0f6fc" font-size="8.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="end">1,312</text>
-<line x1="750.1" y1="288.8" x2="740.1" y2="288.8" stroke="#8b949e" stroke-width="0.9" opacity="0.7" />
-<text x="737.1" y="290.8" fill="#f0f6fc" font-size="8.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="end">1,510</text>
-<line x1="776.967" y1="262.76" x2="766.967" y2="265.76" stroke="#8b949e" stroke-width="0.9" opacity="0.7" />
-<text x="763.967" y="267.76" fill="#f0f6fc" font-size="8.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="end">1,727</text>
-<rect x="800.567" y="228.4" width="48" height="18" rx="5" fill="#2ea043" stroke="#3fb950" stroke-width="1" />
-<text x="824.567" y="240.6" fill="#ffffff" font-size="8.8" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">1,905</text>
-<line x1="446.133" y1="470" x2="446.133" y2="496" stroke="#30363d" stroke-width="1" />
-<line x1="83.4333" y1="470" x2="83.4333" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="83.4333" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">18</text>
-<line x1="110.3" y1="470" x2="110.3" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="110.3" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">19</text>
-<line x1="137.167" y1="470" x2="137.167" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="137.167" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">20</text>
-<line x1="164.033" y1="470" x2="164.033" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="164.033" y="485" fill="#8b949e" font-size="7.8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">21</text>
-<line x1="190.9" y1="470" x2="190.9" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="190.9" y="485" fill="#8b949e" font-size="7.8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">22</text>
-<line x1="217.767" y1="470" x2="217.767" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="217.767" y="485" fill="#8b949e" font-size="7.8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">23</text>
-<line x1="244.633" y1="470" x2="244.633" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="244.633" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">24</text>
-<line x1="271.5" y1="470" x2="271.5" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="271.5" y="485" fill="#8b949e" font-size="7.8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">25</text>
-<line x1="298.367" y1="470" x2="298.367" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="298.367" y="485" fill="#8b949e" font-size="7.8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">26</text>
-<line x1="325.233" y1="470" x2="325.233" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="325.233" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">27</text>
-<line x1="352.1" y1="470" x2="352.1" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="352.1" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">28</text>
-<line x1="378.967" y1="470" x2="378.967" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="378.967" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">29</text>
-<line x1="405.833" y1="470" x2="405.833" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="405.833" y="485" fill="#8b949e" font-size="7.8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">30</text>
-<line x1="432.7" y1="470" x2="432.7" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="432.7" y="485" fill="#8b949e" font-size="7.8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">31</text>
-<line x1="459.567" y1="470" x2="459.567" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="459.567" y="485" fill="#8b949e" font-size="7.8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">01</text>
-<line x1="486.433" y1="470" x2="486.433" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="486.433" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">02</text>
-<line x1="513.3" y1="470" x2="513.3" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="513.3" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">03</text>
-<line x1="540.167" y1="470" x2="540.167" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="540.167" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">04</text>
-<line x1="567.033" y1="470" x2="567.033" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="567.033" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">05</text>
-<line x1="593.9" y1="470" x2="593.9" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="593.9" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">06</text>
-<line x1="620.767" y1="470" x2="620.767" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="620.767" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">07</text>
-<line x1="647.633" y1="470" x2="647.633" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="647.633" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">08</text>
-<line x1="674.5" y1="470" x2="674.5" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="674.5" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">09</text>
-<line x1="701.367" y1="470" x2="701.367" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="701.367" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">10</text>
-<line x1="728.233" y1="470" x2="728.233" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="728.233" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">11</text>
-<line x1="755.1" y1="470" x2="755.1" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="755.1" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">12</text>
-<line x1="781.967" y1="470" x2="781.967" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="781.967" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">13</text>
-<line x1="808.833" y1="470" x2="808.833" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="808.833" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">14</text>
-<line x1="835.7" y1="470" x2="835.7" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="835.7" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">15</text>
-<line x1="862.567" y1="470" x2="862.567" y2="474" stroke="#30363d" stroke-width="1" />
-<text x="862.567" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">16</text>
-<text x="258.067" y="500" fill="#8b949e" font-size="8" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="middle">OCTOBER 2026</text>
-<text x="634.2" y="500" fill="#8b949e" font-size="8" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="middle">NOVEMBER 2026</text>
+<rect x="75" y="429.295" width="16" height="40.7053" rx="3" fill="url(#tg-bar-emerald)" opacity="0.82" />
+<rect x="101" y="444.659" width="16" height="25.3411" rx="3" fill="url(#tg-bar-amber)" opacity="0.82" />
+<rect x="127" y="463.814" width="16" height="6.18561" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
+<rect x="153" y="468" width="16" height="2" rx="1" fill="#30363d" opacity="0.7" />
+<rect x="179" y="468" width="16" height="2" rx="1" fill="#30363d" opacity="0.7" />
+<rect x="205" y="468" width="16" height="2" rx="1" fill="#30363d" opacity="0.7" />
+<rect x="231" y="453.239" width="16" height="16.761" rx="3" fill="url(#tg-bar-amber)" opacity="0.82" />
+<rect x="257" y="468" width="16" height="2" rx="1" fill="#30363d" opacity="0.7" />
+<rect x="283" y="468" width="16" height="2" rx="1" fill="#30363d" opacity="0.7" />
+<rect x="309" y="465.61" width="16" height="4.38979" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
+<rect x="335" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
+<rect x="361" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
+<rect x="387" y="468" width="16" height="2" rx="1" fill="#30363d" opacity="0.7" />
+<rect x="413" y="468" width="16" height="2" rx="1" fill="#30363d" opacity="0.7" />
+<rect x="439" y="468" width="16" height="2" rx="1" fill="#30363d" opacity="0.7" />
+<rect x="465" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
+<rect x="491" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
+<rect x="517" y="462.019" width="16" height="7.98144" rx="3" fill="url(#tg-bar-amber)" opacity="0.82" />
+<rect x="543" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
+<rect x="569" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
+<rect x="595" y="463.415" width="16" height="6.58469" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
+<rect x="621" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
+<rect x="647" y="435.48" width="16" height="34.5197" rx="3" fill="url(#tg-bar-emerald)" opacity="0.82" />
+<text x="655" y="430.48" fill="#f0883e" font-size="7.6" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">+173</text>
+<rect x="673" y="449.448" width="16" height="20.5522" rx="3" fill="url(#tg-bar-amber)" opacity="0.82" />
+<text x="681" y="444.448" fill="#f0883e" font-size="7.6" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">+103</text>
+<rect x="699" y="384" width="16" height="86" rx="3" fill="url(#tg-bar-peak)" opacity="0.82" />
+<text x="707" y="379" fill="#bc8cff" font-size="7.6" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">+431</text>
+<rect x="725" y="430.492" width="16" height="39.5081" rx="3" fill="url(#tg-bar-emerald)" opacity="0.82" />
+<text x="733" y="425.492" fill="#f0883e" font-size="7.6" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">+198</text>
+<rect x="751" y="426.701" width="16" height="43.2993" rx="3" fill="url(#tg-bar-emerald)" opacity="0.82" />
+<text x="759" y="421.701" fill="#f0883e" font-size="7.6" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">+217</text>
+<rect x="777" y="436.478" width="16" height="33.522" rx="3" fill="url(#tg-bar-emerald)" opacity="0.82" />
+<text x="785" y="431.478" fill="#f0883e" font-size="7.6" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">+168</text>
+<rect x="803" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
+<rect x="829" y="466" width="16" height="4" rx="3" fill="url(#tg-bar-blue)" opacity="0.82" />
+<rect x="855" y="456.631" width="16" height="13.3689" rx="3" fill="url(#tg-bar-amber)" opacity="0.82" />
+<path d="M 83.00 445.52 C 91.67 440.44, 100.33 432.27, 109.00 430.28 C 117.67 428.29, 126.33 426.56, 135.00 426.56 C 143.67 426.56, 152.33 426.56, 161.00 426.56 C 169.67 426.56, 178.33 426.56, 187.00 426.56 C 195.67 426.56, 204.33 426.56, 213.00 426.56 C 221.67 426.56, 230.33 416.48, 239.00 416.48 C 247.67 416.48, 256.33 416.48, 265.00 416.48 C 273.67 416.48, 282.33 416.48, 291.00 416.48 C 299.67 416.48, 308.33 414.31, 317.00 413.84 C 325.67 413.37, 334.33 413.24, 343.00 412.88 C 351.67 412.52, 360.33 411.68, 369.00 411.68 C 377.67 411.68, 386.33 411.68, 395.00 411.68 C 403.67 411.68, 412.33 411.68, 421.00 411.68 C 429.67 411.68, 438.33 411.68, 447.00 411.68 C 455.67 411.68, 464.33 410.62, 473.00 410.24 C 481.67 409.86, 490.33 409.81, 499.00 409.28 C 507.67 408.75, 516.33 405.35, 525.00 404.48 C 533.67 403.61, 542.33 402.98, 551.00 402.68 C 559.67 402.38, 568.33 402.43, 577.00 402.08 C 585.67 401.73, 594.33 398.53, 603.00 398.12 C 611.67 397.71, 620.33 397.86, 629.00 397.40 C 637.67 396.94, 646.33 381.80, 655.00 376.64 C 663.67 371.48, 672.33 370.93, 681.00 364.28 C 689.67 357.63, 698.33 323.41, 707.00 312.56 C 715.67 301.71, 724.33 297.08, 733.00 288.80 C 741.67 280.52, 750.33 270.34, 759.00 262.76 C 767.67 255.18, 776.33 243.21, 785.00 242.60 C 793.67 241.99, 802.33 241.77, 811.00 241.64 C 819.67 241.51, 828.33 241.56, 837.00 241.40 C 845.67 241.24, 854.33 236.04, 863.00 233.36 L 863.00 470.00 L 83.00 470.00 Z" fill="url(#tg-area-grad)" />
+<path d="M 83.00 445.52 C 91.67 440.44, 100.33 432.27, 109.00 430.28 C 117.67 428.29, 126.33 426.56, 135.00 426.56 C 143.67 426.56, 152.33 426.56, 161.00 426.56 C 169.67 426.56, 178.33 426.56, 187.00 426.56 C 195.67 426.56, 204.33 426.56, 213.00 426.56 C 221.67 426.56, 230.33 416.48, 239.00 416.48 C 247.67 416.48, 256.33 416.48, 265.00 416.48 C 273.67 416.48, 282.33 416.48, 291.00 416.48 C 299.67 416.48, 308.33 414.31, 317.00 413.84 C 325.67 413.37, 334.33 413.24, 343.00 412.88 C 351.67 412.52, 360.33 411.68, 369.00 411.68 C 377.67 411.68, 386.33 411.68, 395.00 411.68 C 403.67 411.68, 412.33 411.68, 421.00 411.68 C 429.67 411.68, 438.33 411.68, 447.00 411.68 C 455.67 411.68, 464.33 410.62, 473.00 410.24 C 481.67 409.86, 490.33 409.81, 499.00 409.28 C 507.67 408.75, 516.33 405.35, 525.00 404.48 C 533.67 403.61, 542.33 402.98, 551.00 402.68 C 559.67 402.38, 568.33 402.43, 577.00 402.08 C 585.67 401.73, 594.33 398.53, 603.00 398.12 C 611.67 397.71, 620.33 397.86, 629.00 397.40 C 637.67 396.94, 646.33 381.80, 655.00 376.64 C 663.67 371.48, 672.33 370.93, 681.00 364.28 C 689.67 357.63, 698.33 323.41, 707.00 312.56 C 715.67 301.71, 724.33 297.08, 733.00 288.80 C 741.67 280.52, 750.33 270.34, 759.00 262.76 C 767.67 255.18, 776.33 243.21, 785.00 242.60 C 793.67 241.99, 802.33 241.77, 811.00 241.64 C 819.67 241.51, 828.33 241.56, 837.00 241.40 C 845.67 241.24, 854.33 236.04, 863.00 233.36" fill="none" stroke="url(#tg-line-grad)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" filter="url(#tg-glow)" />
+<circle cx="83" cy="445.52" r="3.8" fill="#3fb950" stroke="#0d1117" stroke-width="1.5" />
+<circle cx="109" cy="430.28" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
+<circle cx="135" cy="426.56" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
+<circle cx="161" cy="426.56" r="1.8" fill="#8b949e" opacity="0.7" />
+<circle cx="187" cy="426.56" r="1.8" fill="#8b949e" opacity="0.7" />
+<circle cx="213" cy="426.56" r="1.8" fill="#8b949e" opacity="0.7" />
+<circle cx="239" cy="416.48" r="3.8" fill="#3fb950" stroke="#0d1117" stroke-width="1.5" />
+<circle cx="265" cy="416.48" r="1.8" fill="#8b949e" opacity="0.7" />
+<circle cx="291" cy="416.48" r="1.8" fill="#8b949e" opacity="0.7" />
+<circle cx="317" cy="413.84" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
+<circle cx="343" cy="412.88" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
+<circle cx="369" cy="411.68" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
+<circle cx="395" cy="411.68" r="1.8" fill="#8b949e" opacity="0.7" />
+<circle cx="421" cy="411.68" r="1.8" fill="#8b949e" opacity="0.7" />
+<circle cx="447" cy="411.68" r="1.8" fill="#8b949e" opacity="0.7" />
+<circle cx="473" cy="410.24" r="3.8" fill="#3fb950" stroke="#0d1117" stroke-width="1.5" />
+<circle cx="499" cy="409.28" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
+<circle cx="525" cy="404.48" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
+<circle cx="551" cy="402.68" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
+<circle cx="577" cy="402.08" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
+<circle cx="603" cy="398.12" r="3.8" fill="#3fb950" stroke="#0d1117" stroke-width="1.5" />
+<circle cx="629" cy="397.4" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
+<circle cx="655" cy="376.64" r="3.8" fill="#3fb950" stroke="#0d1117" stroke-width="1.5" />
+<circle cx="681" cy="364.28" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
+<circle cx="707" cy="312.56" r="3.8" fill="#bc8cff" stroke="#0d1117" stroke-width="1.5" />
+<circle cx="733" cy="288.8" r="3.8" fill="#3fb950" stroke="#0d1117" stroke-width="1.5" />
+<circle cx="759" cy="262.76" r="3.8" fill="#3fb950" stroke="#0d1117" stroke-width="1.5" />
+<circle cx="785" cy="242.6" r="3.8" fill="#3fb950" stroke="#0d1117" stroke-width="1.5" />
+<circle cx="811" cy="241.64" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
+<circle cx="837" cy="241.4" r="2.3" fill="#39c5cf" stroke="#0d1117" stroke-width="1" />
+<circle cx="863" cy="233.36" r="9" fill="#3fb950" opacity="0.22" />
+<circle cx="863" cy="233.36" r="4.8" fill="#3fb950" stroke="#0d1117" stroke-width="2" />
+<text x="83" y="420.52" fill="#f0f6fc" font-size="8.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">204</text>
+<text x="239" y="404.48" fill="#f0f6fc" font-size="8.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">446</text>
+<text x="473" y="398.24" fill="#f0f6fc" font-size="8.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">498</text>
+<text x="603" y="386.12" fill="#f0f6fc" font-size="8.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">599</text>
+<text x="655" y="364.64" fill="#f0f6fc" font-size="8.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">778</text>
+<line x1="702" y1="312.56" x2="692" y2="312.56" stroke="#8b949e" stroke-width="0.9" opacity="0.7" />
+<text x="689" y="314.56" fill="#f0f6fc" font-size="8.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="end">1,312</text>
+<line x1="728" y1="288.8" x2="718" y2="288.8" stroke="#8b949e" stroke-width="0.9" opacity="0.7" />
+<text x="715" y="290.8" fill="#f0f6fc" font-size="8.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="end">1,510</text>
+<line x1="754" y1="262.76" x2="744" y2="265.76" stroke="#8b949e" stroke-width="0.9" opacity="0.7" />
+<text x="741" y="267.76" fill="#f0f6fc" font-size="8.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="end">1,727</text>
+<rect x="801" y="220.36" width="48" height="18" rx="5" fill="#2ea043" stroke="#3fb950" stroke-width="1" />
+<text x="825" y="232.56" fill="#ffffff" font-size="8.8" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">1,972</text>
+<line x1="434" y1="470" x2="434" y2="496" stroke="#30363d" stroke-width="1" />
+<line x1="83" y1="470" x2="83" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="83" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">18</text>
+<line x1="109" y1="470" x2="109" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="109" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">19</text>
+<line x1="135" y1="470" x2="135" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="135" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">20</text>
+<line x1="161" y1="470" x2="161" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="161" y="485" fill="#8b949e" font-size="7.8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">21</text>
+<line x1="187" y1="470" x2="187" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="187" y="485" fill="#8b949e" font-size="7.8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">22</text>
+<line x1="213" y1="470" x2="213" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="213" y="485" fill="#8b949e" font-size="7.8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">23</text>
+<line x1="239" y1="470" x2="239" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="239" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">24</text>
+<line x1="265" y1="470" x2="265" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="265" y="485" fill="#8b949e" font-size="7.8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">25</text>
+<line x1="291" y1="470" x2="291" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="291" y="485" fill="#8b949e" font-size="7.8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">26</text>
+<line x1="317" y1="470" x2="317" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="317" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">27</text>
+<line x1="343" y1="470" x2="343" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="343" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">28</text>
+<line x1="369" y1="470" x2="369" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="369" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">29</text>
+<line x1="395" y1="470" x2="395" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="395" y="485" fill="#8b949e" font-size="7.8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">30</text>
+<line x1="421" y1="470" x2="421" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="421" y="485" fill="#8b949e" font-size="7.8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">31</text>
+<line x1="447" y1="470" x2="447" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="447" y="485" fill="#8b949e" font-size="7.8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">01</text>
+<line x1="473" y1="470" x2="473" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="473" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">02</text>
+<line x1="499" y1="470" x2="499" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="499" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">03</text>
+<line x1="525" y1="470" x2="525" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="525" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">04</text>
+<line x1="551" y1="470" x2="551" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="551" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">05</text>
+<line x1="577" y1="470" x2="577" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="577" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">06</text>
+<line x1="603" y1="470" x2="603" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="603" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">07</text>
+<line x1="629" y1="470" x2="629" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="629" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">08</text>
+<line x1="655" y1="470" x2="655" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="655" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">09</text>
+<line x1="681" y1="470" x2="681" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="681" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">10</text>
+<line x1="707" y1="470" x2="707" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="707" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">11</text>
+<line x1="733" y1="470" x2="733" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="733" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">12</text>
+<line x1="759" y1="470" x2="759" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="759" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">13</text>
+<line x1="785" y1="470" x2="785" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="785" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">14</text>
+<line x1="811" y1="470" x2="811" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="811" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">15</text>
+<line x1="837" y1="470" x2="837" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="837" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">16</text>
+<line x1="863" y1="470" x2="863" y2="474" stroke="#30363d" stroke-width="1" />
+<text x="863" y="485" fill="#c9d1d9" font-size="7.8" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="middle">17</text>
+<text x="252" y="500" fill="#8b949e" font-size="8" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="middle">OCTOBER 2026</text>
+<text x="616" y="500" fill="#8b949e" font-size="8" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="middle">NOVEMBER 2026</text>
 <rect x="24" y="546" width="872" height="256" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1" />
 <text x="40" y="568" fill="#f0f6fc" font-size="12" font-weight="700" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">Complete 28-Day Chronological Ledger</text>
 <text x="40" y="584" fill="#8b949e" font-size="8.5" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">Every day since project start (2026-10-18) · cumulative total, daily net delta (+), and anchor evidence</text>
@@ -318,6 +322,7 @@
 <rect x="850" y="595" width="26" height="12" rx="3" fill="#3fb950" />
 <rect x="880" y="595" width="26" height="12" rx="3" fill="#58a6ff" />
 <rect x="910" y="595" width="26" height="12" rx="3" fill="#58a6ff" />
+<rect x="940" y="595" width="26" height="12" rx="3" fill="#f0883e" />
 <rect x="40" y="617" width="201" height="18" rx="4" fill="#21262d" />
 <text x="48" y="629" fill="#8b949e" font-size="7.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="start">DATE</text>
 <text x="132" y="629" fill="#8b949e" font-size="7.4" font-weight="700" font-family="Consolas, 'Courier New', monospace" text-anchor="end">TOTAL</text>
@@ -463,6 +468,6 @@
 <text x="823" y="770" fill="#3fb950" font-size="8.2" font-weight="600" font-family="Consolas, 'Courier New', monospace" text-anchor="end">+168</text>
 <text x="872" y="770" fill="#8b949e" font-size="8" font-weight="400" font-family="Consolas, 'Courier New', monospace" text-anchor="end">E0510</text>
 <text x="24" y="822" fill="#9da7b3" font-size="8.6" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="start">Source: tools/research/a6400_status_data.py (DAILY_TEST_HISTORY) · Git history &amp; docs/evidence/E0001-E0510</text>
-<text x="896" y="822" fill="#9da7b3" font-size="8.6" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="end">Deterministic stdlib SVG · 1,905 total tests</text>
+<text x="896" y="822" fill="#9da7b3" font-size="8.6" font-weight="400" font-family="Segoe UI, Arial, sans-serif" text-anchor="end">Deterministic stdlib SVG · 1,972 total tests</text>
 </g>
 </svg>

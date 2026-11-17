@@ -7,7 +7,8 @@ from pathlib import Path
 import unicorn
 from unicorn import arm_const as arm
 
-from src.a6400.execution.guest_checkpoint import restore_checkpoint, save_checkpoint
+from src.a6400.execution.guest_checkpoint import (reject_extra_checkpoint,
+                                                 restore_checkpoint, save_checkpoint)
 from src.a6400.execution.guest_filesystem import GuestFilesystem
 from src.a6400.execution.guest_threads import GuestThreads
 from src.a6400.execution.guest_uipc import GuestUipc
@@ -193,6 +194,35 @@ class TestGuestCheckpoint(unittest.TestCase):
             save_checkpoint(make_probe(), ckpt_path)
             restore_checkpoint(p3, ckpt_path)
             self.assertFalse(hasattr(p3.filesystem, 'cwd'))
+
+    def test_snapshot_drops_zero_pages_and_keeps_only_the_syscall_tail(self):
+        probe = MockProbe()
+        probe.mu.mem_map(0x200000, 0x100000, unicorn.UC_PROT_ALL)
+        probe.mu.mem_write(0x200010, b'kept')
+        probe.report['serviced_syscalls'] = [
+            {'syscall': 'read', 'n': index} for index in range(500)]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / 'sparse.ckpt'
+            size = save_checkpoint(probe, path)
+            self.assertLess(size, 64 * 1024)
+            restored = MockProbe()
+            restore_checkpoint(restored, path)
+        self.assertEqual(bytes(restored.mu.mem_read(0x200000, 16)), b'\x00' * 16)
+        self.assertEqual(bytes(restored.mu.mem_read(0x200010, 4)), b'kept')
+        self.assertEqual(bytes(restored.mu.mem_read(0x2FFFF0, 16)), b'\x00' * 16)
+        log = restored.report['serviced_syscalls']
+        self.assertEqual(log.total, 500)
+        self.assertEqual(log[-1]['n'], 499)
+        self.assertLessEqual(len(log), 64)
+
+    def test_a_second_retained_snapshot_name_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            retained = Path(tmpdir)
+            first = retained / 'boot.ckpt'
+            first.write_bytes(b'kept')
+            reject_extra_checkpoint(first, retained)
+            with self.assertRaises(ValueError):
+                reject_extra_checkpoint(retained / 'boot-next.ckpt', retained)
 
 
 if __name__ == '__main__':

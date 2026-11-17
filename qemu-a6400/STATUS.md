@@ -1,6 +1,6 @@
 # QEMU `sony-a6400`: findings and next steps
 
-## Viewfinder console (2026-11-16 / E0541)
+## Viewfinder console (2026-11-16 / E0544)
 
 This section continues the captured-input boot recorded in E0524. It does not
 replace that qualification. The hash-checked input set, CMD1 sector negotiation,
@@ -23,13 +23,41 @@ Later records E0525–E0541, on that same machine:
 - E0537–E0541: the eye sensor is not the a5000 hinge pin. The finder predicates
   and the two backup bytes do not switch the image set. Forcing `isOutputEvf` to
   return 0 changes 765 focus-mark pixels and leaves the viewfinder skin in place.
+- E0542: `viewUnified2.so` registers `LayoutST_NORMAL_*` beside each
+  `LayoutST_NORMAL_EVF_*`. `isOutputEvf` at `0x60f5c4` only changes a coordinate.
+- E0543: imager `PowerOn` (`0x6379093C`) is only a function-table slot. The `VD_Pre`
+  function at `0x6391E614` returns before CamCore start unless virtual slot
+  `+0x28` is non-zero and bit 1 of the flag byte is set. `en144` stays
+  `0x3000232`.
+- E0544: the mode sequencer index is 12 of 43, on wait `0x8347`. Module 1 is the
+  only masked mismatch (`0x0105` requested, `0x0100` reported). The imager word
+  `0x0A10` matches on both sides.
+- E0549: index 0 is module id 1. The frame publisher copies its report from
+  `*(0x6434CA54 + 8) + 0x690`. At `SetContentTarget` that halfword is `0x0100`,
+  while indexes 1 and 2 already show `0x0285` and `0x0320`. The selector flag
+  at `0x643334E8 + 0x8E` is clear, so the other source is not used.
+- E0550: the path selector at `0x643305E4` has already accepted request `0x3003`.
+  Its result word at `0x643305D0` is `2`. The mode halfword at
+  `0x64351898 + 0x690` is still `0x0100` in that same sample.
+- E0551: `0x63988EAA` writes `*(0x645A21E4+0x3EB0)+0x690`. At the stall that
+  object is `0x6435CC38` and the halfword is `0x0000`. The copy runs only
+  when `*(0x645A21E4+0x623C)+0x1F` is 5; that byte is 0. The sequencer
+  index at `0x64330614` is 12. Module 1's halfword is still `0x0100`.
+- E0553: a write watchpoint on `0x64351F28` caught `0x63922304` seeding `0x0100`
+  and `0x639267BC` storing the value returned by `0x63D3BD56`. That function
+  returns the old halfword unless the request is `0x0112`. At the stall the
+  request at `0x64350F04` is `0x0105`, and the byte at `0x64354174` that lets
+  the store run is 0. The index stays 12. No device model changed.
 
 `tools/a6400_probe.py` waits for a `/proc/snsc_boot_time` checkpoint instead of a
 fixed sleep. A `/proc/snsc_boot_time` read can block for more than 30 seconds and
 then answer (E0530). That delay is not a hung shell.
 
-**Next:** find the loader that opens `image_DSC_Only_169.uxc` instead of
-`image_EVF.uxc`. Do not treat the viewfinder console as a verified rear-LCD frame.
+**Next:** name the writer of the byte at `0x64354174`. It is 0 at the stall,
+so `0x639267A4` skips `0x639267BC`. A nonzero byte would still not publish
+`0x0105`: `0x63D3BD56` returns the old halfword unless the request is
+`0x0112`. `0x63988EAA` remains a different object. The monitor layout class
+from E0542 stays a separate track.
 
 ## Captured-input qualification (2026-11-16 / E0524)
 

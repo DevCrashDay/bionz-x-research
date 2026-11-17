@@ -170,3 +170,16 @@ index a2a23ea..990bbe4 100644
      { .name = "cortex-a9",   .initfn = cortex_a9_initfn },
      { .name = "cortex-a15",  .initfn = cortex_a15_initfn },
      { .name = "cortex-r5",   .initfn = cortex_r5_initfn },
+diff --git a/system/runstate.c b/system/runstate.c
+index 6178b00..212cba8 100644
+--- a/system/runstate.c
++++ b/system/runstate.c
+@@ -83,6 +83,8 @@ static const RunStateTransition runstate_transitions_def[] = {
+     { RUN_STATE_DEBUG, RUN_STATE_FINISH_MIGRATE },
+     { RUN_STATE_DEBUG, RUN_STATE_PRELAUNCH },
+ 
++    /* Restoring a VM stopped by a GDB breakpoint is a debug runstate. */
++    { RUN_STATE_INMIGRATE, RUN_STATE_DEBUG },
+     { RUN_STATE_INMIGRATE, RUN_STATE_INTERNAL_ERROR },
+     { RUN_STATE_INMIGRATE, RUN_STATE_IO_ERROR },
+     { RUN_STATE_INMIGRATE, RUN_STATE_PAUSED },
