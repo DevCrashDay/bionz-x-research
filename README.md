@@ -16,7 +16,7 @@ of "full firmware compatibility."
 | --- | --- | --- |
 | **1 · Offline Firmware Emulator** | Run Sony's original camera software, bootloader, and Linux kernel on a PC with zero risk to hardware | Captured main firmware reaches four QEMU cores, original filesystem mounts, LIRO/application startup and a shell; no complete camera boot or verified emulator GUI frame |
 | **2 · Low-Latency Liveview & USB Video (`CinemaHUD`)** | Stream video from the camera with minimal delay over USB | **Android/PTP liveview** works on real hardware. **Native USB webcam (UVC) mode** shows up on the host and disconnects cleanly, but video streaming still stalls during USB setup |
-| **3 · Multi-Camera Support** | Share hardware and kernel knowledge across BIONZ X bodies, including the a6400A | Six sourced profiles: original a6400 is the only verified execution target; the other five are reference profiles |
+| **3 · Multi-Camera Support** | Share hardware and kernel knowledge across BIONZ X bodies, including the a6400A | Eight sourced profiles: original a6400 is the only verified execution target; the other seven are reference profiles |
 
 ## Latest progress
 
@@ -44,6 +44,14 @@ monitor `LayoutST_NORMAL_*` class beside each `LayoutST_NORMAL_EVF_*` class.
 The YUV layer stays off because the imager has not started a sensor transfer
 or an SA function. This is still QEMU, not a verified rear-LCD frame. Details
 are in [qemu-a6400/STATUS.md](qemu-a6400/STATUS.md).
+
+### ILCE-7RM4A reference profile ([E0570](docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md))
+
+The a7R IVA row of the E0477 platform map is now a registered reference profile,
+sourced from that body's own packaged 1.13 updater. Seven gadget-core symbols
+come from its own `vmlinux.bin`. Its kernel addresses are not the a6400's, and
+`probe_interpreter` does not reuse the a6400 inventory or the ILCE-7C manifest
+for it. No camera was accessed.
 
 Two RAM-only mods run on a live ILCE-6400 (`im.elf`): a guarded loader that enables `.mod`
 payloads from the SD card, and the MTF2 full-menu touch mod. Both live only in RAM — no flash
@@ -141,7 +149,7 @@ and [E0521](docs/evidence/0521-qemu-a6400-main-firmware-boots-to-avcam.md) (the 
 `sony-a6400` machine boots the main `nflasha3` firmware to a shell and brings up four Cortex-A5
 cores; this is QEMU, not the Unicorn emulator).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=1995245ec448)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=f3ead8a6af7a)
 
 ![Daily automated test suite growth: 1972 tests across 31 days](docs/images/test-growth.svg?v=176fe0194f2d)
 
@@ -157,7 +165,7 @@ cores; this is QEMU, not the Unicorn emulator).
 | **Composite USB webcam (real camera)** | Camera appears as both PTP and Video device in Windows, and disconnects cleanly without a battery pull | DirectShow times out during the USB control handshake status stage | [E0350](docs/evidence/0350-trackb-transport-enumerates-but-renderstream-fails.md), [E0398](docs/evidence/0398-runb21-status-stage-and-disconnect-verdict.md) |
 | **USB Debugger v2** | Persistent Mass Storage debugger for reading live/warm-reboot kernel logs and USB state | Deploying the always-on WinUSB vendor interface | [E0401](docs/evidence/0401-usb-debugger-v2-ring-recover-and-mode-boundary.md), [E0405ab](docs/evidence/0405ab-device-desc-builder-and-msos2-subset.md) |
 | **Test UVC video pattern** | Streams a synthetic 720p MJPEG pattern at ~30 FPS; ZV-E10 USB video stack cataloged as reference | Wiring the live camera sensor feed | [E0143](docs/evidence/0143-uvc-720p-test-transport-and-30fps-verified.md), [E0321](docs/evidence/0321-zve10-uvc-enablement-manifest.md) |
-| **Multi-camera profiles** | Six sourced profiles, including `ilce_6400a` package/USB evidence. Packaged `libJiritsu.so` dispatches `GET_FILE` on halfword 8 | Only original a6400 is a verified execution target. The A6400A library map is not a sent Senser command, so the RAM bootstrap does not open USB | [E0506](docs/evidence/0506-a6400a-offline-qualification-and-debugger-boundary.md), [E0554](docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md), [`src/a6400/targets/`](src/a6400/targets/catalog.py) |
+| **Multi-camera profiles** | Eight sourced profiles, including `ilce_6400a` and reference `ilce_7rm4a`. Packaged `libJiritsu.so` dispatches `GET_FILE` on halfword 8 | Only original a6400 is a verified execution target. The A6400A library map is not a sent Senser command, so the RAM bootstrap does not open USB. `ilce_7rm4a` has no process images of its own | [E0506](docs/evidence/0506-a6400a-offline-qualification-and-debugger-boundary.md), [E0554](docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md), [E0570](docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md), [`src/a6400/targets/`](src/a6400/targets/catalog.py) |
 | **Automated checks** | 1972 tests in the recorded offline suite (structure, profiles, emulator contracts, doc sync), plus native eMMC controls | See the receipt for skips; bounded contracts are not full compatibility | [tests/](tests/README.md), [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md) |
 
 ## How to help (no camera needed)

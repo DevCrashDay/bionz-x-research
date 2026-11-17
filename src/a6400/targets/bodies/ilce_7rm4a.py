@@ -1,0 +1,91 @@
+"""Sony ILCE-7RM4A (a7R IVA) offline-sourced target profile."""
+from __future__ import annotations
+
+from src.a6400.targets.bodies._common import E0480, E0570, ref
+from src.a6400.targets.profile import (
+    PID_TIER_STOCK,
+    STATUS_REFERENCE,
+    TargetProfile,
+    UsbIdentity,
+    UsbPid,
+)
+
+ILCE_7RM4A = TargetProfile(
+    target_id="ilce_7rm4a",
+    model_name="Sony ILCE-7RM4A (a7R IVA)",
+    status=STATUS_REFERENCE,
+    soc_verified=True,
+    firmware_version="1.13",
+    kernel_version="3.0.27_nl-rt106+ SMP preempt mod_unload ARMv7",
+    kallsyms={
+        "usb_gadgetcore_ioctl": 0x602BC860,
+        "usb_gadgetcore_register_driver": 0x602BC62C,
+        "usb_gadgetcore_unregister_driver": 0x602BC580,
+        "usb_gcw_start": 0x602C1814,
+        "usb_gcw_stop": 0x602C1850,
+        "setup_req": 0x602BD4C0,
+        "make_config_desc": 0x602BFC70,
+    },
+    uipc_queues={},
+    usb=UsbIdentity(
+        vid=0x054C,
+        pids={
+            "stock_0448": UsbPid(0x0448, PID_TIER_STOCK),
+            "stock_047d": UsbPid(0x047D, PID_TIER_STOCK),
+            "stock_0bee": UsbPid(0x0BEE, PID_TIER_STOCK),
+            "stock_0bef": UsbPid(0x0BEF, PID_TIER_STOCK),
+            "stock_0bfe": UsbPid(0x0BFE, PID_TIER_STOCK),
+            "stock_0bff": UsbPid(0x0BFF, PID_TIER_STOCK),
+            "stock_0c13": UsbPid(0x0C13, PID_TIER_STOCK),
+            "stock_0c14": UsbPid(0x0C14, PID_TIER_STOCK),
+            "stock_0ca7": UsbPid(0x0CA7, PID_TIER_STOCK),
+            "stock_0ca8": UsbPid(0x0CA8, PID_TIER_STOCK),
+            "stock_0cc9": UsbPid(0x0CC9, PID_TIER_STOCK),
+            "stock_0cca": UsbPid(0x0CCA, PID_TIER_STOCK),
+            "stock_0d0d": UsbPid(0x0D0D, PID_TIER_STOCK),
+            "stock_0d0e": UsbPid(0x0D0E, PID_TIER_STOCK),
+            "stock_0d11": UsbPid(0x0D11, PID_TIER_STOCK),
+            "stock_0d12": UsbPid(0x0D12, PID_TIER_STOCK),
+            "stock_0d9c": UsbPid(0x0D9C, PID_TIER_STOCK),
+            "stock_0d9d": UsbPid(0x0D9D, PID_TIER_STOCK),
+        },
+    ),
+    modules={},
+    sources={
+        "firmware_version": ref(E0570, "packaged updater 1.13; config.yaml fdat.version '1.13', model 0x91030003"),
+        "kernel_version": ref(E0570, "vermagic in this body's own system/vmlinux.bin 8d02896458cd8927... (build Sony CE Linux 8.2.7.6, jp10239@dic-build-scm-u20-019, 2026-01-31)"),
+        "kallsyms.usb_gadgetcore_ioctl": ref(E0570, "decoded from this body's system/vmlinux.bin 8d02896458cd8927...; matches E0480"),
+        "kallsyms.usb_gadgetcore_register_driver": ref(E0570, "decoded from this body's system/vmlinux.bin 8d02896458cd8927...; matches E0480"),
+        "kallsyms.usb_gadgetcore_unregister_driver": ref(E0570, "decoded from this body's system/vmlinux.bin 8d02896458cd8927... (not listed in E0480)"),
+        "kallsyms.usb_gcw_start": ref(E0480, "decoded from this body's system/vmlinux.bin, confirmed in E0570"),
+        "kallsyms.usb_gcw_stop": ref(E0480, "decoded from this body's system/vmlinux.bin, confirmed in E0570"),
+        "kallsyms.setup_req": ref(E0480, "decoded from this body's system/vmlinux.bin, confirmed in E0570"),
+        "kallsyms.make_config_desc": ref(E0480, "decoded from this body's system/vmlinux.bin, confirmed in E0570"),
+        "usb": ref(E0570, "normalUsbDescriptors in this body's config.yaml b511141a6266ceb0...; 18 pairs, vid 0x54C"),
+    },
+    boundaries=(
+        "Offline packaged firmware only: no camera, no USB, no updater executed. The owner's a7R IVA "
+        "reported running the current release; this profile is exact for the packaged 1.13 image named "
+        "in E0570, not for an arbitrary boot.",
+        "A resolved kallsyms symbol is presence evidence, not loadability or callability proof.",
+        "uipc_queues is empty: the a6400's queue handles come from a live /proc/osal/uipc read and are "
+        "per-boot, so no offline value is claimed here.",
+        "soc_verified rests on the package's own crypterName: CXD90045 statement, which is stronger than "
+        "a model name and weaker than reading /proc/cpuinfo on the body.",
+        "This body's kernel is distinct from the a6400's: E0477 counts it among the nine kernels and E0480 "
+        "shows its gadget-core symbols sit at their own addresses (exactly 0x4 from the a7 III and 0x1000 "
+        "from the ILCE-9 on all six shared symbols). Do not copy an address between these bodies.",
+        "devno.ko (74096566ca4132ef..., 88 entries) publishes 17 /dev/usb nodes and no usb/video or "
+        "usb/audio row, so a kernel-side UVC node does not exist on this body (E0570; module-package "
+        "absence recorded platform-wide in E0479). The same 88-entry table is byte-identical to the "
+        "ILCE-6100A devno.ko (E0482) within the 8.2.7.6 build generation; that is a measured equality on "
+        "this body's own file, not a copied value.",
+        "No modules are claimed: this packaged image carries no UVC module package (E0479), and the module "
+        "set was not inventoried against a live load.",
+    ),
+    notes=(
+        "Offline-sourced from its own packaged updater (ILCE-7RM4A firmware 1.13). The a7R IVA is one of "
+        "the thirteen BIONZ X bodies mapped in E0477; this record turns that map into a registered profile. "
+        "av-cam command table: 333 records at 0x1096180 in this image (E0570), matching E0477."
+    ),
+)

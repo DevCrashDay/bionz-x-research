@@ -296,7 +296,7 @@ class ProcessTargetInputTests(unittest.TestCase):
         self.assertTrue(matched["usb_gadgetcore_ioctl"]["match"])
 
     def test_other_registered_bodies_do_not_reuse_a6400_or_a7c_inputs(self):
-        for target_id in ("zv_e10", "ilce_6400a", "ilce_6100"):
+        for target_id in ("zv_e10", "ilce_6400a", "ilce_6100", "ilce_7m3", "ilce_7rm4a"):
             with self.subTest(target=target_id):
                 profile = get_profile(target_id)
                 args = SimpleNamespace(target=target_id)

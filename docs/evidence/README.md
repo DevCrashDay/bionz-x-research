@@ -10,6 +10,7 @@ Current consolidated state: [README research status](../../README.md) and
 
 | ID | Date | Claim |
 | --- | --- | --- |
+| [E0570](0570-ilce-7rm4a-offline-sourced-profile.md) | 2026-11-17 | ILCE-7RM4A (a7R IVA) gains a sourced `reference` profile from its own packaged 1.13 updater: seven gadget-core kernel symbols, a CXD90045 identity, an 18-pair stock USB set and an 88-entry devno table with no UVC node. No camera was accessed and no address is shared with the a6400. The measurements were read on 2026-11-14. |
 | [E0554](0554-a6400a-v101-jiritsu-command-dispatch.md) | 2026-11-17 | ILCE-6400A 1.01 `libJiritsu.so` dispatches `GET_FILE` on halfword 8, `SET_FILE_PATH` on 15 and `SET_FILE2` on 16. The public ZV-E10 `GET_FILE` value `0x4008` is not that halfword. No Senser packet was sent. |
 | [E0553](0553-qemu-a6400-module1-latch-skips-0x0105.md) | 2026-11-17 | QEMU `sony-a6400`: `0x63922304` seeds module 1 with `0x0100`. `0x639267BC` publishes only through `0x63D3BD56`, which keeps the old halfword unless the request is `0x0112`. At step 12 the request is `0x0105` and the enable byte at `0x64354174` is 0. No device model changed. |
 | [E0552](0552-a6400a-nflasha5-wbi-jiritsu-names.md) | 2026-11-17 | Local ILCE-6400A `nflasha5` is a 624-section WBI1 image. It names `libJiritsu.so` and `/tmp/jiritsu/libJit.so`. It does not prove adjust-command IDs, so the camera bootstrap stays closed. |

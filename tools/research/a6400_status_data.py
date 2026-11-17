@@ -220,23 +220,41 @@ STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
     as_of="2026-11-17",
     latest=EvidenceRef(
-        evidence_id="E0554",
-        path="docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md",
+        evidence_id="E0570",
+        path="docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md",
         date="2026-11-17",
-        title="A6400A libJiritsu dispatches GET_FILE on halfword 8",
+        title="ILCE-7RM4A gains a sourced reference profile",
         demonstrated=(
-            "The packaged ILCE-6400A 1.01 libJiritsu.so dispatcher at 0x7015 "
-            "selects GET_FILE for halfword 8, SET_FILE_PATH for 15 and SET_FILE2 "
-            "for 16. The public ZV-E10 GET_FILE value 0x4008 is not that halfword."
+            "The a7R IVA row of the E0477 platform map is a registered reference profile, "
+            "sourced only from that body's packaged 1.13 updater. Seven gadget-core symbols "
+            "are decoded from its own vmlinux.bin, with a CXD90045 identity, an 18-pair stock "
+            "USB set, and an 88-entry devno table that publishes no usb/video or usb/audio node."
         ),
         boundary=(
-            "No Senser packet was sent. The library map stays closed, and the "
-            "category store at 0x8A46 was not followed through the Senser parser."
+            "Offline packaged firmware only. No camera, USB, boot, or live dump is claimed. "
+            "The kernel addresses are not the a6400's, and ilce_7rm4a is not an execution target. "
+            "The E0554 A6400A dispatch map and the QEMU module 1 latch remain as recorded."
         ),
-        tier="OFFLINE FIRMWARE",
+        tier="OFFLINE",
     ),
     headline="1972 offline suite cases | A6400A GET_FILE is halfword 8 | QEMU module 1 latch still skips 0x0105",
     cards=(
+        EvidenceRef(
+            evidence_id="E0554",
+            path="docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md",
+            date="2026-11-17",
+            title="A6400A libJiritsu dispatches GET_FILE on halfword 8",
+            demonstrated=(
+                "The packaged ILCE-6400A 1.01 libJiritsu.so dispatcher at 0x7015 "
+                "selects GET_FILE for halfword 8, SET_FILE_PATH for 15 and SET_FILE2 "
+                "for 16. The public ZV-E10 GET_FILE value 0x4008 is not that halfword."
+            ),
+            boundary=(
+                "No Senser packet was sent. The library map stays closed, and the "
+                "category store at 0x8A46 was not followed through the Senser parser."
+            ),
+            tier="OFFLINE FIRMWARE",
+        ),
         EvidenceRef(
             evidence_id="E0553",
             path="docs/evidence/0553-qemu-a6400-module1-latch-skips-0x0105.md",

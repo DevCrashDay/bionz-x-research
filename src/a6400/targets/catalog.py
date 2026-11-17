@@ -13,11 +13,14 @@ from src.a6400.targets.bodies import (
     ILCE_6600,
     ILCE_7C,
     ILCE_7M3,
+    ILCE_7RM4A,
     ZV_E10,
 )
 from src.a6400.targets.profile import TargetProfile, TargetRegistry
 
-DEFAULT_REGISTRY = TargetRegistry((ILCE_6400, ILCE_6400A, ZV_E10, ILCE_6100, ILCE_6600, ILCE_7C, ILCE_7M3))
+DEFAULT_REGISTRY = TargetRegistry(
+    (ILCE_6400, ILCE_6400A, ZV_E10, ILCE_6100, ILCE_6600, ILCE_7C, ILCE_7M3, ILCE_7RM4A)
+)
 
 __all__ = [
     "DEFAULT_REGISTRY",
@@ -27,6 +30,7 @@ __all__ = [
     "ILCE_6600",
     "ILCE_7C",
     "ILCE_7M3",
+    "ILCE_7RM4A",
     "TargetProfile",
     "TargetRegistry",
     "ZV_E10",

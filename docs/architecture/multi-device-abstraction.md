@@ -7,7 +7,7 @@ This document specifies how `TargetProfile` (`src/a6400/targets/`) drives both e
 1. **No implicit `a6400` fallback for another body**: Every kernel symbol address, UIPC queue ID, USB identity, boot load address, and partition layout must come from the selected `TargetProfile` (or directly from the target's decoded `vmlinux.bin` / `boot/` artifacts).
 2. **Fail-closed evidence discipline**: `TargetProfile` refuses to construct any claim without an `EvidenceRef`. Unknown fields stay `None` / empty and stop execution explicitly with a `boundary` report rather than guessing.
 3. **Backward compatibility**: Default CLI invocations without `--target` may default to `ilce_6400` for regression continuity, while `--target <id>` selects any registered profile from `DEFAULT_REGISTRY`.
-4. **No shared process images**: Profile selection does not reuse another body's filesystem. `probe_interpreter` runs `ilce_6400` from its own inventory bundle and `ilce_7c` from its hash-pinned manifest. Every other registered body, including another 2.03 profile such as `zv_e10` and the `ilce_6400a` reference, stops before execution. A missing kernel address is not treated as a match.
+4. **No shared process images**: Profile selection does not reuse another body's filesystem. `probe_interpreter` runs `ilce_6400` from its own inventory bundle and `ilce_7c` from its hash-pinned manifest. Every other registered body, including another 2.03 profile such as `zv_e10`, the `ilce_6400a` reference, and the `ilce_7rm4a` reference, stops before execution. A missing kernel address is not treated as a match.
 
 ## 2. Profile-Driven Configuration (`BootLayoutSpec` & `kallsyms`)
 

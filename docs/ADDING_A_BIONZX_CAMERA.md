@@ -271,4 +271,4 @@ PR checklist:
 
 ## Where the current profiles are
 
-Per-body modules live under `src/a6400/targets/bodies/` (`ilce_6400.py`, `ilce_6400a.py`, `zv_e10.py`, `ilce_6100.py`, `ilce_6600.py`, `ilce_7m3.py`) and are assembled into `DEFAULT_REGISTRY` in `src/a6400/targets/catalog.py`. `src/a6400/targets/profile.py` holds the schema (`TargetProfile`, `BootLayoutSpec`, `EvidenceRef`) and fail-closed validation. A profile is evidence metadata, not an automatic port of every emulator or camera helper.
+Per-body modules live under `src/a6400/targets/bodies/` (`ilce_6400.py`, `ilce_6400a.py`, `zv_e10.py`, `ilce_6100.py`, `ilce_6600.py`, `ilce_7c.py`, `ilce_7m3.py`, `ilce_7rm4a.py`) and are assembled into `DEFAULT_REGISTRY` in `src/a6400/targets/catalog.py`. `src/a6400/targets/profile.py` holds the schema (`TargetProfile`, `BootLayoutSpec`, `EvidenceRef`) and fail-closed validation. A profile is evidence metadata, not an automatic port of every emulator or camera helper.
