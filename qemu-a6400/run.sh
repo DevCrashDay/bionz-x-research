@@ -20,6 +20,7 @@
 # EVSEL_LATE_US (opt-in source-30 delay in us, E0557; unset = off),
 # CAMPIG_ENABLE_READBACK=1 (opt-in CamPig IRQ enable register, E0566),
 # SGC1_EVENT_A=1 (opt-in Sgc1 event A and IRQ 35, E0569).
+# LIVEVIEW_SOURCE (opt-in bars, ramp, none, or pgm:PATH, E0591).
 # P2S_TRACE=1 (log the first 64 sensor-writer transfers).
 # USB_VBUS_TEST=1 (enable the runtime usb-vbus QMP property).
 # USB_CID_HIGH=1 (opt-in FUSB CID bit 1 high / peripheral idle, E0587).
@@ -140,6 +141,10 @@ fi
 if [ "${DWC3_GADGET:-0}" = 1 ]; then
     MACHINE="$MACHINE,dwc3-gadget=on"
 fi
+LIVEVIEW_ARGS=()
+if [ -n "${LIVEVIEW_SOURCE:-}" ]; then
+    LIVEVIEW_ARGS=(-M "liveview-source=${LIVEVIEW_SOURCE//,/,,}")
+fi
 
 # Evsel source order (E0557, opt-in): deliver timing-event source 30 (av-cam
 # HS root 0x639242D8) EVSEL_LATE_US microseconds after source 29 (frame start
@@ -166,5 +171,5 @@ exec "${T[@]}" "$Q/build/qemu-system-arm" -M "$MACHINE" -m 1G -nographic -serial
   -drive if=sd,format=qcow2,file="$R/emmc-overlay.qcow2" \
   -device loader,file="$R/Backup.bin",addr="$BACKUP_PA",force-raw=on \
   -device loader,file="$R/av-cam.bin",addr="$AVCAM_PA",force-raw=on \
-  "${EVSEL[@]}" "${P2S[@]}" \
+  "${EVSEL[@]}" "${P2S[@]}" "${LIVEVIEW_ARGS[@]}" \
   ${QEMU_EXTRA--icount shift=0,sleep=on}

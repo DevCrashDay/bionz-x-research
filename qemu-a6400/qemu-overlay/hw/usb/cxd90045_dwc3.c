@@ -117,7 +117,7 @@ struct CxdDwc3State {
     SysBusDevice parent_obj;
     MemoryRegion mr;
     qemu_irq irq;
-    CharBackend chr;
+    CharFrontend chr;
 
     uint32_t gctl;
     uint32_t ggpio;

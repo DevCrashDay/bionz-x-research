@@ -10,6 +10,7 @@ Current consolidated state: [README research status](../../README.md) and
 
 | ID | Date | Claim |
 | --- | --- | --- |
+| [E0591](0591-qemu-a6400-first-live-view-frame.md) | 2026-11-18 | Opt-in Sgc1 raster completion drives guest-armed CamPig, native EE/Ydet publication and paired RC0 DMA. Captured original firmware shows an exact deterministic chart in ch51 and on the rear LCD outside the OSD; the phase-only control remains black there. Captured step 26 remains open, distinct from the packaged step-32 wait. |
 | [E0589](0589-qemu-usb-mode-gate-and-defrootview.md) | 2026-11-18 | `libInfraMscServer.so`/`MtpServer`/`InfraRemote` are not loaded at boot; `viewUnified2.so` (`DefRootView`) runs `CheckerUSBAndClockReady` (`0x2AC00A`) once at `FirstView` before VBUS and does not reach `ActionOpenUSB` (`0x2ADFB8`) or `StartGadget` (`0x0A2000`) on QMP attach. |
 | [E0588](0588-qemu-usb-buspower-and-obj-fsm-dispatch.md) | 2026-11-18 | Unlocked QMP VBUS (`0x0A400A`/`0x0A400B`) transitions `libBusPower.so+0x3B03` (`state 0 -> 2 -> 0`), while `libObj.so+0x839C1B` (`state 0`) ignores `r1=2` and `UsbControl` stays in `STOP` without `0x0A2000`. |
 | [E0587](0587-qemu-usb-cid-high-unlocks-vbus-broadcast.md) | 2026-11-18 | Opt-in `usb-cid-high=on` (`0xF2920010` bit 1 = `1`) keeps `[UsbControl+0xCC]=0`, unlocks `SetJackStatus(1, 1_or_0) == 1`, sends `input_msg`, broadcasts `0x0A400A`/`0x0A400B`, and enters `UFW::Fsm::DispatchEvent`. |
