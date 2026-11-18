@@ -1604,6 +1604,29 @@ static void sony_a6400_init(MachineState *machine)
     }
 
     /*
+     * Unidentified configuration block at 0xF3880000.  No documentation
+     * names it; the only evidence is the av-cam access log: 94 distinct
+     * (read|write, offset) pairs in 236 accesses, one-time configuration
+     * followed by write-then-read verification.  No word is polled (longest
+     * run of consecutive reads is 2) and every read either follows a write
+     * to the same word or hits a never-written word (11 offsets), so plain
+     * read-back matches the current all-zero reads except where the guest
+     * checks what it wrote.  Four words (offsets 0x1008, 0x1200, 0x1380,
+     * 0x2004) are read-modify-written: with read-back the guest keeps the
+     * bits it set earlier (e.g. +0x1200 0x10802 | 0x1 = 0x10803), where the
+     * all-zero read made it drop them.  The block's identity is not known.
+     */
+    {
+        DeviceState *rf = qdev_new("cxd90014-regfile");
+
+        qdev_prop_set_string(rf, "name", "cxd90045.f388-cfg");
+        qdev_prop_set_uint64(rf, "size", 0x10000);
+        qdev_prop_set_uint64(rf, "base", 0xF3880000ULL);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(rf), &error_fatal);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(rf), 0, 0xF3880000ULL, -500);
+    }
+
+    /*
      * Imager / ComboPHY window (E0534).  av-cam keeps absolute pointers
      * here (Leo clk 0xFC021000, MIPI D-PHY register blocks, sensor tables
      * under 0xFC0Axxxx).  Reads of unassigned space are 0, so a
