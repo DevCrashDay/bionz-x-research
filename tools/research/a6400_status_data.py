@@ -213,7 +213,7 @@ class StatusSnapshot:
             f"{self.suite.test_count} tests in the recorded offline suite on {self.suite.recorded_at}. "
             "Offline original-code execution, "
             "read-only physical observation and authored demonstrations are reported separately. "
-            "QEMU OSD output is separate from the unverified Unicorn L3 GUI; no UVC frame is claimed."
+            "QEMU test-chart scanout is separate from the unverified Unicorn L3 GUI; no UVC frame is claimed."
         )
 
 
@@ -221,20 +221,21 @@ STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
     as_of="2026-11-18",
     latest=EvidenceRef(
-        evidence_id="E0589",
-        path="docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md",
+        evidence_id="E0591",
+        path="docs/evidence/0591-qemu-a6400-first-live-view-frame.md",
         date="2026-11-18",
-        title="DefRootView::ActionOpenUSB gates USB server dlopen and StartGadget",
+        title="First firmware-driven live-view frame in QEMU",
         demonstrated=(
-            "libInfraMscServer/MtpServer/InfraRemote are not loaded at boot; viewUnified2.so "
-            "CheckerUSBAndClockReady runs once at FirstView before VBUS, while ActionOpenUSB stays at 0 hits."
+            "Original firmware consumes fresh Ydet records and launches RC0 DMA. "
+            "An opt-in test chart matches guest ch51 and rear-LCD pixels outside the OSD; the control is black."
         ),
         boundary=(
-            "Phase 2 cxd90045-dwc3 gadget model + Phase 4 FirstView/Live-View step 32 unblock."
+            "Captured boot remains at sequencer step 26; release of the older packaged step-32 wait, "
+            "physical sensor fidelity, and Sony USB enumeration are not verified."
         ),
         tier="OFFLINE + QEMU",
     ),
-    headline="Native Unicorn ash | guarded USB startup | QEMU rear-panel and mod workflows retained",
+    headline="Native Unicorn ash | guarded USB startup | first QEMU live-view test chart",
     cards=(
         EvidenceRef(
             evidence_id="E0570",

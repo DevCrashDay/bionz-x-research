@@ -269,25 +269,32 @@ then answer (E0530). That delay is not a hung shell.
   handler and callback. The earlier IRQ 36 trial instead invoked the
   `0xF3000000` handler. The callback's front-end write branch remained idle.
 
-**Parked live-image checkpoint:** with `EVSEL_LATE_US=500`,
+**Earlier packaged live-image checkpoint:** with `EVSEL_LATE_US=500`,
 `CAMPIG_ENABLE_READBACK=1`, and `SGC1_EVENT_A=1`, the sequencer
-waits at step 32 (`0x032E` requested, `0x0326` reported).
-Resume at the IRQ 35 callback `0x6375BBF0`: its front-end write branch
-at `0x6375BC46`, CamPig IRQ 36 completion, and the Ydet producer
-`0x63BEE670` all stayed idle. The ch51 buffer contents remain unverified.
+waited at step 32 (`0x032E` requested, `0x0326` reported). The IRQ 35
+callback's one-shot write, CamPig IRQ 36 completion, and the Ydet producer
+all stayed idle.
+
+**First firmware-driven live-view frame:** [E0591](../docs/evidence/0591-qemu-a6400-first-live-view-frame.md)
+uses captured firmware and opt-in `LIVEVIEW_SOURCE`. Sgc1 raster end drives
+guest-armed CamPig completion; original firmware publishes and consumes fresh
+Ydet records. Guest-launched RC0 DMA fills ch51 and the rear LCD shows the
+exact test chart outside the OSD. A matched phase-only boot had black video.
+The captured sequencer still waits at step 26 (`0x0323`/`0x0320`); this does
+not verify release of the older packaged step-32 wait.
 
 **Rear-monitor milestone:** [E0572](../docs/evidence/0572-qemu-a6400-rear-lcd-layout-on-panel.md)
 captures the original `LayoutST_NORMAL_WITH_INFO_LR` on QEMU console 0
 after an opt-in overlay selects device 1 in the firmware display controller.
-Stock boot still selects the viewfinder. The next boundary is the
-`InputService::getInputEventStatus` key/value contract that selects the
-same device through the original input path.
+In [E0591](../docs/evidence/0591-qemu-a6400-first-live-view-frame.md),
+`REAR_CONTROLS=1` idles the active-low eye-contact input `P0.2` high; stock
+firmware selects the rear LCD without that overlay.
 
 [E0573](../docs/evidence/0573-qemu-a6400-rear-panel-controls.md) adds an
 interactive panel around the VPH output. The opt-in keys drive ADC, GPIO,
 sub-micro and TPU paths. The original firmware opens MENU and responds to
-directional and center input. The manual Finder/Monitor setting is now
-reachable for a stock boot verification.
+directional and center input, including a normal center press to dismiss
+the NTSC notice in the live-view replay.
 
 [E0574](../docs/evidence/0574-qemu-a6400-blank-panel-recovery.md) confirmed
 the panel was receiving real black frames in a long-running instance.
