@@ -1564,6 +1564,26 @@ static void sony_a6400_init(MachineState *machine)
     }
 
     /*
+     * CXD90045 clock generator (docs/architecture/cxd90045-sugilite-cross-gen-
+     * parity.md, "Clock-Up & Divider Sequence"): sugilite_clock_up_internal
+     * does a read-modify-write on the clock dividers
+     * 0xF28040C4/0xF28041A8/0xF28050B8/0xF280518C, `(val & ~0xF) | 6`, so
+     * they read back what was written.  av-cam touches only the 4 KiB pages
+     * 0xF2800000, 0xF2802000 and 0xF2804000-0xF2807FFF; cover them with one
+     * contiguous 32 KiB read-back window.  No `clkgen` property: this block
+     * has no lock/self-clear status words, those live at 0xF2A0xxxx.
+     */
+    {
+        DeviceState *rf = qdev_new("cxd90014-regfile");
+
+        qdev_prop_set_string(rf, "name", "cxd90045.clkgen-f28");
+        qdev_prop_set_uint64(rf, "size", 0x8000);
+        qdev_prop_set_uint64(rf, "base", 0xF2800000ULL);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(rf), &error_fatal);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(rf), 0, 0xF2800000ULL, -500);
+    }
+
+    /*
      * Imager / ComboPHY window (E0534).  av-cam keeps absolute pointers
      * here (Leo clk 0xFC021000, MIPI D-PHY register blocks, sensor tables
      * under 0xFC0Axxxx).  Reads of unassigned space are 0, so a
