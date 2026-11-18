@@ -35,9 +35,8 @@ if [ -n "${A6400_QEMU_DATA_DIR:-}" ]; then
     PREPARED=1
     (cd "$E/.." && python3 -m tools.research.qemu_boot_inputs verify --report-dir "$D")
 fi
-if [ -n "${A6400_QEMU_DIR:-}" ]; then Q="$A6400_QEMU_DIR"
-elif [[ "$E" == *" "* ]]; then Q="$HOME/sony-a6400-qemu"
-else Q="$E/qemu"; fi
+VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["qemu"]["version"])' "$E/../tools/toolchain.json")"
+Q="${A6400_QEMU_DIR:-$HOME/sony-a6400-qemu-$VERSION}"
 R="${RUN_DIR:-$HOME/a6400-runs}"
 if [ "$PREPARED" = 1 ]; then
     if [ -n "${AVCAM:-}" ] && [ "$AVCAM" != "$D/av-cam.bin" ]; then

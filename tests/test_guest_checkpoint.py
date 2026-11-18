@@ -57,8 +57,12 @@ class MockProbe:
 
 class TestGuestCheckpoint(unittest.TestCase):
     def test_unanswered_svc_is_retried_in_both_instruction_modes(self):
-        for thumb in (False, True):
-            with self.subTest(thumb=thumb):
+        for thumb, status in (
+            (False, 'unsupported_uipc_contract'), (True, 'unsupported_uipc_contract'),
+            (False, 'unsupported_usb_otgcore_contract'),
+            (True, 'unsupported_usb_otgcore_contract'),
+        ):
+            with self.subTest(thumb=thumb, status=status):
                 p1 = MockProbe()
                 p1.mu.mem_map(0x10000, 0x1000, unicorn.UC_PROT_ALL)
                 code = b'\x00\xdf\x07\x21' if thumb else bytes.fromhex('000000ef0710a0e3')
@@ -69,7 +73,7 @@ class TestGuestCheckpoint(unittest.TestCase):
                 p1.mu.reg_write(arm.UC_ARM_REG_PC, (0x10000 + size) | int(thumb))
                 p1.mu.reg_write(arm.UC_ARM_REG_R0, 0x1234)
                 p1.mu.reg_write(arm.UC_ARM_REG_R7, 54)
-                p1.report.update(status='unsupported_uipc_contract', boundary={'pc': 0x10000 + size, 'r7': 54})
+                p1.report.update(status=status, boundary={'pc': 0x10000 + size, 'r7': 54})
                 with tempfile.TemporaryDirectory() as directory:
                     path = Path(directory) / 'pending.ckpt'
                     save_checkpoint(p1, path)

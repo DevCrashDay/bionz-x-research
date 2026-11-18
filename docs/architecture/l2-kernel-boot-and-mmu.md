@@ -1,6 +1,6 @@
 # L2 Full-System Kernel Boot & MMU (`UnicornMachine`)
 
-Consolidated technical reference from `E0415–E0467` for booting original `CXD90045` Linux 3.0.27 kernels under `UnicornMachine`.
+Consolidated technical reference from `E0415` through [E0533](../evidence/0533-unicorn-native-thumb-userspace-continuation.md) for booting original `CXD90045` Linux 3.0.27 kernels under `UnicornMachine`.
 
 ## 1. Boot Contract & Memory Layout
 
@@ -19,11 +19,13 @@ Consolidated technical reference from `E0415–E0467` for booting original `CXD9
 - **CRCDC Clock (`E0423`)**: `0xF2A31000`, status bit 0 at `+0x30` ready after control write.
 - **VFP Check (`E0420`)**: Boot patch at `0x6041FFD8` (`FPSID` D16 check) required for Unicorn Cortex-A9/A15 models.
 
-## 3. Virtual TLB & Exception Delivery (`E0428–E0467`)
+## 3. Virtual TLB & Exception Delivery (`E0428` through `E0533`)
 
 - **Deferred `UC_TLB_VIRTUAL` (`E0448–E0457`)**: Kernel early boot runs in standard `UC_TLB_CPU` mode through `start_kernel`, `init_section_page_cgroup`, `do_initcalls`, and `cramfs` mount. On the first real user return at `ret_to_user`, the machine switches to `UC_TLB_VIRTUAL` with `UC_HOOK_TLB_FILL` walking `TTBR1` (`swapper_pg_dir` at `0x00104000`) for kernel/vmalloc and `TTBR0` (`current->mm->pgd`, e.g. `0x1DC1C000`) for user VAs.
 - **ARMv7 Fault Delivery**:
   - `UC_HOOK_INTR` re-dispatches `intno == 2` (SWI to `0xFFFF0008`), `intno == 3` (Prefetch Abort), and `intno == 4` (Data Abort).
   - CP15 `DFAR`/`DFSR` and `IFAR`/`IFSR` MRC instructions in `v7_early_abort` / `v7_early_pabort` are hooked to inject saved fault registers.
   - `kuser` helpers mapped at `0xFFFF0FA0` (barrier), `0xFFFF0FC0` (cmpxchg), `0xFFFF0FE0` (get_tls), `0xFFFF0FFC` (version).
-- **Current L2 Frontier (`E0463–E0467`)**: `ld-2.11.2.so` user entry (`0x0402E790`, `CPSR=0x30` USR+Thumb) is reached via `ret_to_user` (`0x6010DF64` `movs pc, lr`) with `pending_user_spsr`/`pending_user_lr` capture. At `0x0402E798`, Unicorn's TCG still decodes 4-byte ARM instructions instead of Thumb-2 despite `CPSR.T=1` and odd `PC`. Next step: warm up/emulate the first 2–3 Thumb instructions cleanly without re-entering `emu_start` mid-restore so TCG builds Thumb TBs, then verify BusyBox `_start` (`0x0000C439`) and live `/bin/ash`.
+- **Hook-safe maintenance (`E0533`)**: TTBR0/TTBR1 and fault-register access use Unicorn's CP-register API with the active `SCR.NS` bank. SoftMMU invalidation uses `UC_CTL_TLB_FLUSH`; translated-code invalidation remains separate. These operations must not execute a nested `emu_start`, change CPU mode or overwrite banked SP/LR.
+- **Native user continuation (`E0533`)**: the historical `0x0402E798` boundary is covered by a native Thumb regression. The original entry's two four-byte Thumb-2 loads are followed by a two-byte `mov`; the earlier four-byte PC deltas were not sufficient proof of ARM decoding. Fixed-address prologue execution and forced-Thumb invalid-instruction recovery are removed. Unsupported resident instructions stop explicitly in their original mode.
+- **Current L2 frontier**: two original `nflasha1` replays execute the linker at `0x04031790` (load bias varies), enter BusyBox `_start` at `0x0000C438` in USR/Thumb, and complete `/bin/ash` echo/pwd roundtrips over `ttyAM0`. Each reaches its 800M bound at `cpu_v7_do_idle+0x8` with no manual Thumb recovery or unmapped access. Existing handoff/VFP/fixup/MMIO aids remain declared. The separate post-`uname` child/COW exception at `0x60116E9C` is not qualified away; main-firmware application/GUI startup remains outside this result. This is Unicorn evidence, independent of the QEMU shell.

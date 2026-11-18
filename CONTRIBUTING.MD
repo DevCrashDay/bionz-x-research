@@ -32,6 +32,11 @@ For UVC video and PTP mode, start with [docs/CONTRIBUTING_UVC_PTP.md](docs/CONTR
 
 No camera is needed for ordinary checks. Install the pinned offline dependencies once and run the suite from the repository root:
 
+Use Python 3.11 or newer. The upgraded research environment is `.venv`
+(Python 3.15.2); the preserved `venv/` commands below remain valid for the
+previous environment. See [toolchain qualification and rollback](docs/TOOLCHAIN.md)
+and the optional [research/build dependencies](requirements-tools.txt).
+
 ```powershell
 # Windows (PowerShell), using the existing environment
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
@@ -52,6 +57,31 @@ The repository-structure, target-profile and status-synchronization contracts ar
 ```
 
 Run focused checks during implementation and the full suite after substantive code changes. Report actual failures and environment limitations; do not describe historical test counts as a new run. Documentation-only changes need link/content checks. `requirements.txt` pins the offline suite only: physical experiments and local firmware inputs are not reproducible from a fresh clone.
+
+Local captured-boot tests share the declared dump directory in
+`qemu-a6400/inputs.local.json`, including its manifest/checksum pins. This local
+configuration is ignored by Git; do not commit workstation paths or firmware.
+Without that configuration, the legacy `artifacts/dumps/a6400-nflasha-readonly`
+location remains supported. A configured capture with bad metadata fails rather
+than silently falling back. Per-image size and SHA-256 checks remain unchanged.
+
+Opt in to the unpacked-library integration tests before local pre-push checks:
+
+```powershell
+$env:A6400_UNPACKED_ROOT = (Resolve-Path .\firmware).Path
+.\.venv\Scripts\python.exe -m unittest tests.test_callgraph tests.test_capability_path tests.test_cmd_search tests.test_cross_model_platform tests.test_elf_symbols tests.test_fb0_absence tests.test_ipc_edges tests.test_update_chain -v
+```
+
+In WSL, set `A6400_UNPACKED_ROOT` to the Linux path of that same unpacked-body
+directory. Run compiler-dependent and native QEMU checks in Linux, not just
+Windows Python. Probe host checks use the installed default WSL distribution
+and support a temporary output directory outside the repository.
+
+A suite reported as `OK (skipped=N)` has not validated the skipped checks.
+Before pushing, record which checks actually passed on which platform and
+classify every remaining prerequisite. Missing historical payloads or
+other-model captures are unvalidated coverage, not successful tests; never
+replace them with another camera's input or relax hash/assertion guards.
 
 ## Documentation sync
 

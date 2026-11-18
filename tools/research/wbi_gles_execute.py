@@ -114,7 +114,8 @@ def execute(context, command=None, *, address_limit=0x80000000, argument=OUTPUT,
             input_word=0xa5a5a5a5, owner_tgid=None, open_thread_info=None, follow_kernel_locks=False,
             allow_new_owner=False, follow_allocation_prefix=False, follow_allocator_cpu_lock=False,
             follow_allocator_freelist=False, follow_allocator_object=False,
-            follow_owner_initializers=False, instruction_budget=1000, owner_lifecycle=False):
+            follow_owner_initializers=False, instruction_budget=1000, owner_lifecycle=False,
+            completion_lifecycle=False):
     if not 1 <= instruction_budget <= 100000:
         raise ValueError('Instruction budget exceeds bounded research limits')
     if sum(value is not None for value in (command, owner_tgid, open_thread_info)) > 1:
@@ -136,6 +137,8 @@ def execute(context, command=None, *, address_limit=0x80000000, argument=OUTPUT,
         raise ValueError('Owner initializers require original object allocation')
     if owner_lifecycle and not follow_owner_initializers:
         raise ValueError('Owner lifecycle requires original new-owner initialization')
+    if completion_lifecycle and not owner_lifecycle:
+        raise ValueError('Completion lifecycle requires original owner initialization and kernel locks')
     stack_base = STACK if open_thread_info is None else open_thread_info
     task_binding = None
     if open_thread_info is not None:
@@ -278,7 +281,8 @@ def execute(context, command=None, *, address_limit=0x80000000, argument=OUTPUT,
               'allocator_freelist': allocator_freelist,
               'allocator_object': allocator_object,
               'follow_owner_initializers': follow_owner_initializers,
-              'owner_lifecycle': owner_lifecycle, 'calls': [],
+              'owner_lifecycle': owner_lifecycle, 'completion_lifecycle': completion_lifecycle,
+              'calls': [],
               'hardware_responses_supplied': 0, 'service_returns_supplied': 0}
 
     def stop(reason, **details):
@@ -302,7 +306,7 @@ def execute(context, command=None, *, address_limit=0x80000000, argument=OUTPUT,
         if address == RETURN:
             stop('original_driver_release_return' if active_call == 'release' else
                  'original_owner_lookup_return' if owner_tgid is not None else
-                 'original_ioctl_return' if active_call == 'query' else
+                 'original_ioctl_return' if active_call != 'open' else
                  'original_driver_open_return' if open_thread_info is not None else 'original_ioctl_return')
         elif address in imports:
             stop('unsupported_kernel_import', symbol=imports[address])
@@ -332,7 +336,7 @@ def execute(context, command=None, *, address_limit=0x80000000, argument=OUTPUT,
     def write(uc, access, address, size, value, _):
         if stack_base <= address <= address + size <= stack_base + 8192:
             stack_written.update(range(address, address + size))
-        elif (((command is not None or active_call == 'query') and address == OUTPUT and size == 4)
+        elif (((command is not None or active_call not in ('open', 'release')) and address == OUTPUT and size == 4)
               or (open_thread_info is not None and address == FILE + 0xa8 and size == 4)):
             if address == FILE + 0xa8:
                 file_known.update(range(address, address + size))
@@ -387,26 +391,56 @@ def execute(context, command=None, *, address_limit=0x80000000, argument=OUTPUT,
                 'mutation_state': [{'start': begin, 'hex': bytes(mu.mem_read(begin, end-begin)).hex()}
                                    for begin, end in mutable]})
             previous_count = len(report['trace'])
-            for next_call, next_entry in (('query', base + 0x900), ('release', base + 0x310)):
+            sequence = [('query', base + 0x900, 0x80048200, None),
+                        ('release', base + 0x310, FILE, None)]
+            if completion_lifecycle:
+                sequence = [
+                    ('wait_reset', base + 0x900, 0xc004820d, 0xa5a5a5a5),
+                    ('signal_zero', base + 0x900, 0xc004820e, 0),
+                    ('signal_tgid', base + 0x900, 0xc004820e, task_binding['tgid']),
+                    ('wait_fast', base + 0x900, 0xc004820d, 0xa5a5a5a5),
+                    ('wait_again', base + 0x900, 0xc004820d, 0xa5a5a5a5),
+                ]
+            for next_call, next_entry, next_command, next_input in sequence:
                 remaining = instruction_budget - len(report['trace'])
                 if remaining <= 0:
                     report['status'] = 'instruction_budget_exhausted'
                     break
                 active_call = next_call
                 report['status'] = 'running'
-                mu.reg_write(arm.UC_ARM_REG_R0, FILE if next_call == 'query' else FILE + 0x400)
-                mu.reg_write(arm.UC_ARM_REG_R1, 0x80048200 if next_call == 'query' else FILE)
+                report.pop('boundary', None)
+                if next_input is not None:
+                    mu.mem_write(OUTPUT, struct.pack('<I', next_input))
+                mu.reg_write(arm.UC_ARM_REG_R0, FILE + 0x400 if next_call == 'release' else FILE)
+                mu.reg_write(arm.UC_ARM_REG_R1, next_command)
                 mu.reg_write(arm.UC_ARM_REG_R2, OUTPUT)
                 mu.reg_write(arm.UC_ARM_REG_LR, RETURN)
                 mu.reg_write(arm.UC_ARM_REG_SP, stack_base + 0x1800)
                 mu.emu_start(next_entry, 0, count=remaining, timeout=1000000)
                 returned = mu.reg_read(arm.UC_ARM_REG_R0)
-                report['calls'].append({'operation': next_call, 'returned': returned,
+                wait_boundary = (
+                    completion_lifecycle and next_call in ('wait_reset', 'wait_again')
+                    and report['status'] == 'unsupported_kernel_import'
+                    and report['boundary']['symbol'] == 'wait_for_completion_interruptible_timeout')
+                call = {'operation': next_call, 'returned': None if wait_boundary else returned,
                     'status': report['status'], 'instructions': len(report['trace']) - previous_count,
-                    'output_word': struct.unpack('<I', mu.mem_read(OUTPUT, 4))[0]})
+                    'output_word': struct.unpack('<I', mu.mem_read(OUTPUT, 4))[0]}
+                if completion_lifecycle:
+                    owner_address = allocator_object['address']
+                    call['completion_state'] = {
+                        'owner': owner_address,
+                        'tgid': struct.unpack('<I', mu.mem_read(owner_address + 8, 4))[0],
+                        'fast': struct.unpack('<I', mu.mem_read(owner_address + 0x10, 4))[0],
+                        'done': struct.unpack('<I', mu.mem_read(owner_address + 0x14, 4))[0],
+                    }
+                if wait_boundary:
+                    call['boundary'] = dict(report['boundary'])
+                    call['completion_argument'] = mu.reg_read(arm.UC_ARM_REG_R0)
+                    call['timeout_jiffies'] = mu.reg_read(arm.UC_ARM_REG_R1)
+                report['calls'].append(call)
                 previous_count = len(report['trace'])
-                expected = 'original_ioctl_return' if next_call == 'query' else 'original_driver_release_return'
-                if report['status'] != expected or returned != 0:
+                expected = 'original_driver_release_return' if next_call == 'release' else 'original_ioctl_return'
+                if not wait_boundary and (report['status'] != expected or returned != 0):
                     break
     except unicorn.UcError as error:
         if report['status'] == 'running':

@@ -14,10 +14,11 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.a6400.execution.exbl_boot_harness import ExblBootHarness  # noqa: E402
+from project_paths import a6400_dump_dir  # noqa: E402
 from src.a6400.execution.exbl_image import (NFLASHA_B0_SHA256,  # noqa: E402
                                             NFLASHA_B0_SIZE, ExblImage)
 
-DEFAULT_DUMP = ROOT / 'artifacts/dumps/a6400-nflasha-readonly/nflashaB0-4194304.bin'
+DEFAULT_DUMP = a6400_dump_dir(ROOT) / 'nflashaB0-4194304.bin'
 OUT_DIR = ROOT / 'artifacts/analysis/e0415-nflasha-boot'
 
 

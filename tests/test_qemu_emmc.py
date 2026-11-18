@@ -1,6 +1,7 @@
 """Optional native QEMU eMMC regressions using constructed disks and paused CPUs."""
 import os
 from pathlib import Path
+import re
 import select
 import struct
 import subprocess
@@ -9,13 +10,20 @@ import time
 import unittest
 
 from project_paths import PROJECT_ROOT
+from tools.research.qemu_boot_probe import Qmp
+from tools.research.toolchain import toolchain_config
 
-QEMU = Path(os.environ.get('A6400_QEMU_DIR', str(Path.home() / 'sony-a6400-qemu'))) / 'build/qemu-system-arm'
+VERSION = toolchain_config()['qemu']['version']
+QEMU = Path(os.environ.get(
+    'A6400_QEMU_DIR', str(Path.home() / f'sony-a6400-qemu-{VERSION}'))) / 'build/qemu-system-arm'
 SDHCI = 0xF0304000
+NATIVE_AVAILABLE = os.name == 'posix' and QEMU.is_file()
 
 
-@unittest.skipUnless(os.name == 'posix' and QEMU.is_file(), 'Optional WSL/Linux sony-a6400 QEMU build absent')
+@unittest.skipUnless(NATIVE_AVAILABLE, 'Optional WSL/Linux sony-a6400 QEMU build absent')
 class QemuEmmcAddressingTests(unittest.TestCase):
+    image_bytes = 16 * 1024 ** 2
+
     def setUp(self):
         directory = PROJECT_ROOT / 'artifacts/tests'
         directory.mkdir(parents=True, exist_ok=True)
@@ -26,7 +34,7 @@ class QemuEmmcAddressingTests(unittest.TestCase):
         self.marker = (b'Original sector contents, not a synthesized controller response.\n' * 9)[:512]
         self.marker = self.marker.ljust(512, b'\0')
         with image.open('xb') as stream:
-            stream.truncate(16 * 1024 ** 2)
+            stream.truncate(self.image_bytes)
             stream.seek(8 * 1024 ** 2 + 1024)
             stream.write(self.marker)
         self.log = (root / 'qemu.log').open('wb')
@@ -100,8 +108,8 @@ class QemuEmmcAddressingTests(unittest.TestCase):
         self.request('clock_step 1000000')
         return ocr
 
-    def read_marker(self, address):
-        self.command(17, address, 0x3A, read=True)
+    def read_block(self, command, argument):
+        self.command(command, argument, 0x3A, read=True)
         data = bytearray()
         for _ in range(128):
             data.extend(struct.pack('<I', self.request(f'readl {SDHCI + 0x20:#x}')))
@@ -110,12 +118,113 @@ class QemuEmmcAddressingTests(unittest.TestCase):
     def test_cmd1_sector_mode_reads_the_requested_512_byte_sector(self):
         ocr = self.initialize_card(True)
         self.assertTrue(ocr & 0x40000000, 'Requested eMMC sector mode was not acknowledged')
-        self.assertEqual(self.read_marker(2), self.marker)
+        self.assertEqual(self.read_block(17, 2), self.marker)
 
     def test_cmd1_byte_mode_keeps_byte_addressed_reads(self):
         ocr = self.initialize_card(False)
         self.assertFalse(ocr & 0x40000000)
-        self.assertEqual(self.read_marker(1024), self.marker)
+        self.assertEqual(self.read_block(17, 1024), self.marker)
+
+    def test_ext_csd_preserves_user_capacity_without_resizing_the_backend(self):
+        self.initialize_card(True)
+        ext_csd = self.read_block(8, 0)
+        self.assertEqual(ext_csd[192], 7)
+        self.assertEqual(struct.unpack_from('<I', ext_csd, 212)[0],
+                         (self.image_bytes - 8 * 1024 ** 2) // 512)
+
+
+class QemuLegacyCapacityTests(QemuEmmcAddressingTests):
+    image_bytes = 2 * 1024 ** 3
+
+
+@unittest.skipUnless(NATIVE_AVAILABLE, 'Optional WSL/Linux sony-a6400 QEMU build absent')
+class QemuCapacityGuardTests(unittest.TestCase):
+    def test_legacy_policy_still_rejects_an_unqualified_backend(self):
+        directory = PROJECT_ROOT / 'artifacts/tests'
+        directory.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=directory) as temporary:
+            image = Path(temporary) / 'invalid.img'
+            for size in (15 * 1024 ** 2, 2 * 1024 ** 3 - 512):
+                with self.subTest(backend_bytes=size):
+                    with image.open('wb') as stream:
+                        stream.truncate(size)
+                    result = subprocess.run(
+                        [str(QEMU), '-M', 'sony-a6400', '-S', '-display', 'none',
+                         '-monitor', 'none', '-serial', 'none', '-net', 'none',
+                         '-drive', f'if=sd,format=raw,file={image}'],
+                        capture_output=True, timeout=10)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertRegex(result.stderr, rb'Invalid (?:eMMC|SD card) size')
+
+
+@unittest.skipUnless(NATIVE_AVAILABLE, 'Optional WSL/Linux sony-a6400 QEMU build absent')
+class QemuBoardIoTests(unittest.TestCase):
+    def test_rear_keys_and_both_display_callbacks_use_native_interfaces(self):
+        directory = PROJECT_ROOT / 'artifacts/tests'
+        directory.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=directory) as temporary, \
+                tempfile.TemporaryDirectory(prefix='a6400-qmp-') as runtime:
+            root = Path(temporary)
+            socket_path = Path(runtime) / 'qmp.sock'
+            with (root / 'qemu.log').open('wb') as log:
+                process = subprocess.Popen(
+                    [str(QEMU), '-M', 'sony-a6400,rear-controls=on', '-accel', 'qtest',
+                     '-S', '-display', 'none', '-monitor', 'none', '-serial', 'none',
+                     '-net', 'none', '-qmp', f'unix:{socket_path},server=on,wait=off'],
+                    stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+                qmp = None
+                try:
+                    deadline = time.monotonic() + 10
+                    while not socket_path.exists():
+                        self.assertIsNone(process.poll(), (root / 'qemu.log').read_text())
+                        self.assertLess(time.monotonic(), deadline, 'QMP socket did not become ready')
+                        time.sleep(0.01)
+                    qmp = Qmp(socket_path, time.monotonic() + 20)
+                    qmp.request('cont')
+
+                    def word(address, unit='w'):
+                        output = qmp.request('human-monitor-command', {
+                            'command-line': f'xp /1{unit}x {address:#x}'})
+                        match = re.search(r':\s*(0x[0-9a-fA-F]+)', output)
+                        self.assertIsNotNone(match, output)
+                        return int(match.group(1), 16)
+
+                    def key(code, down):
+                        qmp.request('input-send-event', {'events': [{
+                            'type': 'key', 'data': {
+                                'key': {'type': 'qcode', 'data': code}, 'down': down}}]})
+
+                    self.assertEqual(word(0xF2407020), 1023)
+                    key('ret', True)
+                    self.assertEqual(word(0xF2407020), 45)
+                    key('ret', False)
+                    self.assertEqual(word(0xF2407020), 1023)
+                    key('bracket_right', True)
+                    key('bracket_right', False)
+                    self.assertEqual(word(0xF2404014, 'h'), 1)
+                    key('bracket_left', True)
+                    key('bracket_left', False)
+                    self.assertEqual(word(0xF2404014, 'h'), 0)
+                    qmp.request('stop')
+                    for head in (0, 1):
+                        image = root / f'head-{head}.ppm'
+                        qmp.request('screendump', {'filename': str(image), 'device': 'vph', 'head': head})
+                        data = image.read_bytes()
+                        self.assertTrue(data.startswith(b'P6\n640 480\n255\n'), data[:64])
+                        self.assertEqual(len(data), len(b'P6\n640 480\n255\n') + 640 * 480 * 3)
+                    qmp.request('quit')
+                    self.assertEqual(process.wait(timeout=5), 0)
+                finally:
+                    if qmp is not None:
+                        qmp.close()
+                    if process.poll() is None:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait(timeout=5)
+                            self.fail('Owned QEMU process required a forced kill')
 
 
 if __name__ == '__main__':

@@ -1,6 +1,8 @@
 import json
 import pickle
 import struct
+import subprocess
+import sys
 import tempfile
 import unittest
 import zlib
@@ -9,6 +11,7 @@ from types import SimpleNamespace
 
 from PIL import Image
 
+from project_paths import PROJECT_ROOT
 from src.a6400.execution.guest_display import GL_COMMON_POOL
 from tools.research.emulator_gui import (
     CheckpointMemory, FramePump, checkpoint_display, save_frame,
@@ -77,6 +80,16 @@ class TestCheckpointDisplay(unittest.TestCase):
         stored = json.loads((self.root / 'out' / 'tiny.json').read_text(encoding='utf-8'))
         self.assertEqual(stored['surface'], 'tiny')
         self.assertEqual(stored['status'], 'snapshot-content')
+
+    def test_cli_rejects_internal_buffer_without_success_exit_or_fallback_image(self):
+        output = self.root / 'no-display'
+        result = subprocess.run(
+            [sys.executable, '-m', 'tools.research.emulator_gui',
+             '--checkpoint', str(self.checkpoint), '--headless', '--out', str(output)],
+            cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=30, check=False)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn('No verified display surface', result.stderr)
+        self.assertFalse(output.exists())
 
 
 class TestFramePump(unittest.TestCase):

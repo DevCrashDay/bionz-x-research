@@ -1,8 +1,12 @@
 """Constructed + real-dump checks for the nflasha boot-set unpacker (E0415)."""
+import hashlib
+import json
 import struct
+import tempfile
 import unittest
 from pathlib import Path
 
+from project_paths import PROJECT_ROOT, a6400_dump_dir
 from src.a6400.execution.nflasha_boot_set import (
     BOOT_SETS,
     KERNEL_VIRTUAL_BASE,
@@ -13,7 +17,7 @@ from src.a6400.execution.nflasha_boot_set import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-DUMP_DIR = ROOT / 'artifacts/dumps/a6400-nflasha-readonly'
+DUMP_DIR = a6400_dump_dir(ROOT)
 DUMPS_PRESENT = all((DUMP_DIR / identity['image']).is_file()
                     for identity in BOOT_SETS.values())
 
@@ -28,6 +32,59 @@ def raw_arm_kernel(size=0x100):
     raw = bytearray(size)
     struct.pack_into('<I', raw, 0, 0xE321F0D3)
     return bytes(raw)
+
+
+class CaptureDirectoryTests(unittest.TestCase):
+    def setUp(self):
+        base = PROJECT_ROOT / 'artifacts' / 'tests' / 'capture-directory'
+        base.mkdir(parents=True, exist_ok=True)
+        temporary = tempfile.TemporaryDirectory(dir=base)
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name).resolve()
+        self.download = self.root / 'download'
+        self.download.mkdir()
+        self.config_path = self.root / 'qemu-a6400' / 'inputs.local.json'
+        self.config_path.parent.mkdir()
+        self.config = {'schema_version': 1, 'dump_dir': str(self.download)}
+        for name, field, content in (
+                ('manifest.json', 'manifest_sha256', b'{"status":"complete"}'),
+                ('SHA256SUMS.txt', 'checksums_sha256', b'constructed checksums\n')):
+            (self.download / name).write_bytes(content)
+            self.config[field] = hashlib.sha256(content).hexdigest()
+
+    def declare(self):
+        self.config_path.write_text(json.dumps(self.config), encoding='utf-8')
+
+    def test_unconfigured_root_retains_legacy_evidence_location(self):
+        self.assertEqual(a6400_dump_dir(self.root),
+                         self.root / 'artifacts' / 'dumps' / 'a6400-nflasha-readonly')
+
+    def test_declared_capture_takes_precedence_over_partial_legacy_directory(self):
+        legacy = self.root / 'artifacts' / 'dumps' / 'a6400-nflasha-readonly'
+        legacy.mkdir(parents=True)
+        (legacy / 'manifest.json').write_bytes(b'old partial capture')
+        self.declare()
+        self.assertEqual(a6400_dump_dir(self.root), self.download)
+
+    def test_changed_metadata_rejects_configuration_instead_of_falling_back(self):
+        self.declare()
+        (self.download / 'manifest.json').write_bytes(b'changed')
+        with self.assertRaisesRegex(ValueError, 'SHA-256 mismatch'):
+            a6400_dump_dir(self.root)
+
+    def test_missing_capture_relative_root_and_wrong_target_are_rejected(self):
+        for update, error in (
+                ({'dump_dir': str(self.root / 'missing')}, FileNotFoundError),
+                ({'dump_dir': 'relative-capture'}, ValueError),
+                ({'target_id': 'zv_e10'}, ValueError),
+                ({'manifest_sha256': ''}, ValueError)):
+            with self.subTest(update=update):
+                original = dict(self.config)
+                self.config.update(update)
+                self.declare()
+                with self.assertRaises(error):
+                    a6400_dump_dir(self.root)
+                self.config = original
 
 
 class LoadAddressTests(unittest.TestCase):

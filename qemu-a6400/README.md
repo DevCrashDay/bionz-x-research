@@ -1,6 +1,6 @@
 # Sony a6400 QEMU Machine (`sony-a6400`)
 
-Out-of-tree QEMU v10.1.0 overlay and patch for the Sony ILCE-6400 (`CXD90045` / `ARM-CXD900X0`), modeled after the clean `qemu-overlay/` + `patches/` pattern used by `Oein/a5000-emulator`.
+Out-of-tree QEMU v11.1.3 overlay and patch for the Sony ILCE-6400 (`CXD90045` / `ARM-CXD900X0`), modeled after the clean `qemu-overlay/` + `patches/` pattern used by `Oein/a5000-emulator`. The previous 10.1.0 build and evidence remain preserved. See [verified tool versions, regression results and rollback](../docs/TOOLCHAIN.md).
 
 ## Prerequisites (WSL2 Ubuntu)
 
@@ -15,13 +15,14 @@ sudo apt install -y build-essential git meson ninja-build pkg-config \
 
 ## Setup & Build
 
-From the `qemu-a6400/` directory inside WSL2:
+From the repository root inside WSL2, using the installed research environment:
 
 ```bash
-./setup-qemu.sh
-cd qemu/build
-../configure --target-list=arm-softmmu --enable-sdl --disable-werror
-ninja qemu-system-arm qemu-img
+bash qemu-a6400/setup-qemu.sh
+export PATH="$HOME/a6400-rea-tools/build-tools-3.15.2/bin:$PATH"
+cd "$HOME/sony-a6400-qemu-11.1.3/build"
+../configure --python="$HOME/a6400-rea-tools/build-tools-3.15.2/bin/python" --target-list=arm-softmmu --enable-sdl --disable-werror --disable-docs
+ninja -j2 qemu-system-arm qemu-img qemu-io
 ```
 
 The patch also honors eMMC CMD1 sector-addressing requests below 2 GiB. Without
@@ -36,14 +37,16 @@ wsl.exe --exec python3 -m unittest tests.test_qemu_emmc -v
 ```
 
 Run this command from the repository root. The ordinary Windows suite skips
-these two native tests when the Linux QEMU build is unavailable.
+these eight native tests when the Linux QEMU build is unavailable. The additional
+constructed-board check exercises rear-key ADC/wheel state and both synchronous
+display callbacks; its PPM files are not original-firmware frame evidence.
 
 ## Milestone 1: Initial Bring-Up
 
 Verify the machine registers cleanly:
 
 ```bash
-./qemu/build/qemu-system-arm -M help | grep sony-a6400
+"$HOME/sony-a6400-qemu-11.1.3/build/qemu-system-arm" -M help | grep sony-a6400
 ```
 
 ## Interactive rear panel
@@ -165,13 +168,21 @@ Without `A6400_QEMU_DATA_DIR`, the legacy launcher expects the locally prepared
 `qemu-a6400/data/` layout and its original `AVCAM` override behavior:
 
 ```bash
-./run.sh            # TIMEOUT=80 ./run.sh for a bounded run
+bash qemu-a6400/run.sh  # TIMEOUT=80 bash qemu-a6400/run.sh for a bounded run
 ```
 
 `run.sh` reproduces the Sony bootloader's hand-off: kernel at `0x00108000`, initrd at `0x00700000`,
 `"kemco"+cmdline` at `0x00103000` (machine code), the main-boot `/setting/kemco.txt` cmdline (console
 swapped to `ttyAM0`), `Backup.bin` preloaded at its header word-0 address (`0x02E80000`) and
 `av-cam.bin` at `0x035C6000`. The eMMC image is attached through a fresh qcow2 overlay.
+
+The default build path is versioned and selected from
+[`tools/toolchain.json`](../tools/toolchain.json); `A6400_QEMU_DIR` remains an
+explicit override. Setup refuses a different source commit or a conflicting patch.
+The 11.1.3 port preserves the old eMMC backend geometry through an explicit
+Sony-only compatibility property; it does not resize the preserved disk image.
+Prepared captured inputs or the legacy `data/` layout are still required;
+neither is supplied by the toolchain upgrade.
 
 State at E0521: kernel → init → all eMMC partitions mounted → 40 kernel modules → av-cam
 `entry_main` → `stella`/`DMP_2D` → BusyBox shell on `ttyAM0`. See
@@ -189,6 +200,15 @@ Findings, known gaps and the ordered next steps: [STATUS.md](STATUS.md).
 
 Next, at the time of E0522: av-cam's hardware dependencies (no `liro-*` IRQ fires yet): sub-micro link, ADC, front end;
 then the Sugilite display pipeline.
+
+Earlier no-peripheral captured-profile startup investigation:
+[E0527](../docs/evidence/0527-qemu-task43-initialization-flag-wait.md) finds
+Task 43 in the first display-initialization wait on flag 10, mask 3, with
+pattern zero. Enabled IRQs 101/102 never assert; Task 65 is dormant.
+Those runs stop at the display/VPH producer boundary, without an injected flag
+or assumed sub-micro completion. These addresses do not apply to the historical
+packaged input set above. Later device-model and rear-panel progress below is
+not negated by that earlier bounded observation.
 Before each new blocker, check whether `Oein/a5000-emulator` already solved the CXD90014 equivalent.
 
 ## Milestone 4: Captured inputs and qualified waits (E0524)

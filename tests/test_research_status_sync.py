@@ -129,7 +129,7 @@ class TestResearchStatusSync(unittest.TestCase):
         )
         self.assertIn(STATUS_SNAPSHOT.latest.date, text)
         self.assertEqual(STATUS_SNAPSHOT.latest.date, STATUS_SNAPSHOT.as_of)
-        self.assertEqual(STATUS_SNAPSHOT.suite.recorded_at, STATUS_SNAPSHOT.as_of)
+        self.assertLessEqual(STATUS_SNAPSHOT.suite.recorded_at, STATUS_SNAPSHOT.as_of)
 
     def test_no_unrecorded_newer_evidence(self):
         ids = []

@@ -1,6 +1,6 @@
 # Firmware execution roadmap
 
-**Current status lives in the [README research status](../README.md) (E0509, 2026-11-13).**
+**Current status lives in the [README research status](../README.md) (E0578, 2026-11-18).**
 The entries below are dated history: their test counts and boundaries describe the state at
 the time of writing and are not updated retroactively.
 
@@ -11,7 +11,55 @@ boot-area offsets and CMD1 sector negotiation are explicit and regression-tested
 Original firmware reaches four cores, LIRO and a shell. Task 43 waits on flag 10
 (`0x3373`); its IRQ 101/102 producer paths are enabled but unasserted. Recover their
 real timing/status contract next, rather than assuming Task 65 is stuck on SIO or
-injecting an event. No emulator GUI frame or complete camera boot is claimed.
+injecting an event. No emulator GUI frame or complete camera boot was claimed
+by that receipt. The later no-peripheral E0527 decoder distinguishes the first
+mask-3 wait from the `0x3373` main loop; current QEMU display and mode-sequencer
+progress is recorded separately in [QEMU status](../qemu-a6400/STATUS.md).
+
+Unicorn userspace continuation (2026-11-17, [E0533](evidence/0533-unicorn-native-thumb-userspace-continuation.md)):
+native CP15/TLB access removes re-entrant helper execution and banked-register
+corruption; no Thumb warm-up or forced-mode instruction stepping is used.
+Two original updater replays reach BusyBox and ash echo/pwd roundtrips on
+`ttyAM0`, stopping at the declared limit with no unmapped access. This is not
+the QEMU shell. Next: qualify the separate post-`uname` child/COW exception;
+no full camera application or GUI boot is claimed.
+
+Earlier no-peripheral QEMU startup (2026-11-17, [E0527](evidence/0527-qemu-task43-initialization-flag-wait.md)):
+two captured-profile boots identify Task 43's first display-initialization wait
+on flag 10, mask 3, pattern zero, with original return `0x63A67DC3`.
+Enabled IRQs 101/102 never assert; Task 65 is dormant. Next: recover the
+display/VPH producer and handler prerequisites, then verify a natural wake.
+No completion injection, cleared global startup stall or GUI was claimed in
+those runs; later device-model and rear-panel results remain separate.
+
+User-space allocator (2026-11-17, [E0526](evidence/0526-stella-allocator-size-isolation-and-padding-trial.md)):
+original stella allocation wrappers forward sizes to `malloc`, while original
+libc already distinguishes chunk and usable size. The log constructor fits
+both the original `0x4C` request and the explicitly opt-in `0x50` padding trial;
+padding does not remove the four-byte distinction or establish an abort fix.
+The earlier confirmed pool-overrun explanation is qualified, not replaced by
+another assumed root cause. Next: recover the pre-corruption process state
+and trace allocation/free ownership before selecting a firmware correction.
+No full-process continuation, OSD frame or camera write is claimed.
+
+USB startup (2026-11-18, [E0534](evidence/0534-original-process-usb-gadget-registration-and-otg-boundary.md)):
+original-process configure/start commands use the libc heap and reach FSM
+states `1 -> 5 -> 6 -> 7`; original bus-power gadget registration creates a
+record/object. Creation remains pending at OTG `SET_MODE` `0x4001E30C`, mode 2,
+with `created=0`. No fabricated acknowledgement or event is used. Next:
+qualify native OTG/class/gadgetcore startup, then original SETCONFIG production,
+delivery and complete teardown. The isolated [E0524](evidence/0524-original-local-osal-setconfig-route.md)
+transport proof remains separate; no complete configuration is claimed.
+
+a6400A service-packet track (2026-11-17, [E0532](evidence/0532-a6400a-dmm-metadata-bounds-and-lifetime.md)):
+all 18 packaged Jiritsu commands route through category `0x1001` and queue
+`0x016F0480`. Opt-in single-extent DMM metadata, original share/access counter
+controls and guarded borrowed-buffer lifetime extend replay to eight packet
+fixtures. Original raw decode/serialization covers lengths 0, 1 and 4096 without
+mapping the physical-address fixture. Default replay preserves the seven-packet
+baseline. Next: authentic runtime allocation and complete owner/extent teardown
+before generalizing raw replies. USB remains disabled; no authentication, mount,
+file operation or device-acceptance claim is made.
 
 a6400A identity track (2026-11-13, [E0509](evidence/0509-a6400a-msc-reply-lifetime-and-verified-native-identity.md)):
 original reply-lifetime controls correct the split-process test procedure.
@@ -316,6 +364,17 @@ Deliverables: boot/service checkpoints, tested device contracts, trace replay fi
 Exit gate: the original stack required by the target screen starts without application-result mocks. If only a user-space slice runs, label it accordingly; the full-system startup gate remains open.
 
 ## Phase 4 — First original UI vertical slice
+
+Update 2026-11-17 ([E0530](evidence/0530-gles-tgid-completion-and-shared-memory-boundary.md)):
+original driver/caller execution verifies same-TGID completion ownership,
+reset and fast-flag behavior; selective modeled wake preserves blocked waits
+across descriptors. The 128 KiB mapping is software shared memory, not GPU
+MMIO, and bit 24 selects recovery rather than event presence. The opt-in
+`kernel-bound-tgid` policy rejects the historical assumed engine completions.
+Two process replays stop at `libObj+0x72BF96` reading uninitialized shared
+contents, at 146,135,735 instructions. OSD A/B remain unmapped; **no firmware
+frame is demonstrated**. Recover actual shared backing/initialization before
+qualifying functional GPU work and its IRQ. Do not seed success or a screen.
 
 Status 2026-11-10 (E0298): a read-only display contract covers OSD A/B
 (camera-verified, 640x480 RGBA4444); a safe ptrace capture of im.elf's existing

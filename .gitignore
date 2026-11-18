@@ -3,6 +3,7 @@ venv/
 .venv/
 __pycache__/
 *.py[cod]
+/hs_err_pid*.log
 .pytest_cache/
 node_modules/
 

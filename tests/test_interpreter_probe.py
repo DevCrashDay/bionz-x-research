@@ -1080,6 +1080,98 @@ class ProbeSliceAndDisplayTests(unittest.TestCase):
         self.assertEqual(probe._finalize_report()['display']['contract'], 'camera-e0074-e0044')
 
 
+class GlesTgidDispatchTests(unittest.TestCase):
+    def setUp(self):
+        from types import SimpleNamespace
+        from src.a6400.execution.guest_gles import GuestGles, GlesBinding
+        from src.a6400.execution.guest_threads import GuestThreads, GuestThread
+        from src.a6400.execution.kernel_task_identity import KernelTaskIdentityTable
+        self.probe = InterpreterProbe(syscall_policy='stop')
+        self.probe.syscall_policy = 'threads'
+        self.probe.report['status'] = 'running'
+        self.probe.mu.mem_map(0x1000, 0x2000, 7)
+        self.probe.mu.mem_write(0x1000, bytes.fromhex('000000ef'))
+        self.probe.threads = GuestThreads()
+        table = KernelTaskIdentityTable()
+        for tid in (1000, 1001, 1002):
+            table.register(tid, 1000)
+            if tid != 1000:
+                self.probe.threads.threads[tid] = GuestThread(tid, 'waiter', state='runnable')
+        self.probe.gles = GuestGles(GlesBinding(table=table), completion_policy='kernel-tgid')
+        owner = self.probe.gles.open(2, 1000, 1000)['owner_id']
+        self.probe.filesystem = SimpleNamespace(fds={
+            fd: {'device': 'dmpgles2', 'owner_id': owner} for fd in (9, 10)})
+
+    def ioctl(self, tid, fd, command, argument, word):
+        probe = self.probe
+        probe.threads.current_tid = tid
+        probe.threads.threads[tid].state = 'running'
+        probe.mu.mem_write(argument, struct.pack('<I', word))
+        for register, value in ((arm.UC_ARM_REG_CPSR, 0x10), (arm.UC_ARM_REG_R0, fd),
+                                (arm.UC_ARM_REG_R1, command), (arm.UC_ARM_REG_R2, argument),
+                                (arm.UC_ARM_REG_R7, 54), (arm.UC_ARM_REG_PC, 0x1004)):
+            probe.mu.reg_write(register, value)
+        probe._interrupt(probe.mu, 2, None)
+        return probe.report['serviced_syscalls'][-1]
+
+    def test_cross_fd_signal_wakes_only_matching_software_waiters(self):
+        self.ioctl(1001, 9, 0xc004820d, 0x2010, 0xa5a5a5a5)
+        self.ioctl(1002, 9, 0xc0048203, 0x2020, 0x04000000)
+        event = self.ioctl(1000, 10, 0xc004820e, 0x2000, 0)
+        self.assertEqual(event['woken_tids'], [1001])
+        self.assertEqual(self.probe.threads.threads[1001].state, 'runnable')
+        self.assertEqual(self.probe.threads.threads[1002].state, 'blocked_gles_event')
+        self.assertEqual(self.probe.threads.fd_waiters[9], [1002])
+        event = self.ioctl(1001, 9, 0xc004820d, 0x2010, 0xa5a5a5a5)
+        self.assertEqual(event['returned'], 0)
+        self.assertEqual(bytes(self.probe.mu.mem_read(0x2010, 4)), struct.pack('<I', 1))
+
+    def test_failed_signal_keeps_waiter_parked(self):
+        self.ioctl(1001, 9, 0xc004820d, 0x2010, 0xa5a5a5a5)
+        event = self.ioctl(1000, 10, 0xc004820e, 0x2000, 0xdeadbeef)
+        self.assertEqual(event['returned'], -14)
+        self.assertNotIn('woken_tids', event)
+        self.assertEqual(self.probe.threads.threads[1001].state, 'blocked_gles_wait')
+        self.assertEqual(self.probe.threads.fd_waiters[9], [1001])
+
+    def test_uninitialized_shared_bytes_stop_after_original_fixture_writes_are_readable(self):
+        from src.a6400.execution.guest_mmap import GuestMmap
+        probe = self.probe
+        probe.mu = Uc(UC_ARCH_ARM, UC_MODE_ARM)
+        probe.mu.mem_map(0x1000, 4096)
+        # str r1,[r0]; ldr r2,[r0]; ldr r3,[r0,#4]
+        probe.mu.mem_write(0x1000, struct.pack('<3I', 0xe5801000, 0xe5902000, 0xe5903004))
+        mapper = GuestMmap(probe.mu, probe.filesystem)
+        event = probe.gles.mmap2(mapper, 0, 0x20000, 3, 1, 0, 1)
+        virtual = event['returned']
+        probe.install_gles_memory_guards()
+        probe.mu.reg_write(arm.UC_ARM_REG_R0, virtual)
+        probe.mu.reg_write(arm.UC_ARM_REG_R1, 0x12345678)
+        probe.mu.emu_start(0x1000, 0x100c, count=3)
+        self.assertEqual(probe.mu.reg_read(arm.UC_ARM_REG_R2), 0x12345678)
+        self.assertEqual(probe.report['status'], 'unsupported_gles_contract')
+        self.assertEqual(probe.report['boundary']['address'], virtual + 4)
+        self.assertEqual(probe.report['boundary']['pc'], 0x1008)
+        self.assertEqual(len(probe.gles.shared_unknown), 0x20000 - 4)
+        self.assertEqual(probe.discover_resumed_gles_bar(), [])
+
+    def test_unsupported_gpu_register_write_does_not_complete_an_engine(self):
+        probe = self.probe
+        probe.mu = Uc(UC_ARCH_ARM, UC_MODE_ARM)
+        probe.mu.mem_map(0x1000, 4096)
+        probe.mu.mem_map(0x4000, 0x4000)
+        probe.mu.mem_write(0x1000, struct.pack('<I', 0xe5801000))
+        probe.gles.bar_virtual, probe.gles.bar_length = 0x4000, 0x4000
+        probe.install_gles_memory_guards()
+        probe.mu.reg_write(arm.UC_ARM_REG_R0, 0x5800)
+        probe.mu.reg_write(arm.UC_ARM_REG_R1, 1)
+        probe.mu.emu_start(0x1000, 0x1004, count=1)
+        self.assertEqual(probe.report['boundary']['reason'], 'gles_mmio_operation_not_modelled')
+        self.assertEqual(probe.report['boundary']['physical'], 0xf1001800)
+        self.assertEqual(probe.gles.engine_completions, 0)
+        self.assertEqual(probe.gles.dev_a8, 0)
+
+
 class SemtimedopDispatchTests(unittest.TestCase):
     """a6400 glibc 2.11.2 uses syscall 312 for semtimedop (301 also accepted)."""
 

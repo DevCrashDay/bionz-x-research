@@ -30,7 +30,8 @@ import json
 import struct
 from collections import Counter
 
-from unicorn import (UC_ARCH_ARM, UC_HOOK_CODE, UC_HOOK_INTR,
+from unicorn import (UC_ARCH_ARM, UC_CTL_IO_WRITE, UC_CTL_TLB_FLUSH,
+                     UC_HOOK_CODE, UC_HOOK_INTR,
                      UC_HOOK_MEM_FETCH_PROT, UC_HOOK_MEM_READ,
                      UC_HOOK_MEM_READ_PROT, UC_HOOK_MEM_READ_UNMAPPED,
                      UC_HOOK_MEM_UNMAPPED, UC_HOOK_MEM_WRITE,
@@ -2009,56 +2010,20 @@ class UnicornMachine:
         return True
 
     def _flush_tlb(self) -> None:
-        """Drop Unicorn's cached translations so guest PTE writes take effect (E0438).
+        """Invalidate translated code; SoftMMU entries are flushed separately."""
+        self.uc.ctl_flush_tb()
+        self._tlb_flushes += 1
 
-        Unicorn's `ctl_flush_tb` invalidates the translated-block cache (the ARM
-        TLB equivalent here); the older CTL name is kept as a fallback.
-        """
-        flush = getattr(self.uc, 'ctl_flush_tb', None)
-        if flush is not None:
-            try:
-                flush()
-                self._tlb_flushes += 1
-                return
-            except Exception:
-                pass
-        try:
-            import unicorn
-            self.uc.ctl(getattr(unicorn, 'UC_CTL_TLB_FLUSH', 0))
-            self._tlb_flushes += 1
-        except Exception:
-            pass
+    def _cp15_security(self) -> int:
+        # Unicorn's CP-register selector is secure=1, non-secure=0, not CPSR.M.
+        scr = self.uc.cpr_read(15, 0, 1, 1, 0, 1, False)
+        return int(not (scr & 1))
 
     def _read_cp15_ttbr0(self) -> int:
-        helper_va = self.ABORT_HELPER_PA + 0x200 + self.PAGE_OFFSET
-        code = struct.pack('<3I', 0xEE120F10, 0xEAFFFFFE, 0xEAFFFFFE)
-        saved = {}
-        try:
-            self.uc.mem_write(self.ABORT_HELPER_PA + 0x200, code)
-            saved = {name: self.uc.reg_read(reg) for name, reg in
-                     (('r0', UC_ARM_REG_R0), ('r1', UC_ARM_REG_R1),
-                      ('r2', UC_ARM_REG_R2), ('r3', UC_ARM_REG_R3),
-                      ('lr', UC_ARM_REG_LR), ('pc', UC_ARM_REG_PC),
-                      ('cpsr', UC_ARM_REG_CPSR))}
-            self.uc.reg_write(UC_ARM_REG_CPSR, 0xD3)
-            self.uc.emu_start(helper_va, 0, count=1)
-            value = self.uc.reg_read(UC_ARM_REG_R0)
-            for reg in (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2,
-                        UC_ARM_REG_R3, UC_ARM_REG_LR):
-                key = {UC_ARM_REG_R0: 'r0', UC_ARM_REG_R1: 'r1',
-                       UC_ARM_REG_R2: 'r2', UC_ARM_REG_R3: 'r3',
-                       UC_ARM_REG_LR: 'lr'}[reg]
-                self.uc.reg_write(reg, saved[key])
-            # Unicorn couples the CPSR T bit to the PC LSB: writing an even PC
-            # clears Thumb state.  Restore PC with the correct LSB (E0443).
-            thumb = bool(saved['cpsr'] & 0x20)
-            self.uc.reg_write(UC_ARM_REG_CPSR,
-                              saved['cpsr'] & ~(0x20 if thumb else 0))
-            self.uc.reg_write(UC_ARM_REG_PC, saved['pc'] | (1 if thumb else 0))
-            self._cached_ttbr0 = value & 0xFFFFC000
-            return value
-        except Exception:
-            return 0
+        """Read the active TTBR0 without executing guest code from a hook."""
+        value = self.uc.cpr_read(15, 0, 2, 0, 0, self._cp15_security(), False)
+        self._cached_ttbr0 = value & 0xFFFFC000
+        return value
 
     _REG_BY_NAME = {'r0': UC_ARM_REG_R0, 'r1': UC_ARM_REG_R1, 'r2': UC_ARM_REG_R2,
                     'r3': UC_ARM_REG_R3, 'r4': UC_ARM_REG_R4, 'r5': UC_ARM_REG_R5,
@@ -2165,36 +2130,9 @@ class UnicornMachine:
         return report
 
     def _flush_cputlb(self) -> None:
-        """Force a real Unicorn/QEMU SoftMMU flush: TLBIALL + TTBR0 rewrite + ISB."""
-        helper_va = self.ABORT_HELPER_PA + 0x300 + self.PAGE_OFFSET
-        # E0447 note: an SCTLR-changing write (even with M still set) makes
-        # QEMU sctlr_write() call tlb_flush(cs); that experiment broke early
-        # boot and was reverted.  Kept: TTBR0 rewrite + TLBIALL + DSB + ISB.
-        code = struct.pack('<6I', 0xEE121F10, 0xEE021F10, 0xEE080F17,
-                           0xF57FF04F, 0xF57FF06F, 0xEAFFFFFE)
-        saved = {}
-        try:
-            self.uc.mem_write(self.ABORT_HELPER_PA + 0x300, code)
-            saved = {'r0': self.uc.reg_read(UC_ARM_REG_R0),
-                     'r1': self.uc.reg_read(UC_ARM_REG_R1),
-                     'r2': self.uc.reg_read(UC_ARM_REG_R2),
-                     'r3': self.uc.reg_read(UC_ARM_REG_R3),
-                     'lr': self.uc.reg_read(UC_ARM_REG_LR),
-                     'pc': self.uc.reg_read(UC_ARM_REG_PC),
-                     'cpsr': self.uc.reg_read(UC_ARM_REG_CPSR)}
-            self.uc.reg_write(UC_ARM_REG_CPSR, 0xD3)
-            self.uc.emu_start(helper_va, 0, count=5)
-            thumb = bool(saved['cpsr'] & 0x20)
-            for reg, key in ((UC_ARM_REG_R0, 'r0'), (UC_ARM_REG_R1, 'r1'),
-                             (UC_ARM_REG_R2, 'r2'), (UC_ARM_REG_R3, 'r3'),
-                             (UC_ARM_REG_LR, 'lr')):
-                self.uc.reg_write(reg, saved[key])
-            self.uc.reg_write(UC_ARM_REG_CPSR,
-                              saved['cpsr'] & ~(0x20 if thumb else 0))
-            self.uc.reg_write(UC_ARM_REG_PC, saved['pc'] | (1 if thumb else 0))
-            self.cputlb_flushes += 1
-        except Exception:
-            pass
+        """Invalidate SoftMMU entries without nested emu_start or bank changes."""
+        self.uc.ctl(UC_CTL_TLB_FLUSH, UC_CTL_IO_WRITE)
+        self.cputlb_flushes += 1
 
     def _walk_kernel_pt(self, vaddr: int) -> int | None:
         """Walk the kernel L1 tables (TTBR1 and/or swapper_pg_dir) for a high VA.
@@ -2849,31 +2787,10 @@ class UnicornMachine:
             self.switch_mm_hooked = False
 
     def _read_cp15_ttbr1(self) -> int:
-        helper_va = self.ABORT_HELPER_PA + 0x240 + self.PAGE_OFFSET
-        code = struct.pack('<3I', 0xEE120F30, 0xEAFFFFFE, 0xEAFFFFFE)
-        saved = {}
-        try:
-            self.uc.mem_write(self.ABORT_HELPER_PA + 0x240, code)
-            saved = {name: self.uc.reg_read(reg) for name, reg in
-                     (('r0', UC_ARM_REG_R0), ('r1', UC_ARM_REG_R1),
-                      ('r2', UC_ARM_REG_R2), ('r3', UC_ARM_REG_R3),
-                      ('lr', UC_ARM_REG_LR), ('pc', UC_ARM_REG_PC),
-                      ('cpsr', UC_ARM_REG_CPSR))}
-            self.uc.reg_write(UC_ARM_REG_CPSR, 0xD3)
-            self.uc.emu_start(helper_va, 0, count=1)
-            value = self.uc.reg_read(UC_ARM_REG_R0)
-            for reg, key in ((UC_ARM_REG_R0, 'r0'), (UC_ARM_REG_R1, 'r1'),
-                             (UC_ARM_REG_R2, 'r2'), (UC_ARM_REG_R3, 'r3'),
-                             (UC_ARM_REG_LR, 'lr')):
-                self.uc.reg_write(reg, saved[key])
-            thumb = bool(saved['cpsr'] & 0x20)
-            self.uc.reg_write(UC_ARM_REG_CPSR,
-                              saved['cpsr'] & ~(0x20 if thumb else 0))
-            self.uc.reg_write(UC_ARM_REG_PC, saved['pc'] | (1 if thumb else 0))
-            self._cached_ttbr1 = value & 0x7FFFFFFF & ~0x3FFF
-            return value
-        except Exception:
-            return 0
+        """Read the active TTBR1 without changing architectural CPU state."""
+        value = self.uc.cpr_read(15, 0, 2, 0, 1, self._cp15_security(), False)
+        self._cached_ttbr1 = value & 0x7FFFFFFF & ~0x3FFF
+        return value
 
     def _pa_mapped(self, pa: int) -> bool:
         for begin, end in self._mapped:
@@ -3297,31 +3214,10 @@ class UnicornMachine:
     ABORT_HELPER_PA = 0x02001000
 
     def _set_cp15_fault(self, address: int, fsr: int) -> bool:
-        """Populate DFAR (c6) and DFSR (c5) through emulated MCR instructions."""
-        helper_va = self.ABORT_HELPER_PA + self.PAGE_OFFSET
-        code = struct.pack('<3I', 0xEE060F10, 0xEE051F10, 0xEAFFFFFE)
-        try:
-            self.uc.mem_write(self.ABORT_HELPER_PA, code)
-        except Exception:
-            return False
-        saved_r0 = self.uc.reg_read(UC_ARM_REG_R0)
-        saved_r1 = self.uc.reg_read(UC_ARM_REG_R1)
-        saved_cpsr = self.uc.reg_read(UC_ARM_REG_CPSR)
-        # MCR is privileged: run the helper in SVC mode even when the fault
-        # came from user mode (E0429).
-        self.uc.reg_write(UC_ARM_REG_CPSR, 0xD3)
-        self.uc.reg_write(UC_ARM_REG_R0, address & 0xFFFFFFFF)
-        self.uc.reg_write(UC_ARM_REG_R1, fsr & 0xFFFFFFFF)
-        try:
-            self.uc.emu_start(helper_va, 0, count=2)
-        except Exception:
-            self.uc.reg_write(UC_ARM_REG_R0, saved_r0)
-            self.uc.reg_write(UC_ARM_REG_R1, saved_r1)
-            self.uc.reg_write(UC_ARM_REG_CPSR, saved_cpsr)
-            return False
-        self.uc.reg_write(UC_ARM_REG_R0, saved_r0)
-        self.uc.reg_write(UC_ARM_REG_R1, saved_r1)
-        self.uc.reg_write(UC_ARM_REG_CPSR, saved_cpsr)
+        """Populate the active DFAR/DFSR bank without executing guest helpers."""
+        security = self._cp15_security()
+        self.uc.cpr_write(15, 0, 6, 0, 0, security, False, address & 0xFFFFFFFF)
+        self.uc.cpr_write(15, 0, 5, 0, 0, security, False, fsr & 0xFFFFFFFF)
         return True
 
     def _deliver_prefetch_abort(self, pc: int, cpsr: int, address: int) -> bool:
@@ -3380,29 +3276,10 @@ class UnicornMachine:
         return True
 
     def _set_cp15_prefetch_fault(self, address: int, ifsr: int) -> bool:
-        """Populate IFAR (c6,c0,2) and IFSR (c5,c0,1) via emulated MCR."""
-        helper_va = self.ABORT_HELPER_PA + self.PAGE_OFFSET
-        code = struct.pack('<3I', 0xEE060F50, 0xEE051F30, 0xEAFFFFFE)
-        try:
-            self.uc.mem_write(self.ABORT_HELPER_PA, code)
-        except Exception:
-            return False
-        saved_r0 = self.uc.reg_read(UC_ARM_REG_R0)
-        saved_r1 = self.uc.reg_read(UC_ARM_REG_R1)
-        saved_cpsr = self.uc.reg_read(UC_ARM_REG_CPSR)
-        self.uc.reg_write(UC_ARM_REG_CPSR, 0xD3)  # helper MCR needs SVC mode
-        self.uc.reg_write(UC_ARM_REG_R0, address & 0xFFFFFFFF)
-        self.uc.reg_write(UC_ARM_REG_R1, ifsr & 0xFFFFFFFF)
-        try:
-            self.uc.emu_start(helper_va, 0, count=2)
-        except Exception:
-            self.uc.reg_write(UC_ARM_REG_R0, saved_r0)
-            self.uc.reg_write(UC_ARM_REG_R1, saved_r1)
-            self.uc.reg_write(UC_ARM_REG_CPSR, saved_cpsr)
-            return False
-        self.uc.reg_write(UC_ARM_REG_R0, saved_r0)
-        self.uc.reg_write(UC_ARM_REG_R1, saved_r1)
-        self.uc.reg_write(UC_ARM_REG_CPSR, saved_cpsr)
+        """Populate the active IFAR/IFSR bank without executing guest helpers."""
+        security = self._cp15_security()
+        self.uc.cpr_write(15, 0, 6, 0, 2, security, False, address & 0xFFFFFFFF)
+        self.uc.cpr_write(15, 0, 5, 0, 1, security, False, ifsr & 0xFFFFFFFF)
         return True
 
     def _deliver_data_abort(self, pc: int, cpsr: int, address: int,
@@ -3619,53 +3496,6 @@ class UnicornMachine:
                         if _resume is not None:
                             self._pending_user_resume = None
                             _rpc, _rcpsr = _resume
-                            # E0470: general stepper implemented; the all-resume
-                            # trigger regressed the live path, so keep the E0469
-                            # prologue-only trigger and use the stepper as a unit-
-                            # tested capability (next: INSN_INVALID recovery hook).
-                            _pro = None
-                            if _rpc == 0x0402E791:
-                                try:
-                                    self._set_pc_and_cpsr(_rpc, _rcpsr)
-                                    if not self.e0483_entry_stack:
-                                        _sp0 = self.uc.reg_read(UC_ARM_REG_SP)
-                                        _words = []
-                                        for _i in range(16):
-                                            try:
-                                                _words.append(
-                                                    self._read_user32(_sp0 + 4 * _i))
-                                            except Exception:
-                                                _words.append(None)
-                                        self.e0483_entry_stack = {
-                                            'pc': f'0x{_rpc:08x}',
-                                            'cpsr': f'0x{_rcpsr:08x}',
-                                            'sp': f'0x{_sp0:08x}',
-                                            'stack': [f'0x{w:08x}' if w is not None
-                                                      else None for w in _words]}
-                                        # verify argc/argv/auxv shape
-                                        self.e0483_entry_stack['argc'] = _words[0]
-                                        self.e0483_entry_stack['argv0_is_ptr'] = (
-                                            _words[1] is not None and
-                                            0x1000 <= _words[1] < 0x60000000)
-                                    _pro = self._emulate_thumb_prologue(
-                                        _rpc, _rcpsr)
-                                except Exception:
-                                    _pro = None
-                            if _pro is not None:
-                                _npc, _ncpsr, _tr = _pro
-                                for _t in _tr:
-                                    if len(self.user_entry_trace) < 24:
-                                        self.user_entry_trace.append({
-                                            'pc': _t[1], 'cpsr': f'0x{_rcpsr:08x}',
-                                            'thumb': True, 'manual': _t[0]})
-                                self._pending_user_resume = None
-                                self._set_pc_and_cpsr(_npc, _ncpsr)
-                                continue
-                            # E0496: a user PC must never resume in SVC/ARM;
-                            # force USR|Thumb while preserving the flag bits.
-                            if (0x1000 <= (_rpc & ~1) < 0x60000000
-                                    and (_rcpsr & 0x1F) != 0x10):
-                                _rcpsr = ((_rcpsr & ~0x3F) | 0x10 | 0x20)
                             self._apply_pending_tlb_work()
                             self._set_pc_and_cpsr(_rpc, _rcpsr)
                             _uframe = getattr(self, '_pending_user_frame', None)
@@ -3776,11 +3606,6 @@ class UnicornMachine:
                                     'write': bool(write),
                                     'msg': message[:40]})
                             user_mode = (cpsr & 0x1F) == 0x10
-                            # E0471: recover user-mode Thumb UC_ERR_INSN_INVALID by
-                            # stepping the faulting instructions with Capstone.
-                            # E0473: decode-failure recovery must not depend on the
-                            # reported CPSR mode; gate only on userspace VA + resident
-                            # page + INSN message.
                             if self._should_recover_insn_invalid(pc, message):
                                 if ((cpsr & 0x1F) == 0x10 and (cpsr & 0x20) == 0
                                         and (self.uc.reg_read(UC_ARM_REG_FPEXC) & 0x40000000) == 0):
@@ -3797,57 +3622,6 @@ class UnicornMachine:
                                         continue
                                     except Exception:
                                         pass
-                                _pro = None
-                                _thumb_cpsr = ((cpsr & ~0x3F) | 0x10 | 0x20)
-                                try:
-                                    # E0474/E0494: switch to the USR bank *before*
-                                    # stepping; if the live SP became a kernel stack
-                                    # pointer, reload the full user register file from
-                                    # the active pt_regs frame first.
-                                    try:
-                                        if len(self.e0493_trace) < 60:
-                                            self.e0493_trace.append({
-                                                'tag': 'rec_state',
-                                                'pc': f'0x{pc:08x}',
-                                                'cpsr': f'0x{cpsr:08x}',
-                                                'r0': f'0x{self.uc.reg_read(UC_ARM_REG_R0):08x}',
-                                                'r1': f'0x{self.uc.reg_read(UC_ARM_REG_R1):08x}',
-                                                'r2': f'0x{self.uc.reg_read(UC_ARM_REG_R2):08x}',
-                                                'sp': f'0x{self.uc.reg_read(UC_ARM_REG_SP):08x}',
-                                                'lr': f'0x{self.uc.reg_read(UC_ARM_REG_LR):08x}'})
-                                    except Exception:
-                                        pass
-                                    self._sync_user_bank_for_recovery(pc, _thumb_cpsr)
-                                    self._set_pc_and_cpsr(pc, _thumb_cpsr)
-                                    _pro = self._step_user_thumb_insns(
-                                        pc, _thumb_cpsr, max_steps=6)
-                                except Exception:
-                                    _pro = None
-                                if _pro is not None:
-                                    _npc, _ncpsr, _tr = _pro
-                                    self.insn_invalid_recoveries += 1
-                                    for _t in _tr:
-                                        if len(self.user_entry_trace) < 32:
-                                            self.user_entry_trace.append({
-                                                'pc': _t[1],
-                                                'cpsr': f'0x{_ncpsr:08x}',
-                                                'thumb': True,
-                                                'manual': 'rec:' + _t[0]})
-                                    _page = _npc & ~0xFFF
-                                    remove = getattr(self.uc, 'ctl_remove_cache', None)
-                                    if remove is not None:
-                                        try:
-                                            remove(_page, _page + 0x1000)
-                                        except Exception:
-                                            pass
-                                    try:
-                                        self.uc.ctl_flush_tb()
-                                    except Exception:
-                                        pass
-                                    self._set_pc_and_cpsr(_npc, _ncpsr)
-                                    executed += 1
-                                    remaining = max(0, remaining - 1)
-                                    continue
                                 if len(self.insn_invalid_unsupported) < 16:
                                     try:
                                         _raw = self._read_user_bytes(pc & ~1, 4)
@@ -3857,8 +3631,10 @@ class UnicornMachine:
                                     _mn = None
                                     try:
                                         from capstone import (CS_ARCH_ARM,
+                                                              CS_MODE_ARM,
                                                               CS_MODE_THUMB, Cs)
-                                        _md = Cs(CS_ARCH_ARM, CS_MODE_THUMB)
+                                        _md = Cs(CS_ARCH_ARM, CS_MODE_THUMB
+                                                 if cpsr & 0x20 else CS_MODE_ARM)
                                         _raw = self._read_user_bytes(pc & ~1, 4)
                                         if _raw:
                                             _ins = list(_md.disasm(_raw, pc & ~1))
@@ -3869,6 +3645,7 @@ class UnicornMachine:
                                     self.insn_invalid_unsupported.append({
                                         'pc': f'0x{pc:08x}', 'bytes': _hex,
                                         'mnemonic': _mn})
+                                raise
                             in_kuser = (0xFFFF0000 <= pc < 0xFFFF1000)
                             if (not is_mem and not is_fetch and user_mode
                                     and (0x1000 <= pc < 0x60000000 or in_kuser)):

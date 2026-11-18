@@ -158,8 +158,8 @@ def get_a6400_project_status_data() -> list[Panel]:
 #
 # Update procedure for a new milestone:
 #   1. write the evidence record under docs/evidence/,
-#   2. add/refresh a card here and bump ``latest``, ``as_of`` and ``suite.test_count``,
-#   3. run the full suite once and record its "Ran N tests" value,
+#   2. add/refresh a card here and bump ``latest`` and ``as_of``,
+#   3. run the full suite; update ``suite`` and daily history only on a passing run,
 #   4. regenerate the card:  python -m tools.research.render_research_status --write
 #   5. the suite must stay green (tests/test_research_status_sync.py enforces the rest).
 
@@ -210,9 +210,10 @@ class StatusSnapshot:
     @property
     def description(self) -> str:
         return (
-            f"{self.suite.test_count} tests in the recorded offline suite. Offline original-code execution, "
+            f"{self.suite.test_count} tests in the recorded offline suite on {self.suite.recorded_at}. "
+            "Offline original-code execution, "
             "read-only physical observation and authored demonstrations are reported separately. "
-            "No emulator GUI frame and no UVC frame are claimed."
+            "QEMU OSD output is separate from the unverified Unicorn L3 GUI; no UVC frame is claimed."
         )
 
 
@@ -233,7 +234,7 @@ STATUS_SNAPSHOT = StatusSnapshot(
         ),
         tier="OFFLINE + UNICORN",
     ),
-    headline="1992 offline suite cases | Thumb loader prefix matches QEMU | BusyBox prompt",
+    headline="Native Unicorn ash | guarded USB startup | QEMU rear-panel and mod workflows retained",
     cards=(
         EvidenceRef(
             evidence_id="E0570",
@@ -320,6 +321,125 @@ STATUS_SNAPSHOT = StatusSnapshot(
                 "was performed for the offline QEMU work."
             ),
             tier="PHYSICAL RAM-ONLY + OFFLINE STATIC",
+        ),
+        EvidenceRef(
+            evidence_id="E0534",
+            path="docs/evidence/0534-original-process-usb-gadget-registration-and-otg-boundary.md",
+            date="2026-11-18",
+            title="Original-process USB registration reaches the guarded OTG startup boundary",
+            demonstrated=(
+                "Original im.elf startup supplies its own libc heap, pthread state, queues and threads. "
+                "Original configure/start messages drive FSM states 1 -> 5 -> 6 -> 7; original bus-power "
+                "gadget registration allocates and links the record/object. Configure ownership balances, "
+                "and repeated 125877-observation replays preserve the same trace and pending ioctl."
+            ),
+            boundary=(
+                "Gadget created=0: original createGadget stops at unqualified OTG SET_MODE 0x4001E30C. "
+                "No SETCONFIG producer/delivery or complete configuration is claimed. Experimental boot "
+                "policies and an explicit memory-only port-0 input remain; no hardware reply is invented. "
+                "MSC separately returns -5 without its user initializer. No camera access."
+            ),
+            tier="OFFLINE ORIGINAL PROCESS + EXPLICIT INPUT FIXTURES",
+        ),
+        EvidenceRef(
+            evidence_id="E0533",
+            path="docs/evidence/0533-unicorn-native-thumb-userspace-continuation.md",
+            date="2026-11-17",
+            title="Native Unicorn userspace continuation reaches BusyBox and ash",
+            demonstrated=(
+                "Native CP15/TLB APIs remove re-entrant guest helpers and preserve banked registers. "
+                "Two original updater replays execute the native linker, enter BusyBox _start in "
+                "USR/Thumb and complete ash echo/pwd roundtrips. Each records 9806 identical UART bytes, "
+                "zero manual Thumb recoveries and zero unmapped accesses before the 800M idle bound."
+            ),
+            boundary=(
+                "Existing Sony handoff, VFP/fixup RAM patches, timer/GIC/SVC and MMIO aids remain. "
+                "Builtin roundtrips do not qualify the separate post-uname child/COW exception or "
+                "main-firmware application/GUI boot. This is Unicorn, not QEMU; no physical access."
+            ),
+            tier="OFFLINE ORIGINAL KERNEL + NATIVE USER INSTRUCTIONS",
+        ),
+        EvidenceRef(
+            evidence_id="E0532",
+            path="docs/evidence/0532-a6400a-dmm-metadata-bounds-and-lifetime.md",
+            date="2026-11-17",
+            title="A6400A DMM metadata, bounds and borrowed raw-reply lifetime",
+            demonstrated=(
+                "Explicit opt-in original-code replay: 24-byte DMM exchanges, separate share/access "
+                "counter controls and eight repeatable packet fixtures. Raw lengths 0, 1 and 4096 "
+                "serialize exactly to a memory-only sink. Failed metadata/release completions cannot "
+                "authorize sending; the default seven-packet baseline remains byte-identical."
+            ),
+            boundary=(
+                "Constructed single-extent metadata, owner state and OSAL completions; no runtime DMM "
+                "allocation, physical mapping, filesystem or USB service. The physical-address fixture "
+                "stays unmapped. Final owner teardown stops before extent release; multi-extent and "
+                "cross-LSI replies remain unsupported. The profile remains reference."
+            ),
+            tier="OFFLINE ORIGINAL INSTRUCTIONS + DMM BYTE FIXTURES",
+        ),
+        EvidenceRef(
+            evidence_id="E0526",
+            path="docs/evidence/0526-stella-allocator-size-isolation-and-padding-trial.md",
+            date="2026-11-17",
+            title="Stella allocation-size isolation qualifies the earlier overrun explanation",
+            demonstrated=(
+                "Original-instruction isolation: stock request/chunk/usable sizes are 0x4C/0x50/0x4C; "
+                "explicit opt-in request padding produces 0x50/0x58/0x54. The constructor writes only "
+                "through offset 0x48 under both policies. Each replay passes eleven checks, repeated with "
+                "identical traces. Helpers 0x79E8C2/0x79E902 dispatch allocations, not size queries; "
+                "HeapAllocator delegates unchanged to malloc."
+            ),
+            boundary=(
+                "Isolated fragments and constructed chunk/vtable/buffer fixtures, not a full allocation "
+                "lifecycle or reproduction of the historical corruption. The earlier confirmed-overrun "
+                "explanation is not established by these sites. Padding is not a verified correction; "
+                "subtracting four from returned pointers would be invalid. No full Appframework replay "
+                "or GUI claim. Its kernel UC_ERR_NOMEM failures remain historical evidence."
+            ),
+            tier="OFFLINE ORIGINAL INSTRUCTIONS + ALLOCATOR FIXTURES",
+        ),
+        EvidenceRef(
+            evidence_id="E0525",
+            path="docs/evidence/0525-a6400a-jiritsu-senser-offline-packets.md",
+            date="2026-11-17",
+            title="A6400A Jiritsu commands mapped into the original Senser packet encoder",
+            demonstrated=(
+                "Hash-pinned A6400A 1.01 package: all 18 Jiritsu commands route through category "
+                "0x1001 and queue 0x016F0480. Original request packing, reply builders, inline reply "
+                "decoding and Senser serialization reproduce seven offline packet fixtures exactly "
+                "across two fresh runs. Phase-4 file-handler entry and privilege-rejection controls "
+                "stop at their declared boundaries."
+            ),
+            boundary=(
+                "Constructed buffers, streams, DMM metadata and record-only logging/locks/send sink. "
+                "Raw replies stop before DMM metadata handling; no OSAL service, mount, file operation, "
+                "authentication or USB command is supplied. The profile remains reference. Its "
+                "follow-up full-suite run had eight unchanged kernel-fixture UC_ERR_NOMEM errors; "
+                "the fully passing suite record remains the dated E0523 baseline."
+            ),
+            tier="OFFLINE ORIGINAL INSTRUCTIONS + CONSTRUCTED PACKETS",
+        ),
+        EvidenceRef(
+            evidence_id="E0524",
+            path="docs/evidence/0524-original-local-osal-setconfig-route.md",
+            date="2026-11-17",
+            title="Original process-local OSAL SETCONFIG route reaches the USB FSM",
+            demonstrated=(
+                "Isolated hash-pinned original ARM/Thumb replay: EventListner -> SendEvt -> local "
+                "osal_snd_sync_msg -> preProcess -> PostMsg -> futex wake -> UsbControl::Main -> "
+                "FSM event 0x13 and 0x0A4002 notification construction. Original envelopes, message "
+                "copy/destructors and checked fixture-heap ownership balance. Removing the sync "
+                "registration returns -1020 without waking or dispatching."
+            ),
+            boundary=(
+                "Constructed process/thread, heap and pthread-mutex fixtures; not full im.elf startup, "
+                "guest glibc/stella or a state-valid gadget producer. Startup FSM state 0 does not handle "
+                "the delivered event and remains unchanged; no USB mode transition or physical access. "
+                "Its full-suite run had 17 kernel-fixture UC_ERR_NOMEM errors; the passing-suite "
+                "record remains the dated E0523 baseline."
+            ),
+            tier="OFFLINE ORIGINAL INSTRUCTIONS + CHECKED FIXTURES",
         ),
         EvidenceRef(
             evidence_id="E0509",
@@ -586,10 +706,10 @@ STATUS_SNAPSHOT = StatusSnapshot(
         ),
     ),
     suite=SuiteRecord(
-        test_count=1992,
+        test_count=2091,
         recorded_at="2026-11-18",
         evidence_id="E0578",
-        command="python -m unittest discover -s tests -q",
+        command="PowerShell here-string | .\\.venv\\Scripts\\python.exe - (physical-volume denied + per-case GC; docs/TOOLCHAIN.md rebase recipe)",
     ),
     footer=(
         "Independent results, not a compatibility percentage. "
@@ -820,7 +940,8 @@ def _build_telemetry() -> TelemetryDashboard:
     test_count = STATUS_SNAPSHOT.suite.test_count
 
     pills = (
-        KpiPill("contract tests", f"{test_count:,} recorded", "green", "offline suite receipts"),
+        KpiPill("contract tests", f"{test_count:,} recorded", "green",
+                f"recorded suite: {STATUS_SNAPSHOT.suite.recorded_at}"),
         KpiPill("evidence receipts", f"{receipt_count} recorded", "blue", "docs/evidence/"),
         KpiPill("teardown sequencer", f"{TEARDOWN_PHASES}/{TEARDOWN_PHASES} phases ({TEARDOWN_PHASE_MASK})", "green", "E0353"),
         KpiPill("task phases", f"{phases.done}/{phases.total} observed", "amber", "task94_phases"),
@@ -1041,7 +1162,7 @@ DAILY_TEST_HISTORY: tuple[DailyTestPoint, ...] = (
     DailyTestPoint("2026-11-15", 1903, 8, "E0523", "MTF2 touch mod, guarded Mod Loader & QEMU a6400 boot/SMP"),
     DailyTestPoint("2026-11-16", 1905, 2, "E0524", "Captured QEMU boot inputs, eMMC addressing & qualified LIRO waits"),
     DailyTestPoint("2026-11-17", 1992, 87, "E0577", "QEMU Ydet boundary, mod reload and QEMU mod hot reload"),
-    DailyTestPoint("2026-11-18", 1992, 0, "E0578", "Open Gate (3:2) recording feasibility and development path"),
+    DailyTestPoint("2026-11-18", 2091, 99, "E0578", "Integrated upstream, native Unicorn and guarded USB/GPU research"),
 )
 
 
@@ -1068,10 +1189,10 @@ def _validate_daily_test_history(
             f"DAILY_TEST_HISTORY[-1].total ({history[-1].total}) != "
             f"STATUS_SNAPSHOT.suite.test_count ({STATUS_SNAPSHOT.suite.test_count})"
         )
-    if history[-1].date != STATUS_SNAPSHOT.as_of:
+    if history[-1].date != STATUS_SNAPSHOT.suite.recorded_at:
         raise ValueError(
             f"DAILY_TEST_HISTORY[-1].date ({history[-1].date}) != "
-            f"STATUS_SNAPSHOT.as_of ({STATUS_SNAPSHOT.as_of})"
+            f"STATUS_SNAPSHOT.suite.recorded_at ({STATUS_SNAPSHOT.suite.recorded_at})"
         )
 
 
