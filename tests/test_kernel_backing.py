@@ -3,6 +3,7 @@ import struct
 import unittest
 from pathlib import Path
 
+from project_paths import a6400_dump_dir
 import unicorn
 from unicorn import UC_ARCH_ARM, UC_MODE_ARM, Uc
 
@@ -18,7 +19,7 @@ from src.a6400.execution.kernel_backing import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-DUMP = ROOT / 'artifacts/dumps/a6400-nflasha-readonly/nflasha3-50331648.bin'
+DUMP = a6400_dump_dir(ROOT) / 'nflasha3-50331648.bin'
 
 
 def synthetic_kernel(size=0x2000, banner_offset=0x100):

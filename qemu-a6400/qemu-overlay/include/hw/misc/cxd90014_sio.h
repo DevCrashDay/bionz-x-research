@@ -4,7 +4,7 @@
 #ifndef HW_MISC_CXD90014_SIO_H
 #define HW_MISC_CXD90014_SIO_H
 
-#include "hw/sysbus.h"
+#include "hw/core/sysbus.h"
 
 /*
  * Called when a transfer starts on the channel.  @buf holds the @len TX

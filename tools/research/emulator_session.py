@@ -110,6 +110,10 @@ def build_boot_session(args, parser=None) -> BootSession:
     This performs the same hash/namespace checks as the CLI.  It does not run
     the guest and does not contact the camera.
     """
+    gles_tgid = getattr(args, 'gles_device', 'stop') == 'kernel-bound-tgid'
+    if gles_tgid and (getattr(args, 'gles_engine_model', 'none') != 'none'
+                      or getattr(args, 'gles_engine_seed_observed_block', False)):
+        raise ValueError('TGID completion requires an unseeded run without the assumed engine-completion model')
     inventory_dir = getattr(args, 'guest_inventory_dir', None)
     folder = (PROJECT_ROOT / inventory_dir) if inventory_dir else (PROJECT_ROOT / 'artifacts/inventory')
     manifest = json.loads((folder / 'guest-filesystem.json').read_text(encoding='utf-8'))
@@ -198,7 +202,11 @@ def build_boot_session(args, parser=None) -> BootSession:
 
     mmap_base = args.mmap_base
     gles_kernel_bound = getattr(args, 'gles_device', 'stop').startswith('kernel-bound')
-    gles_decoded = getattr(args, 'gles_device', 'stop') == 'kernel-bound-decoded'
+    gles_decoded = getattr(args, 'gles_device', 'stop') in ('kernel-bound-decoded', 'kernel-bound-tgid')
+    if gles_tgid:
+        from tools.research.gles_contract_trace import MODULE
+        checked_input(PROJECT_ROOT, MODULE,
+                      'a8d1dbe8c66be365d32371b13f35a0e7d598c415c0ff17f2c8f544084ccc6882')
     mmap_search_low = 0x10000000 if gles_kernel_bound else None
     probe = InterpreterProbe(syscall_policy='threads', uname_profile=uname_profile,
                              filesystem=filesystem, kuser_template=kuser_template,
@@ -229,7 +237,8 @@ def build_boot_session(args, parser=None) -> BootSession:
                 kernel_table.register(thread_id, probe.threads.process_id)
             probe.threads.on_clone = kernel_table.register
         probe.kernel_tasks = kernel_table
-        probe.gles = GuestGles(GlesBinding(table=kernel_table))
+        probe.gles = GuestGles(GlesBinding(table=kernel_table),
+                               completion_policy='kernel-tgid' if gles_tgid else 'legacy')
     if args.gpio_device == 'driver-bound':
         from src.a6400.execution.guest_gpio import GuestGpio
         probe.gpio = GuestGpio()
@@ -403,7 +412,19 @@ def build_boot_session(args, parser=None) -> BootSession:
             probe.threads.on_clone = kernel_table.register
         probe.kernel_tasks = kernel_table
         probe.gles.binding = GlesBinding(table=kernel_table)
+        if gles_tgid:
+            probe.gles.enable_tgid_completion()
+            probe.install_gles_memory_guards()
+        elif probe.gles.completion_policy == 'kernel-tgid':
+            raise ValueError('TGID completion cannot be retrofitted to or removed from a different-policy checkpoint')
         probe.gles.decoded_semantics = gles_decoded
+        if gles_tgid:
+            probe.report['gles_completion_contract'] = {
+                'policy': 'kernel-tgid',
+                'module_sha256': 'a8d1dbe8c66be365d32371b13f35a0e7d598c415c0ff17f2c8f544084ccc6882',
+                'kernel_task_records': 'explicit clone-derived model; not a booted kernel',
+                'engine_completion_supplied': False,
+            }
     usb_reply_policy = getattr(args, 'usb_reply_policy', 'legacy-zero-stubs')
     for device_attr in ('usb_buspower', 'usb_otgcore'):
         device = getattr(probe, device_attr, None)

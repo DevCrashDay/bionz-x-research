@@ -13,10 +13,33 @@ Consolidated technical reference from `E0298–E0340` and `E0473` for user-space
 - **Bit-15 Queue Dispatch (`E0331`)**: `libosal_uipc` routes queue IDs with bit 15 set (e.g., `0x00CA8192` for `UsbControl`, `0x012182EB` for `UsbBusPower`, `0x012282F6` for `BusPower`) through process-local user-space queue objects (`+4 flags`, `+8 wait list`, `+0xC head = payload - 0xC`) + `FUTEX_WAKE_PRIVATE`, rather than kernel UIPC ioctls.
 - **Kernel Sync Queues (`E0332–E0334`)**: `0x00CA0288` (handle `4109`, `UFW::AdjBase::funcOsalSyncCb` expecting 320-byte `UFW::OsalRequestPacket`) and `0x00CA01A4` (handle `4110`, `UsbControl::funcInputGetCb`).
 - **MWF `ObjMsg` & `SETCONFIG` (`E0323–E0337`)**: `ObjMsg` carries `{body_ptr, vtable}` with `ParamMap` and typed `ParamStd<int,7>` (`funcTable` in `libMWF.so`). Inbound `SETCONFIG` (`{0x6103, 0x0A4001, param 0x1006=0}`) dispatches through `UsbControl::MsgId2EventId` → FSM event `0x13` (19) and broadcasts `0x0A4002`.
+- **Original local sync-to-async replay ([E0524](../evidence/0524-original-local-osal-setconfig-route.md))**: `EventListner -> SendEvt -> osal_snd_sync_msg(0x00CA8192) -> funcOsalSyncCb -> preProcess -> PostMsg -> osal_snd_msg`. Original registration/allocator/dispatcher code owns the callback, separate envelopes and WAIT_CB wake. Original `UsbControl::Main` receives, dispatches event `0x13`, constructs `0x0A4002` and destroys the message. Checked heap/mutex fixtures balance; startup FSM state stays 0. This is not a full-process replay, physical gadget event or USB mode transition. The adjustment and input callbacks are explicitly refused as SETCONFIG lanes.
+- **Original-process startup prerequisite ([E0534](../evidence/0534-original-process-usb-gadget-registration-and-otg-boundary.md))**: original libc allocation/free, pthread/TLS state and local queues support configure/start commands and the FSM path `1 -> 5 -> 6 -> 7`. Original bus-power registration creates a `0x48`-byte record and class object; the distinct MSC branch returns -5 without `usbgmscif_init`. Gadget creation is still pending at OTG `SET_MODE` `0x4001E30C` (mode 2), `created=0`; no SETCONFIG event or hardware success is invented. Configure ownership balances; pending-start owners remain live. Its checkpoint retries the unanswered SVC. Native OTG/class/gadgetcore completion must precede original event production and teardown.
 - **Timeout Blocking (`E0308`)**: Under `kernel-e0301`/`kernel-e0303`, finite positive `RCV_MSG_TMO` blocks until message arrival instead of returning `-1022` immediately.
 
-## 3. `stella HeapAllocator` Pool-Boundary Bug (`E0484+` / Round 4)
+## 3. `stella HeapAllocator` Assertion and Size Isolation
 
-- Under `--thread-timeslice`, `Appframework` (TID 1087) aborts with glibc `malloc.c:4652: _int_malloc: Assertion (unsigned long)(size) >= (unsigned long)(nb) failed`.
-- **Root cause (not an emulator bug)**: `libObj` `stella` `HeapAllocator` allocates a pool block via `malloc(0x4C)` (chunk `0x13E6B8`, raw size `0x50`, usable `0x4C`), then advances its internal block pointer by the **rounded chunk size `0x50`** instead of usable `0x4C`. The next block (`0x13E710`) overlaps 4 bytes into the neighbouring freed libc chunk `0x13E708` in `bin9`, corrupting its `fd`/`bk` pointers (`libObj+0x7AF45A`).
-- Enlarging the request (`0x4C -> 0x50` via `--guest-patch-logalloc-0x50`) only shifts the overrun; a usable-size subtraction patch in helpers `0x79E8C2`/`0x79E902` is the candidate fix.
+- Historical `--thread-timeslice` runs reached `Appframework` (TID 1087) and glibc `malloc.c:4652: _int_malloc: Assertion (unsigned long)(size) >= (unsigned long)(nb) failed`. The archived writes into freed chunk `0x13E708` remain observations, but the earlier **confirmed pool-boundary bug / not an emulator bug** explanation is not established by the cited helper addresses.
+- **Original-instruction isolation ([E0526](../evidence/0526-stella-allocator-size-isolation-and-padding-trial.md))**: `libObj+0x79FB3E` binds `[r4, #0x40]` through vtable `0x134C310` slot `+0x30` (`+0x64402D`, returning `singleton + 8`) to the embedded `stella::HeapAllocator` (`vtable 0x1353F20`, slot `0 = +0x7ACBBB`). `libObj+0x79E8C2` / `+0x79E902` dispatch allocation requests; `HeapAllocator+0x7ACBBA` forwards them unchanged to `malloc`. Furthermore, in `PthreadMutex::create` (`+0x7AF46C`), `.bss` `0x13F70A4 = 0` (`getGlobalAllocator` `+0x7B1ADC`) takes the `cbz` fallback (`+0x7AF48C..+0x7AF498`, pushing the archived `LR = +0x7AF49D` frame) and requests `0x24` bytes from `_ZnwjRKSt9nothrow_t`, not from a `stella` pool. A subtract-four edit at `+0x79E8C2` / `+0x79E902` is not a justified size correction.
+- Original libc normalizes request `0x4C` to chunk `0x50`, and its `malloc_usable_size` already returns `0x4C` for an ordinary in-use chunk. The following chunk's `prev_size` word is borrowable; chunk `0x13E6B8` / user `0x13E6C0` has exclusive usable end `0x13E70C`. A constructor byte at user offset `0x48` is within this extent.
+- The isolated original log-block constructor writes only through offset `0x48`. Opt-in `--guest-patch-logalloc-0x50` changes request/chunk/usable to `0x50/0x58/0x54`; both constructor runs fit, and the four-byte distinction remains. This is a request-padding trial, **not a verified allocator correction**. The flag now requires source identity, a resolved load bias and matching original loaded bytes; the default and original inputs are unchanged.
+- Reproduce with [stella_allocator_probe.py](../../tools/research/stella_allocator_probe.py); stock and opt-in reports each pass eleven bounded checks with identical repeated traces. No malloc reply, complete allocation/free lifecycle, historical Appframework continuation or GUI frame is supplied. Next: recover a pre-corruption state and establish the first original allocation/free ownership divergence before selecting a correction.
+
+## 4. Graphics Completion and Shared Memory
+
+[E0530](../evidence/0530-gles-tgid-completion-and-shared-memory-boundary.md)
+corrects the historical GPU assumptions. The driver keys owners by current
+task TGID (`task+0x108`), not a pointer beyond the u32 user argument. Its
+software wait resets completion only on entry; a resumed parked syscall must
+not repeat that reset. Signal uses the shared owner's completion/fast flag,
+with selective wake across file descriptors. IRQ waits use a separate device
+waitqueue. Caller bit 24 selects recovery, not mandatory event presence.
+
+Opt-in `kernel-bound-tgid` implements these bounded same-process rules.
+The 128 KiB device mapping is uninitialized vmalloc software shared memory;
+only the 16 KiB mapping is GPU MMIO. Unknown shared bytes and unsupported MMIO
+stop execution, and the older descriptor-triggered engine-success experiment
+cannot be combined with this policy. Two process replays stop identically
+at `libObj+0x72BF96` before shared initialization, with OSD A/B unmapped and
+zero engine completions. No firmware frame or executed Linux scheduler wake
+is inferred from the isolated contract and explicit scheduler fixtures.

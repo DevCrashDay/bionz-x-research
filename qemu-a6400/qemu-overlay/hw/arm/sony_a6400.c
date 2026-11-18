@@ -20,26 +20,28 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "hw/arm/boot.h"
-#include "hw/loader.h"
+#include "hw/arm/machines-qom.h"
+#include "hw/core/loader.h"
 #include "qemu/error-report.h"
 #include "system/reset.h"
-#include "hw/boards.h"
-#include "hw/irq.h"
+#include "hw/core/boards.h"
+#include "hw/core/irq.h"
 #include "hw/char/pl011.h"
 #include "hw/cpu/a9mpcore.h"
 #include "hw/misc/unimp.h"
-#include "hw/qdev-properties.h"
+#include "hw/core/qdev-properties.h"
 #include "monitor/qdev.h"
 #include "hw/sd/sd.h"
 #include "hw/sd/sdhci.h"
 #include "hw/misc/cxd90014_sio.h"
 #include "hw/misc/cxd90014_adc.h"
-#include "hw/sysbus.h"
+#include "hw/core/sysbus.h"
 #include "system/blockdev.h"
 #include "qemu/log.h"
 #include "qemu/timer.h"
 #include "qemu/units.h"
 #include "system/address-spaces.h"
+#include "system/memory.h"
 #include "system/system.h"
 #include "target/arm/cpu.h"
 #include "ui/input.h"
@@ -298,7 +300,8 @@ static void cxd90045_ldec_feed(uint32_t dsa_off, uint32_t ssa, uint32_t len)
         s->in_cap = need < 65536 ? 65536 : need * 2;
         s->in_buf = g_realloc(s->in_buf, s->in_cap);
     }
-    cpu_physical_memory_read(ssa, s->in_buf + dsa_off, len);
+    address_space_read(&address_space_memory, ssa, MEMTXATTRS_UNSPECIFIED,
+                       s->in_buf + dsa_off, len);
     if (need > s->in_len) {
         s->in_len = need;
     }
@@ -317,7 +320,8 @@ static void cxd90045_ldec_feed(uint32_t dsa_off, uint32_t ssa, uint32_t len)
                         ldec_ok, s->in_len, dst_phys, decoded, records);
                 ldec_ok++;
             }
-            cpu_physical_memory_write(dst_phys, out_buf, decoded);
+            address_space_write(&address_space_memory, dst_phys,
+                                MEMTXATTRS_UNSPECIFIED, out_buf, decoded);
             s->in_len = 0;
             s->regs[0x34 >> 2] = 0x1;
             qemu_irq_raise(s->irq);
@@ -484,8 +488,10 @@ static void cxd90045_xdmac_write(void *opaque, hwaddr offset, uint64_t value,
                 uint32_t off = 0;
                 while (rem > 0) {
                     uint32_t chunk = rem > sizeof(buf) ? sizeof(buf) : rem;
-                    cpu_physical_memory_read(ssa + off, buf, chunk);
-                    cpu_physical_memory_write(dsa + off, buf, chunk);
+                    address_space_read(&address_space_memory, ssa + off,
+                                       MEMTXATTRS_UNSPECIFIED, buf, chunk);
+                    address_space_write(&address_space_memory, dsa + off,
+                                        MEMTXATTRS_UNSPECIFIED, buf, chunk);
                     off += chunk;
                     rem -= chunk;
                 }
@@ -675,7 +681,8 @@ static void sony_a6400_load_boot_contract(MachineState *machine,
     }
 
     size = load_image_targphys(machine->kernel_filename, CXD90045_KERNEL_LOAD,
-                               CXD90045_INITRD_LOAD - CXD90045_KERNEL_LOAD);
+                               CXD90045_INITRD_LOAD - CXD90045_KERNEL_LOAD,
+                               &error_fatal);
     if (size <= 0) {
         error_report("sony-a6400: could not load kernel '%s'",
                      machine->kernel_filename);
@@ -684,7 +691,8 @@ static void sony_a6400_load_boot_contract(MachineState *machine,
 
     if (machine->initrd_filename) {
         size = load_image_targphys(machine->initrd_filename,
-                                   CXD90045_INITRD_LOAD, CXD90045_INITRD_MAX);
+                                   CXD90045_INITRD_LOAD, CXD90045_INITRD_MAX,
+                                   &error_fatal);
         if (size <= 0) {
             error_report("sony-a6400: could not load initrd '%s'",
                          machine->initrd_filename);
@@ -817,7 +825,7 @@ static void sony_a6400_rear_reset(void *opaque)
 }
 
 static void sony_a6400_rear_key(DeviceState *dev, QemuConsole *src,
-                               InputEvent *event)
+                               QemuInputEvent *event)
 {
     static const struct {
         QKeyCode key;
@@ -832,8 +840,8 @@ static void sony_a6400_rear_key(DeviceState *dev, QemuConsole *src,
         { Q_KEY_CODE_DELETE, 0, 45 },
         { Q_KEY_CODE_F,     0, 520 },
     };
-    InputKeyEvent *key = event->u.key.data;
-    QKeyCode code = qemu_input_key_value_to_qcode(key->key);
+    QemuInputKeyEvent *key = &event->key;
+    QKeyCode code = qemu_input_linux_to_qcode(key->key);
     uint16_t front = 0;
 
     switch (code) {
@@ -1438,7 +1446,8 @@ static void sony_a6400_init(MachineState *machine)
         memory_region_init_io(counter, OBJECT(machine), &sony_a6400_wheel_ops,
                               NULL, "a6400.rear-wheel-counter", 2);
         memory_region_add_subregion_overlap(sysmem, 0xF2404014, counter, -500);
-        qemu_input_handler_register(NULL, &sony_a6400_rear_handler);
+        qemu_input_handler_activate(
+            qemu_input_handler_register(NULL, &sony_a6400_rear_handler));
         qemu_register_reset(sony_a6400_rear_reset, NULL);
     }
 
@@ -1607,6 +1616,7 @@ static void sony_a6400_init(MachineState *machine)
         sysbus_connect_irq(sbd, 0, pic[CXD90045_EMMC0_SPI]);
         if (blk) {
             DeviceState *card = qdev_new(TYPE_EMMC);
+            qdev_prop_set_bit(card, "x-sony-legacy-backend", true);
             qdev_prop_set_uint64(card, "boot-partition-size", 4 * MiB);
             qdev_prop_set_uint8(card, "boot-config", 0x08);
             qdev_prop_set_drive_err(card, "drive", blk, &error_fatal);
@@ -1668,4 +1678,4 @@ static void sony_a6400_machine_init(MachineClass *mc)
         "Set virtual cable presence at runtime");
 }
 
-DEFINE_MACHINE("sony-a6400", sony_a6400_machine_init)
+DEFINE_MACHINE_ARM("sony-a6400", sony_a6400_machine_init)

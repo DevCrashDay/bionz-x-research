@@ -12,7 +12,8 @@ from project_paths import PROJECT_ROOT
 from tests.test_guest_vfat import dir_entry
 from tools.research import qemu_boot_inputs as inputs
 from tools.research.qemu_boot_probe import (
-    console_snapshot, guest_statuses, physical_range, serial_readiness, split_qmp_reply,
+    console_snapshot, guest_statuses, physical_range, serial_readiness,
+    source_reference_hashes, split_qmp_reply,
 )
 
 
@@ -198,6 +199,23 @@ class QemuBootInputTests(unittest.TestCase):
 
 
 class QemuProbeProtocolTests(unittest.TestCase):
+    def test_source_reference_patch_matches_the_running_qmp_version(self):
+        for version in ((10, 1, 0), (11, 1, 3)):
+            with self.subTest(version=version):
+                greeting = {'QMP': {'version': {
+                    'qemu': dict(zip(('major', 'minor', 'micro'), version))}}}
+                references = source_reference_hashes(greeting)
+                patch = 'qemu-a6400/patches/qemu-v%s-sony-a6400.patch' % '.'.join(map(str, version))
+                self.assertEqual(references[patch],
+                                 hashlib.sha256((PROJECT_ROOT / patch).read_bytes()).hexdigest())
+                self.assertEqual(len([name for name in references if name.endswith('.patch')]), 1)
+
+    def test_source_references_refuse_unknown_or_malformed_native_versions(self):
+        for major, error in ((999, 'No pinned Sony'), ('../11', 'integer')):
+            with self.subTest(major=major), self.assertRaisesRegex(ValueError, error):
+                source_reference_hashes({'QMP': {'version': {
+                    'qemu': {'major': major, 'minor': 1, 'micro': 3}}}})
+
     def test_serial_gate_survives_old_prompt_scrolling_out_of_the_tail(self):
         shell, marker = serial_readiness('BusyBox built-in shell (ash)\n/ # ', False, False, 'end entry_main')
         self.assertTrue(shell)

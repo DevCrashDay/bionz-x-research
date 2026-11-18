@@ -7,6 +7,7 @@ import uuid
 from project_paths import PROJECT_ROOT
 from tools.research.dependency_plan import Planner, analyze_function
 from tools.research.rea_evidence_cache import EvidenceCache
+from tools.research.toolchain import rea_profile
 from test_storage_trace import module_fixture
 
 
@@ -67,11 +68,13 @@ class RetainedEvidenceTests(unittest.TestCase):
         self.root.mkdir(parents=True)
         self.digest = 'a' * 64
 
-    def batch(self, name='batch', profile='profile1', status='completed', subject=None, procedure='probe'):
+    def batch(self, name='batch', profile='profile1', status='completed', subject=None,
+              procedure='probe', provider_version=None):
         folder = self.root / name
         folder.mkdir()
         data = {'structuredContent': {'subject': {'digest': {'sha256': subject or self.digest}},
-            'provider': {'id': 'ghidra', 'version': '12.1.4'}, 'analysis_profile': {'digest': profile},
+            'provider': {'id': 'ghidra', 'version': provider_version or rea_profile()['ghidra_version']},
+            'analysis_profile': {'digest': profile},
             'operation': 'procedure_pseudo_code', 'parameters': {'procedure': procedure},
             'normalized_result': 'constructed'}}
         (folder / 'query.json').write_text(json.dumps(data))
@@ -100,6 +103,14 @@ class RetainedEvidenceTests(unittest.TestCase):
         self.batch('first')
         self.batch('second', profile='profile2')
         self.assertIsNone(self.lookup(EvidenceCache(self.root)))
+
+    def test_upgraded_and_legacy_providers_keep_separate_cache_entries(self):
+        legacy = self.batch('legacy', provider_version='12.1.4')
+        current = self.batch('current', provider_version='12.2')
+        for version, folder in [('12.1.4', legacy), ('12.2', current)]:
+            hit = self.lookup(EvidenceCache(self.root, provider_version=version))
+            self.assertEqual(hit['source'], str(folder / 'query.json'))
+        self.assertIsNone(self.lookup(EvidenceCache(self.root, provider_version='uninstalled')))
 
     def test_reference_escape_and_post_index_changes_are_rejected(self):
         folder = self.batch()

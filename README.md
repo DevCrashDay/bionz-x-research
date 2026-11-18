@@ -2,6 +2,8 @@
 
 An open, evidence-backed reverse-engineering, emulation (**QEMU** + **Unicorn**), and runtime modding platform for Sony **BIONZ X (`CXD90045`)** cameras—starting with **`ILCE-6400`** and scaling across 13 mapped camera bodies.
 
+> **Canonical upstream:** [ivica00/bionz-x-research](https://github.com/ivica00/bionz-x-research). This research branch contributes native Unicorn continuation, bounded USB/GPU and A6400A packet experiments, and toolchain/QEMU updates. Original upstream research, code and contributor attribution are retained.
+
 **You don't need a camera to contribute.** Roughly 90% of the work is offline Python & C. Every claim below is strictly labelled by what was actually demonstrated (offline emulation, read-only observation, or physical RAM-only run), and nothing is presented as a percentage of "full firmware compatibility."
 
 > **[📦 Install & Use Camera Mods (Mod Loader v2, Touch Menu, ARRI Look)](mods/README.md)** · **[🖥️ Run QEMU Emulator (`sony-a6400`)](qemu-a6400/README.md)** · **[🔬 Develop & Hot-Reload Mods in QEMU](qemu-a6400/MOD_DEVELOPMENT.md)** · **[📷 Add a BIONZ X Camera](docs/ADDING_A_BIONZX_CAMERA.md)** · **[🎥 UVC / PTP Liveview](docs/CONTRIBUTING_UVC_PTP.md)**
@@ -22,7 +24,7 @@ An open, evidence-backed reverse-engineering, emulation (**QEMU** + **Unicorn**)
 
 This project uses two complementary emulators:
 
-- **QEMU ([`qemu-a6400/`](qemu-a6400/README.md)) — Full-System Board (`sony-a6400`):** Out-of-tree QEMU v10.1.0 machine emulating 4× Cortex-A5 SMP cores, native eMMC partitions, 40 kernel modules, `av-cam.bin` (LIRO RTOS), `im.elf`, Sugilite P3D/PPF OSD, and an interactive browser rear panel (`rear_panel.py`) with live mod hot-reload.
+- **QEMU ([`qemu-a6400/`](qemu-a6400/README.md)) — Full-System Board (`sony-a6400`):** Out-of-tree QEMU v11.1.3 machine emulating 4× Cortex-A5 SMP cores, native eMMC partitions, 40 kernel modules, `av-cam.bin` (LIRO RTOS), `im.elf`, Sugilite P3D/PPF OSD, and an interactive browser rear panel (`rear_panel.py`) with live mod hot-reload. The earlier v10.1.0 build and evidence remain preserved.
 - **Unicorn (`src/a6400/`) — Deterministic Contract & Instruction Engine:** Fast Python + Unicorn harness split into **L2** (`UnicornMachine` kernel boot & MMU/TLB), **L3** (`InterpreterProbe` user-space syscall/IPC/thread engine), and **isolated ARM/Thumb unit harnesses** for verifying mods and kernel patches in CI without booting a full VM.
 
 ### Compact Stage Matrix
@@ -31,14 +33,22 @@ Legend: `🟢 Verified` · `🟡 Partial / Opt-in` · `⚪ Open Boundary` · `�
 
 | Stage / Subsystem | QEMU (`sony-a6400` Full Board) | Unicorn (`L2` Kernel / `L3` Userspace) | Key Evidence & Docs |
 | :--- | :--- | :--- | :--- |
-| **CPU, SMP & Boot** | 🟢 4× Cortex-A5 SMP, `kemco` handoff, CXD4115 timers | 🟢 L2 boots `vmlinux.bin` (`0xDA9`), MMU/TLB, reaches `ld-2.11.2.so` & BusyBox `ash` | [E0522](docs/evidence/0522-qemu-a6400-smp-four-cores-and-cxd4115-timers.md), [E0510](docs/evidence/0510-nflasha1-busybox-ash-ttyam0-shell.md), [E0560](docs/evidence/0560-unicorn-nonsecure-af-exception-return.md) |
+| **CPU, SMP & Boot** | 🟢 4× Cortex-A5 SMP, `kemco` handoff, CXD4115 timers | 🟢 L2 boots `vmlinux.bin` (`0xDA9`), native CP15/TLB maintenance, original linker and BusyBox/ash builtin roundtrips | [E0522](docs/evidence/0522-qemu-a6400-smp-four-cores-and-cxd4115-timers.md), [E0533](docs/evidence/0533-unicorn-native-thumb-userspace-continuation.md), [E0560](docs/evidence/0560-unicorn-nonsecure-af-exception-return.md) |
 | **Storage & Mounts** | 🟢 18 captured partitions, CMD1 sector mode, qcow2 overlay | 🟢 Read-only ext2 (`nflasha7`/`15`), FAT12 `/setting` (`nflasha2`), 88 devnodes | [E0524](docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md), [E0307](docs/evidence/0307-nflasha2-setting-namespace-uipc-unregister-and-idle-state.md) |
 | **RTOS (`av-cam` / LIRO)** | 🟡 40 `.ko` loaded, `entry_main`, `VD_Sequence` reaches step 32 (`EVSEL_LATE_US=500`) | 🟢 Static & slice execution of CC 3D-LUT, EC Gamma, DMM & Open Gate 3:2 tables | [E0557](docs/evidence/0557-qemu-a6400-hs-root-order-passes-step-12.md), [E0505](docs/evidence/0505-av-cam-cc-3dlut-and-ec-gamma-pipeline.md), [E0578](docs/evidence/0578-a6400-open-gate-3-2-recording-feasibility.md) |
-| **UI & Display (`im.elf`)** | 🟢 Sugilite P3D/PPF renders EVF OSD & Rear-LCD Menu (`640×480`) | 🟡 L3 spawns 88+ threads (`Appframework`, `gui.so`); stops at `stella` heap boundary | [E0536](docs/evidence/0536-qemu-a6400-viewfinder-readout-and-eye-sensor-command.md), [E0572](docs/evidence/0572-qemu-a6400-rear-lcd-layout-on-panel.md), [E0314](docs/evidence/0314-gpes-bar-irq-contract-engine-model.md) |
+| **UI & Display (`im.elf`)** | 🟢 Sugilite P3D/PPF renders EVF OSD & Rear-LCD Menu (`640×480`) | 🟡 L3 reaches 88+ threads; allocator ownership remains unresolved and strict GLES replay stops on unknown shared contents | [E0572](docs/evidence/0572-qemu-a6400-rear-lcd-layout-on-panel.md), [E0526](docs/evidence/0526-stella-allocator-size-isolation-and-padding-trial.md), [E0530](docs/evidence/0530-gles-tgid-completion-and-shared-memory-boundary.md) |
 | **Inputs & Touch** | 🟢 Web Rear Panel (`ADC`, `GPIO`, sub-micro, wheel, `MENU`); ⛔ **No touch panel** | 🟢 Isolated harnesses for touch press/release (`MTF2`) & menu vtables | [E0573](docs/evidence/0573-qemu-a6400-rear-panel-controls.md), [E0520](docs/evidence/0520-mtf2-full-menu-touch-verified-on-a6400.md) |
 | **Mod Loader & Mods** | 🟢 `Mod Loader v2` installs in guest `im.elf`, relocates & hot-reloads `.mod` files | 🟢 10-scenario `MLCR` core + `SMOD v2` relocation & trampoline checks | [E0577](docs/evidence/0577-qemu-real-mods-relocation-and-hot-reload.md), [E0576](docs/evidence/0576-mod-loader-v2-reload-request.md) |
 | **Live Sensor / YUV** | ⚪ VPH ch51 programmed; parked at step 32 (`PQD_Ydet` / `CamPig` IRQ 35→36) | ⚪ Sensor feeder unwired; DMM `0x0167046a` JPEG queue contract decoded | [E0561](docs/evidence/0561-qemu-a6400-module3-waits-on-ydet-statistics.md), [E0569](docs/evidence/0569-qemu-sgc1-event-a.md), [E0349](docs/evidence/0349-p1-foreign-get-jpeg-succeeds-in-pc-remote.md) |
-| **USB, Wi-Fi/BT, HDMI, Lens** | ⛔ **Not supported** (no DWC3 gadget, `BCM4339`, HDMI out, lens, or audio) | 🟡 Offline USB/EP0 descriptor & callback contracts only; ⛔ no radio/HDMI/lens | [E0337](docs/evidence/0337-emulator-uvc-ptp-preparation-and-0a4002-broadcast.md), [E0406](docs/evidence/0406-bcm4339-wifi-bt-tuning-surface-readonly.md), [E0476](docs/evidence/0476-status-prearm-fix-build-audit-unicorn.md) |
+| **USB, Wi-Fi/BT, HDMI, Lens** | ⛔ **Not supported** (no DWC3 gadget, `BCM4339`, HDMI out, lens, or audio) | 🟡 Original-process USB startup reaches FSM state 7 and gadget registration, then stops at guarded OTG `SET_MODE`; ⛔ no radio/HDMI/lens | [E0534](docs/evidence/0534-original-process-usb-gadget-registration-and-otg-boundary.md), [E0524](docs/evidence/0524-original-local-osal-setconfig-route.md), [E0476](docs/evidence/0476-status-prearm-fix-build-audit-unicorn.md) |
+
+### Parallel Offline Contract Follow-Ups
+
+- **Native Unicorn continuation:** [E0533](docs/evidence/0533-unicorn-native-thumb-userspace-continuation.md) removes re-entrant CPU helpers and manual Thumb recovery. Two updater replays execute ash `echo`/`pwd`; the separate post-`uname` child/COW exception remains open. This is independent of the QEMU display result.
+- **USB delivery versus startup:** [E0524](docs/evidence/0524-original-local-osal-setconfig-route.md) executes isolated synchronous-to-asynchronous SETCONFIG delivery with balanced fixture ownership; startup state 0 does not handle that event. [E0534](docs/evidence/0534-original-process-usb-gadget-registration-and-otg-boundary.md) uses the process's own heap and reaches states `1 -> 5 -> 6 -> 7`, but `created=0` at OTG `SET_MODE`. No event or hardware acknowledgement is fabricated.
+- **Allocator and GPU corrections:** [E0526](docs/evidence/0526-stella-allocator-size-isolation-and-padding-trial.md) shows that the isolated log constructor fits its `0x4C` request; padding is not a verified fix. [E0530](docs/evidence/0530-gles-tgid-completion-and-shared-memory-boundary.md) verifies TGID completion/reset and distinguishes 128 KiB software-shared memory from the GPU BAR. Strict L3 replay produces no frame.
+- **A6400A service packets:** [E0525](docs/evidence/0525-a6400a-jiritsu-senser-offline-packets.md) maps all 18 Jiritsu commands and seven repeatable packet fixtures. Opt-in [E0532](docs/evidence/0532-a6400a-dmm-metadata-bounds-and-lifetime.md) adds bounded single-extent DMM metadata/lifetime and an eighth synthetic reply. USB, authentication, filesystem operations and authentic allocation remain unsupported; the profile stays `reference`.
+- **Earlier captured-profile waits:** [E0527](docs/evidence/0527-qemu-task43-initialization-flag-wait.md) identifies Task 43's first display wait as mask 3, not its later `0x3373` loop. That no-peripheral observation is retained separately from the later QEMU device models and rear-panel progress.
 
 ### What Is Not Supported Yet
 
@@ -72,7 +82,7 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 | Body | Kernel Group | Status | Notes / Evidence |
 | :--- | :--- | :--- | :--- |
 | **`ILCE-6400`** | `a6400` / `a6600` source | **Verified Execution Target** | Full QEMU & Unicorn L2/L3 execution, physical RAM-only mods |
-| **`ILCE-6400A`** | `1.01` packaged | **Sourced Reference** | Native `GetModelInfo` (`0032858730`), `libJiritsu.so` `GET_FILE` ([E0506](docs/evidence/0506-a6400a-offline-qualification-and-debugger-boundary.md), [E0554](docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md)) |
+| **`ILCE-6400A`** | `1.01` packaged | **Sourced Reference** | Native `GetModelInfo` (`0032858730`), packaged Jiritsu command map and bounded offline DMM replies ([E0554](docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md), [E0525](docs/evidence/0525-a6400a-jiritsu-senser-offline-packets.md), [E0532](docs/evidence/0532-a6400a-dmm-metadata-bounds-and-lifetime.md)) |
 | **`ILCE-6600`** | `a6400` / `a6600` source | **Sourced Reference** | Identical 14,401 kernel function symbols; `0x413b` command delta |
 | **`ZV-E10`**, **`ILCE-7C`** | Shared build | **Sourced Reference** | Identical 14,460 kernel function symbols; `ZV-E10` UVC stack cataloged ([E0321](docs/evidence/0321-zve10-uvc-enablement-manifest.md)) |
 | **`ILCE-6100`**, **`ILCE-7M3`**, **`ILCE-7RM4A`** | Shared symbol list | **Sourced Reference** | `ILCE-7RM4A` 1.13 gadget-core symbols decoded ([E0570](docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md)) |
@@ -81,11 +91,11 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 
 ## Live Status Telemetry
 
-Recorded offline suite: **1992 tests** ([E0578](docs/evidence/0578-a6400-open-gate-3-2-recording-feasibility.md)). Latest evidence [E0588](docs/evidence/0588-qemu-usb-buspower-and-obj-fsm-dispatch.md). Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
+Recorded offline suite: **2091 tests**, with 88 skip records and no failures/errors in the integrated checkout ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. Latest evidence [E0588](docs/evidence/0588-qemu-usb-buspower-and-obj-fsm-dispatch.md); this suite is not attributed solely to Open Gate. Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=3fc96ccbb17f)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=d0901fb1ee6c)
 
-![Daily automated test suite growth: 1992 tests across 31 days](docs/images/test-growth.svg?v=9bd7ed84b026)
+![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
 
 ---
 
@@ -96,8 +106,8 @@ Please bring BIONZ X research, fixes, and camera support to this repository earl
 **Top 3 open tasks right now:**
 
 1. **Switch to the rear LCD through stock firmware input (QEMU):** The original LCD layout renders on console 0 with a diagnostic overlay ([E0572](docs/evidence/0572-qemu-a6400-rear-lcd-layout-on-panel.md)). Find the `InputService::getInputEventStatus` key/value that selects it without the overlay, or unblock `CamPig` IRQ 35→36 / `PQD_Ydet` at mode-sequencer step 32 ([E0569](docs/evidence/0569-qemu-sgc1-event-a.md), [QEMU checkpoint](qemu-a6400/STATUS.md)).
-2. **Decode the USB control callback packet format (Unicorn / UVC):** Determine the remaining message layout so an incoming USB configuration request reaches the firmware's USB state machine ([`usb_sync_callback.py`](src/a6400/execution/usb_sync_callback.py), [E0332](docs/evidence/0332-sync-callback-delivery-first-invocation.md)).
-3. **Unblock the GPU completion signal (Unicorn L3):** Resolve the cross-thread wait condition in the emulated graphics driver so the display path advances on its own ([`guest_gles.py`](src/a6400/execution/guest_gles.py)).
+2. **Complete native USB gadget startup (Unicorn / UVC):** Qualify OTG/class/gadgetcore completion after original registration, then prove process-owned SETCONFIG production, delivery and teardown ([E0534](docs/evidence/0534-original-process-usb-gadget-registration-and-otg-boundary.md)). The isolated local delivery route is already executable.
+3. **Establish GPU shared backing and rendering (Unicorn L3):** TGID completion/reset is verified, but strict replay stops on unsupplied shared bytes. Recover initialization and functional GPU work without assumed success ([E0530](docs/evidence/0530-gles-tgid-completion-and-shared-memory-boundary.md)).
 
 More guides: [Contributing to UVC / PTP](docs/CONTRIBUTING_UVC_PTP.md) · [UVC/PTP progress log](docs/UVC_PTP_STATUS.md) · [USB Debugger v2](docs/NATIVE_USB_DEBUGGER.md).
 
@@ -105,12 +115,15 @@ More guides: [Contributing to UVC / PTP](docs/CONTRIBUTING_UVC_PTP.md) · [UVC/P
 
 ## Quick Start
 
-Requires Python 3.10+ and [`requirements.txt`](requirements.txt) (no camera needed):
+Requires Python 3.11+ and dependencies from [`requirements.txt`](requirements.txt) (no camera needed).
+The current research environment uses Python 3.15.2 in `.venv`; the previous
+`venv/` remains available for rollback. See [verified toolchain setup and upgrade
+results](docs/TOOLCHAIN.md) for REA 6.9.0, Ghidra 12.2 and patched QEMU 11.1.3.
 
 ```powershell
 # Windows (PowerShell)
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
-.\venv\Scripts\python.exe -m unittest discover -s tests -q
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m unittest discover -s tests -q
 ```
 
 ```bash
@@ -121,7 +134,7 @@ python3 -m unittest discover -s tests -q
 
 | What to check | Command |
 | :--- | :--- |
-| Full offline suite (1992 tests) | `python -m unittest discover -s tests -q` |
+| Full offline suite (2091 tests) | `python -m unittest discover -s tests -q` |
 | Structure, profiles & doc sync | `python -m unittest tests.test_repository_layout tests.test_target_profiles tests.test_research_status_sync -v` |
 | Status card matches data | `python -m tools.research.render_research_status --check` |
 | Windows launchers | [`scripts/`](scripts/) (`launch_cinemahud_ptp.bat`, `launch_cinemahud_android.ps1`, `launch_cinema_mpv.bat`, `start_camera_shell.bat`) |
@@ -134,7 +147,7 @@ Run scripts as Python modules from the repo root (`python -m tools.research.<too
 
 | Folder | What's inside |
 | :--- | :--- |
-| [`qemu-a6400/`](qemu-a6400/README.md) | Out-of-tree QEMU v10.1.0 `sony-a6400` machine, browser rear panel & mod-dev hot-reload |
+| [`qemu-a6400/`](qemu-a6400/README.md) | Out-of-tree QEMU v11.1.3 `sony-a6400` machine, browser rear panel & mod-dev hot-reload |
 | [`mods/`](mods/README.md) | RAM-only camera mods (`MenuTouchFull`, `Arrivederci`, `ModsTabLook`) & install guide |
 | `src/a6400/execution/` | Unicorn L2/L3 ARM emulator and verified OS, USB, and GPU contracts |
 | `src/a6400/targets/` | Device profiles and validation for supported Sony `CXD90045` cameras |

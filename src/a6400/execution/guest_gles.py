@@ -1,7 +1,8 @@
 """Guarded DMP GLES kernel interface (/dev/dmpgles2).
 
-Authentic Sugilite driver contract evidenced by E0064, E0065, E0066.
-No faked kernel success, invented rendering commands, or synthetic draw replies.
+Historical tables and assumed engine experiments remain reproducible, not
+qualified hardware contracts. The opt-in kernel-tgid policy uses original
+completion ownership/reset rules and guards software-shared bytes and MMIO.
 """
 import struct
 
@@ -74,8 +75,14 @@ class GlesBinding:
 class GuestGles:
     """Emulates /dev/dmpgles2 device file operations conforming to grm_gles.ko."""
 
-    def __init__(self, binding: GlesBinding = None):
+    def __init__(self, binding: GlesBinding = None, *, completion_policy='legacy'):
+        if completion_policy not in ('legacy', 'kernel-tgid'):
+            raise ValueError(f'Unknown GLES completion policy: {completion_policy}')
         self.binding = binding
+        self.completion_policy = completion_policy
+        self.tgid_completions = {}
+        self.shared_mapping = None
+        self.shared_unknown = {}
         self.owners = {}
         self.transactions = []
         self.major = 248
@@ -84,7 +91,7 @@ class GuestGles:
         # 0x8004820A reads the suspend/status word (dev+0x48, kzalloc 0) and
         # 0xC004820D is wait-for-completion (out 1 only when a completion is
         # actually pending). The historical default keeps the earlier table.
-        self.decoded_semantics = False
+        self.decoded_semantics = completion_policy == 'kernel-tgid'
         # Physical read-only evidence (E0313): GPES/Sugilite BAR word 0 reads
         # 0x000b0000 and status word 0x34 carries 0x40000000/0x80000000 during
         # operation. The BAR is an emulated zero page; seed only the observed
@@ -111,6 +118,14 @@ class GuestGles:
     def __setstate__(self, state):
         """Restore old checkpoints that predate the BAR/engine-model fields."""
         self.__dict__.update(state)
+        if not hasattr(self, 'completion_policy'):
+            self.completion_policy = 'legacy'
+        if not hasattr(self, 'tgid_completions'):
+            self.tgid_completions = {}
+        if not hasattr(self, 'shared_mapping'):
+            self.shared_mapping = None
+        if not hasattr(self, 'shared_unknown'):
+            self.shared_unknown = {}
         if not hasattr(self, 'bar'):
             self.bar = bytearray(0x4000)
             struct.pack_into('<I', self.bar, 0, 0x000b0000)
@@ -178,6 +193,9 @@ class GuestGles:
             }
         }
         self.owners[owner_id] = owner
+        if self.completion_policy == 'kernel-tgid':
+            self.tgid_completions.setdefault(
+                caller_tgid, {'fast': False, 'done': 0x7fffffff, 'waiters': {}})
         self.transactions.append({'operation': 'open', 'flags': flags, 'owner_id': owner_id})
         return owner
 
@@ -185,6 +203,10 @@ class GuestGles:
         owner = self.owners.get(owner_id)
         if not owner:
             raise UnsupportedGles('gles_invalid_owner_descriptor', owner_id=owner_id)
+
+        if self.completion_policy == 'kernel-tgid' and cmd in (
+                GLES_RELEASE_RESOURCE, GLES_GET_RESOURCE_SUB, GLES_SIGNAL_COMPLETION):
+            return self._kernel_completion_ioctl(cmd, arg, mem_read, mem_write, tid)
 
         if cmd == GLES_GET_VERSION:
             # Verified in E0064/E0065: returns hardware version 2 as uint32_t
@@ -526,6 +548,24 @@ class GuestGles:
         owner = self.owners.get(owner_id)
         if not owner:
             raise UnsupportedGles('gles_invalid_owner_descriptor', owner_id=owner_id)
+        if self.completion_policy == 'kernel-tgid':
+            if pgoff != 0 or length not in (0x4000, 0x20000):
+                raise UnsupportedGles('gles_mapping_shape_unqualified', length=length, pgoff=pgoff)
+            if length == 0x20000:
+                if self.shared_mapping is not None:
+                    raise UnsupportedGles('gles_shared_alias_not_modelled')
+                event = mapper.request_mmap2(addr, length, prot, flags | 0x20, -1, 0)
+                virtual = event['returned']
+                if 0 <= virtual < 0x80000000:
+                    mapper.mark_device_range(virtual, length, 'dmpgles2-shared')
+                    self.shared_mapping = {'virtual': virtual, 'length': length}
+                    self.shared_unknown = {
+                        virtual + offset: 'gles_shared_uninitialized' for offset in range(length)}
+                event['gles_mapping_kind'] = 'software-shared'
+                self.transactions.append({'operation': 'mmap2', 'virtual': virtual,
+                                          'length': length, 'mapping_kind': 'software-shared',
+                                          'physical': None, 'pgoff': pgoff})
+                return event
         # sugilite_mmap_dev maps the device window (BAR 0xF1000000) at offset 0;
         # the real camera's mapping is 128 KiB with pgoff 0 (E0313).
         phys_addr = 0xf1000000 if pgoff == 0 else (pgoff * 4096)
@@ -540,13 +580,111 @@ class GuestGles:
                                   'physical': phys_addr, 'pgoff': pgoff})
         return event
 
-    def _ctx_identity(self, mem_read, arg, tid, owner, source):
-        """Resolve the kernel ctx identity: P=[arg+0xC], ctx=[P+0x108].
+    def enable_tgid_completion(self):
+        """A pre-open checkpoint can select the contract without inventing driver state."""
+        if self.completion_policy == 'kernel-tgid':
+            return
+        if (self.owners or self.transactions or self.bar_virtual is not None
+                or self.engine_model or self.p3d_model or self.dev_a8
+                or self.engine_command_seen or self.engine_completions
+                or self.engine_event_status or self.shared_mapping is not None):
+            raise UnsupportedGles('gles_completion_policy_requires_preopen_state')
+        self.completion_policy = 'kernel-tgid'
+        self.decoded_semantics = True
 
-        grm_gles.ko resolves completions through the user descriptor pointer
-        (task-62); the ctx object is whatever descriptor the caller passes, so
-        this is the decoded identity. A tgid fallback is used only when the
-        descriptor is inaccessible and is labelled accordingly.
+    def _kernel_completion_ioctl(self, cmd, arg, mem_read, mem_write, tid):
+        if self.engine_model or self.p3d_model:
+            raise UnsupportedGles('gles_unqualified_engine_with_tgid_contract')
+        observation = (self.binding.table.observation_for(tid)
+                       if self.binding.table is not None else self.binding.task)
+        if observation is None or observation.pid != tid:
+            raise UnsupportedGles('gles_task_identity_required', tid=tid)
+        tgid = observation.tgid
+        self.binding.validate_caller(tid, tgid)
+        event = {'operation': 'ioctl', 'cmd': cmd, 'arg': arg, 'tid': tid,
+                 'tgid': tgid, 'completion_policy': 'kernel-tgid', 'woken_tids': []}
+        if not 0 <= arg <= observation.address_limit - 4:
+            self.transactions.append({**event, 'returned': -14, 'reason': 'user_word_outside_task_limit'})
+            return -14
+        word = None
+        if cmd != GLES_GET_RESOURCE_SUB:
+            if any(address in self.shared_unknown for address in range(arg, arg + 4)):
+                raise UnsupportedGles('gles_shared_argument_uninitialized', address=arg)
+            raw = mem_read(arg, 4)
+            if len(raw) != 4:
+                raise UnsupportedGles('gles_user_word_not_supplied', address=arg, length=len(raw))
+            word = struct.unpack('<I', raw)[0]
+        if cmd == GLES_RELEASE_RESOURCE:
+            mask = word & 0xc4000000
+            if mask == 0:
+                self.transactions.append({**event, 'returned': -14, 'reason': 'invalid_irq_mask'})
+                return -14
+            if self.dev_a8 & mask:
+                self.dev_a8 &= ~mask
+                mem_write(arg, struct.pack('<I', mask))
+                self.transactions.append({**event, 'returned': 0, 'decoded': 'irq_wait',
+                                          'mask': mask, 'status': mask})
+                return 0
+            if self.dev_a8:
+                raise UnsupportedGles('gles_unmatched_irq_requires_retry_recovery',
+                                      mask=mask, pending=self.dev_a8)
+            self.transactions.append({**event, 'returned': None, 'decoded': 'irq_wait', 'mask': mask})
+            return None
+
+        state = self.tgid_completions.get(tgid)
+        if state is None:
+            raise UnsupportedGles('gles_tgid_owner_not_open', tgid=tgid)
+        if cmd == GLES_SIGNAL_COMPLETION:
+            key = word
+            target_tgid = key or tgid
+            target = self.tgid_completions.get(target_tgid)
+            if target is None:
+                mem_write(arg, struct.pack('<I', 0x1fffffff))
+                self.transactions.append({**event, 'returned': -14, 'decoded': 'missing_tgid',
+                                          'key': key, 'target_tgid': target_tgid, 'woken_tids': []})
+                return -14
+            if target_tgid != tgid:
+                raise UnsupportedGles('gles_signal_target_liveness_unverified', target_tgid=target_tgid)
+            woken = []
+            if target['done']:
+                target['fast'] = True
+            else:
+                target['done'] = 0x7fffffff
+                for waiter_tid, waiter in target['waiters'].items():
+                    if not waiter['ready']:
+                        waiter['ready'] = True
+                        woken.append(waiter_tid)
+            self.transactions.append({**event, 'returned': 0, 'decoded': 'signal_tgid',
+                                      'key': key, 'target_tgid': target_tgid, 'woken_tids': woken})
+            return 0
+
+        waiter = state['waiters'].get(tid)
+        if waiter is not None:
+            if waiter['arg'] != arg:
+                raise UnsupportedGles('gles_inflight_wait_argument_changed', tid=tid)
+            if not waiter['ready']:
+                self.transactions.append({**event, 'returned': None, 'decoded': 'wait_tgid'})
+                return None
+            if state['done'] == 0:
+                raise UnsupportedGles('gles_completion_consumed_before_waiter', tid=tid)
+            state['done'] -= 1
+            del state['waiters'][tid]
+        elif state['fast']:
+            state['fast'] = False
+        else:
+            # The driver resets done only on entry, not when a parked syscall resumes.
+            state['done'] = 0
+            state['waiters'][tid] = {'arg': arg, 'ready': False}
+            self.transactions.append({**event, 'returned': None, 'decoded': 'wait_tgid'})
+            return None
+        mem_write(arg, struct.pack('<I', 1))
+        self.transactions.append({**event, 'returned': 0, 'decoded': 'wait_tgid', 'completed': 1})
+        return 0
+
+    def _ctx_identity(self, mem_read, arg, tid, owner, source):
+        """Retain the historical, refuted user-descriptor experiment for old receipts.
+
+        This is not the kernel lookup. The kernel-tgid policy never calls it.
         """
         task_ptr = None
         ctx_ptr = None
@@ -584,6 +722,8 @@ class GuestGles:
         decoded IRQ ack path clears via BAR+0x1000/+0xC18. This model only
         exposes that device completion; it never completes a guest ctx.
         """
+        if self.completion_policy == 'kernel-tgid':
+            raise UnsupportedGles('gles_unqualified_engine_with_tgid_contract')
         if self.bar_virtual is None:
             return None
         try:
@@ -628,6 +768,8 @@ class GuestGles:
 
     def complete_engine_command(self, source='bar-write'):
         """Device completion for a submitted command; never completes a ctx."""
+        if self.completion_policy == 'kernel-tgid':
+            raise UnsupportedGles('gles_unqualified_engine_with_tgid_contract')
         if getattr(self, 'engine_bar_completed', False):
             return None  # same submission (0x16C then 0x170); poll clears the flag
         self.engine_bar_completed = True
@@ -651,6 +793,8 @@ class GuestGles:
         """
         if not getattr(self, 'p3d_model', False) or self.bar_virtual is None:
             return 0
+        if self.completion_policy == 'kernel-tgid':
+            raise UnsupportedGles('gles_unqualified_engine_with_tgid_contract')
         from src.a6400.execution.dmp_p3d import (
             SUGI_REG_IRQ_STATUS,
             SUGI_REG_P3D_KICK,

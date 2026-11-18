@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import math
 import re
 import sys
 from pathlib import Path
@@ -730,7 +731,7 @@ def render_test_growth_svg(
     y_top = plot_y + 24
     y_bot = plot_y + 264
     chart_h = y_bot - y_top
-    y_max = 2000.0
+    y_max = max(2000.0, math.ceil(latest.total * 1.1 / 400) * 400)
     step_x = plot_w / total_days
 
     # Micro-grid & frame inside plot
@@ -761,7 +762,7 @@ def render_test_growth_svg(
         )
 
     # Horizontal gridlines & left Y-axis ticks
-    for tick in (0, 400, 800, 1200, 1600, 2000):
+    for tick in range(0, int(y_max) + 1, 400):
         ty = y_bot - (tick / y_max) * chart_h
         layout.line(
             plot_x,

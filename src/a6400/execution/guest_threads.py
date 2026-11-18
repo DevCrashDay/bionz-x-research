@@ -436,9 +436,14 @@ class GuestThreads:
         }
         return next_tid, event
 
-    def handle_fd_wake(self, fd: int) -> List[int]:
+    def handle_fd_wake(self, fd: int, tids: Optional[List[int]] = None) -> List[int]:
         """Unblocks threads waiting on target file descriptor."""
         waiters = self.fd_waiters.pop(fd, [])
+        if tids is not None:
+            remaining = [tid for tid in waiters if tid not in tids]
+            if remaining:
+                self.fd_waiters[fd] = remaining
+            waiters = [tid for tid in waiters if tid in tids]
         woken = []
         for tid in waiters:
             if tid in self.threads and self.threads[tid].state.startswith('blocked_'):

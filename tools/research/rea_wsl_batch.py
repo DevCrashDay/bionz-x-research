@@ -14,6 +14,7 @@ import time
 
 from project_paths import PROJECT_ROOT
 from tools.research.rea_evidence_cache import EvidenceCache
+from tools.research.toolchain import rea_profile, toolchain_config
 
 DEFAULT_TARGET = 'firmware/extracted_a6400/firmware.tar_unpacked/0700_part_image/dev/nflasha15_unpacked/kmod/backup.ko'
 
@@ -40,13 +41,14 @@ def wsl_path(path):
 
 
 class Session:
-    def __init__(self, stderr):
+    def __init__(self, stderr, toolchain=None):
+        self.toolchain = rea_profile(toolchain)
         command = [
             'env',
-            'GHIDRA_INSTALL_DIR=/home/administrator/a6400-rea-tools/ghidra_12.1.4_PUBLIC',
-            'JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64',
-            'REA_GHIDRA_STARTUP_TIMEOUT_MS=330000', 'node',
-            '/home/administrator/a6400-rea-tools/runtime/node_modules/rea-agents/scripts/rea.mjs', '--mcp']
+            'GHIDRA_INSTALL_DIR=' + self.toolchain['ghidra'],
+            'JAVA_HOME=' + self.toolchain['java'],
+            'REA_GHIDRA_STARTUP_TIMEOUT_MS=330000', self.toolchain['node'],
+            self.toolchain['entry'], '--mcp']
         if os.name != 'posix':
             command = ['wsl.exe', '--exec'] + command
         self.process = subprocess.Popen(command,
@@ -80,7 +82,12 @@ class Session:
                 continue
             if 'error' in data:
                 raise RuntimeError(json.dumps(data['error']))
-            return data['result']
+            result = data['result']
+            if method == 'initialize':
+                actual = result.get('serverInfo', {}).get('version')
+                if actual != self.toolchain['rea_version']:
+                    raise ValueError(f'REA server version mismatch: {actual}')
+            return result
 
     def tool(self, name, arguments):
         result = self.request('tools/call', {'name': name, 'arguments': arguments})
@@ -108,8 +115,12 @@ def main():
     parser.add_argument('--procedure', action='append', required=True)
     parser.add_argument('--instructions', action='append', default=[])
     parser.add_argument('--report-dir', required=True, help='New directory under artifacts/')
-    parser.add_argument('--reuse-evidence', action='store_true', help='Reuse hash/profile-checked completed Ghidra 12.1.4 evidence')
+    parser.add_argument('--toolchain', choices=tuple(toolchain_config()['rea_profiles']),
+                        help='Host toolchain profile (default from tools/toolchain.json)')
+    parser.add_argument('--reuse-evidence', action='store_true',
+                        help='Reuse completed evidence matching the selected Ghidra version and profile')
     args = parser.parse_args()
+    profile = rea_profile(args.toolchain)
     if len(args.procedure) + len(args.instructions) > 48:
         parser.error('At most 48 static queries per session')
     target = (PROJECT_ROOT / args.target).resolve()
@@ -124,12 +135,14 @@ def main():
     output.relative_to(PROJECT_ROOT / 'artifacts')
     output.mkdir(parents=True, exist_ok=False)
     report = {'target': relative, 'sha256': expected, 'status': 'running', 'queries': [],
+              'toolchain': profile,
               'limitations': ['Static Ghidra reconstruction, not target execution or runtime state.',
                               'Linux tooling paths are this local trial installation, not dependency locking.']}
     started = time.monotonic()
     session = None
     opened = False
-    cache = EvidenceCache(PROJECT_ROOT / 'artifacts/tools/rea') if args.reuse_evidence else None
+    cache = EvidenceCache(PROJECT_ROOT / 'artifacts/tools/rea',
+                          provider_version=profile['ghidra_version']) if args.reuse_evidence else None
     def save(name, data):
         (output / name).write_text(json.dumps(data, indent=2), encoding='utf-8')
     try:
@@ -144,7 +157,7 @@ def main():
                         data = retained['data']
                     else:
                         if session is None:
-                            session = Session(stderr)
+                            session = Session(stderr, toolchain=args.toolchain)
                             save('initialize.json', session.request('initialize', {'protocolVersion': '2024-11-05',
                                  'capabilities': {}, 'clientInfo': {'name': 'a6400-local-research', 'version': '1'}}))
                             session.send({'jsonrpc': '2.0', 'method': 'notifications/initialized'})
@@ -156,6 +169,9 @@ def main():
                         raise ValueError('REA did not return structured Evidence')
                     if evidence.get('subject', {}).get('digest', {}).get('sha256') != expected:
                         raise ValueError('REA Evidence target identity differs from the preserved input')
+                    provider = evidence.get('provider', {})
+                    if provider.get('id') != 'ghidra' or provider.get('version') != profile['ghidra_version']:
+                        raise ValueError('REA Evidence provider differs from the selected toolchain')
                     filename = f'{index:02d}-{operation}.json'
                     save(filename, data)
                     elapsed = round(time.monotonic() - before, 3)

@@ -47,13 +47,14 @@
 
 #include "qemu/osdep.h"
 #include <math.h>
-#include "hw/sysbus.h"
-#include "hw/irq.h"
+#include "hw/core/sysbus.h"
+#include "hw/core/irq.h"
 #include "qemu/log.h"
 #include "qemu/units.h"
 #include "qemu/module.h"
 #include "qom/object.h"
 #include "system/address-spaces.h"
+#include "system/memory.h"
 #include "hw/display/dmp_shader.h"
 
 static void dmp_job_log(const char *kind, uint64_t addr, uint64_t n)

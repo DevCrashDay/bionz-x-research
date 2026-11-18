@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Evidence-backed clean-room execution environment, hardware contract reference and multi-device Sony BIONZ X (CXD90045) research platform."
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "ivica00" }]
 keywords = ["sony", "a6400", "ilce-6400", "bionz-x", "cxd90045", "unicorn", "firmware", "uvc", "ptp"]
 classifiers = [

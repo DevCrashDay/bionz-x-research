@@ -158,6 +158,44 @@ class CapturedGlesExecutionTests(unittest.TestCase):
         self.assertEqual(report['status'], 'instruction_budget_exhausted')
         self.assertLessEqual(len(report['trace']), 1107)
 
+    def test_original_tgid_completion_reset_signal_and_fast_wait(self):
+        from tools.research.wbi_gles_execute import new_owner_options
+        options = new_owner_options(0x60a1c000)
+        options['instruction_budget'] = 30000
+        report = execute(self.context, **options, owner_lifecycle=True, completion_lifecycle=True)
+        calls = report['calls']
+        self.assertEqual([call['operation'] for call in calls],
+                         ['open', 'wait_reset', 'signal_zero', 'signal_tgid', 'wait_fast', 'wait_again'])
+        self.assertEqual([call['returned'] for call in calls], [0, None, 0, 0, 0, None])
+        states = [call['completion_state'] for call in calls[1:]]
+        self.assertEqual([(state['fast'], state['done']) for state in states],
+                         [(0, 0), (0, 0x7fffffff), (1, 0x7fffffff),
+                          (0, 0x7fffffff), (0, 0)])
+        self.assertEqual({state['tgid'] for state in states}, {97})
+        self.assertEqual([call['output_word'] for call in calls[1:]],
+                         [0xa5a5a5a5, 0, 97, 1, 0xa5a5a5a5])
+        for call in (calls[1], calls[-1]):
+            self.assertEqual(call['boundary']['symbol'], 'wait_for_completion_interruptible_timeout')
+            self.assertEqual(call['completion_argument'], call['completion_state']['owner'] + 0x14)
+            self.assertEqual(call['timeout_jiffies'], 10000000)
+        self.assertEqual(report['service_returns_supplied'], 0)
+        self.assertEqual(report['hardware_responses_supplied'], 0)
+
+    def test_completion_lifecycle_requires_original_owner_controls(self):
+        with self.assertRaises(ValueError):
+            execute(self.context, completion_lifecycle=True)
+
+    def test_original_user_branch_treats_bit24_as_recovery_not_event_presence(self):
+        from tools.research.gles_completion_probe import LIBOBJ, LIBOBJ_SHA256, original_result_branch
+        from tools.research.mount_evidence import checked_input
+        from project_paths import PROJECT_ROOT
+        raw = checked_input(PROJECT_ROOT, LIBOBJ, LIBOBJ_SHA256)
+        for value, expected in ((0, 'resubmit'), (0x04000000, 'normal_completion'),
+                                (0x40000000, 'normal_completion'), (0x80000000, 'normal_completion'),
+                                (0x45000000, 'recovery')):
+            with self.subTest(value=hex(value)):
+                self.assertEqual(original_result_branch(raw, value)['status'], expected)
+
 
 if __name__ == '__main__':
     unittest.main()
