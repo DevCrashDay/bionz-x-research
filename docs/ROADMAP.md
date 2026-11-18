@@ -37,8 +37,9 @@ the original DWC3 driver binds and the passive observer records its
 startup MMIO. Resolve the VBUS status address and interrupt behavior
 before testing host setup packets through the gadget event ring. The
 P2S writer can now trace staged sensor commands, with qtest coverage.
-Capture a firmware transfer on a later live-image boot to correlate
-it with the IMX284 mode tables.
+The synthetic [E0591 live-view replay](evidence/0591-qemu-a6400-first-live-view-frame.md)
+validates the CamPig/Ydet and RC0 path, not physical sensor configuration.
+Capture the original P2S transfer and correlate it with the IMX284 mode tables.
 
 Offline QEMU input and wait qualification (2026-11-16,
 [E0524](evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md)):

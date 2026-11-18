@@ -39,7 +39,7 @@ Legend: `🟢 Verified` · `🟡 Partial / Opt-in` · `⚪ Open Boundary` · `�
 | **UI & Display (`im.elf`)** | 🟢 Sugilite P3D/PPF renders EVF OSD & Rear-LCD Menu (`640×480`) | 🟡 L3 reaches 88+ threads; allocator ownership remains unresolved and strict GLES replay stops on unknown shared contents | [E0572](docs/evidence/0572-qemu-a6400-rear-lcd-layout-on-panel.md), [E0526](docs/evidence/0526-stella-allocator-size-isolation-and-padding-trial.md), [E0530](docs/evidence/0530-gles-tgid-completion-and-shared-memory-boundary.md) |
 | **Inputs & Touch** | 🟢 Web Rear Panel (`ADC`, `GPIO`, sub-micro, wheel, `MENU`); ⛔ **No touch panel** | 🟢 Isolated harnesses for touch press/release (`MTF2`) & menu vtables | [E0573](docs/evidence/0573-qemu-a6400-rear-panel-controls.md), [E0520](docs/evidence/0520-mtf2-full-menu-touch-verified-on-a6400.md) |
 | **Mod Loader & Mods** | 🟢 `Mod Loader v2` installs in guest `im.elf`, relocates & hot-reloads `.mod` files | 🟢 10-scenario `MLCR` core + `SMOD v2` relocation & trampoline checks | [E0577](docs/evidence/0577-qemu-real-mods-relocation-and-hot-reload.md), [E0576](docs/evidence/0576-mod-loader-v2-reload-request.md) |
-| **Live Sensor / YUV** | ⚪ VPH ch51 programmed; parked at step 32 (`PQD_Ydet` / `CamPig` IRQ 35→36) | ⚪ Sensor feeder unwired; DMM `0x0167046a` JPEG queue contract decoded | [E0561](docs/evidence/0561-qemu-a6400-module3-waits-on-ydet-statistics.md), [E0569](docs/evidence/0569-qemu-sgc1-event-a.md), [E0349](docs/evidence/0349-p1-foreign-get-jpeg-succeeds-in-pc-remote.md) |
+| **Live Sensor / YUV** | 🟡 Opt-in deterministic luma reaches the stock guest's CamPig/Ydet, RC0 DMA and rear LCD via VPH ch51 | ⚪ Sensor feeder unwired; DMM `0x0167046a` JPEG queue contract decoded | [E0591](docs/evidence/0591-qemu-a6400-first-live-view-frame.md), [E0349](docs/evidence/0349-p1-foreign-get-jpeg-succeeds-in-pc-remote.md) |
 | **USB, Wi-Fi/BT, HDMI, Lens** | ⛔ **Not supported** (no DWC3 gadget, `BCM4339`, HDMI out, lens, or audio) | 🟡 Original-process USB startup reaches FSM state 7 and gadget registration, then stops at guarded OTG `SET_MODE`; ⛔ no radio/HDMI/lens | [E0534](docs/evidence/0534-original-process-usb-gadget-registration-and-otg-boundary.md), [E0524](docs/evidence/0524-original-local-osal-setconfig-route.md), [E0476](docs/evidence/0476-status-prearm-fix-build-audit-unicorn.md) |
 
 ### Parallel Offline Contract Follow-Ups
@@ -52,7 +52,7 @@ Legend: `🟢 Verified` · `🟡 Partial / Opt-in` · `⚪ Open Boundary` · `�
 
 ### What Is Not Supported Yet
 
-- **Live camera sensor, shutter & recording (QEMU & Unicorn):** No live YUV/RAW sensor stream, AF/AE loop, still capture, or movie recording to SD (QEMU stops at mode-sequencer step 32; see [QEMU checkpoint](qemu-a6400/STATUS.md)).
+- **Live camera sensor, shutter & recording (QEMU & Unicorn):** The QEMU frame uses synthetic luma, not a real sensor stream or validated RAW/color ISP. AF/AE, still capture and movie recording to SD are unverified (see [QEMU checkpoint](qemu-a6400/STATUS.md)).
 - **Touch-panel hardware in QEMU:** The `sony-a6400` board has no emulated touch controller, so touch mods (`MTF2`) cannot be exercised via clicks in QEMU ([`MOD_DEVELOPMENT.md`](qemu-a6400/MOD_DEVELOPMENT.md)).
 - **USB Gadget (UVC / PTP / MSC) in QEMU:** With opt-in `USB_VBUS_TEST=1` and `USB_CID_HIGH=1` (bit 1 high at `0xF2920010`), virtual cable attach and detach pass `SetJackStatus(1)`, broadcast `0x0A400A`/`0x0A400B`, and transition `libBusPower.so` (`state 0 → 2 → 0`), while `viewUnified2.so` (`DefRootView::ActionOpenUSB`) awaits `FirstView`/clock readiness before loading USB servers and sending `0x0A2000` (`StartGadget`). Gadget start, enumeration and streaming remain open. [E0579](docs/evidence/0579-qemu-usb-and-sensor-observation.md) · [E0580](docs/evidence/0580-qemu-usb-vbus-interrupt.md) · [E0587](docs/evidence/0587-qemu-usb-cid-high-unlocks-vbus-broadcast.md) · [E0588](docs/evidence/0588-qemu-usb-buspower-and-obj-fsm-dispatch.md) · [E0589](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md)
 - **Peripherals & Radios (QEMU & Unicorn):** Wi-Fi / Bluetooth (`BCM4339`), HDMI output, E-mount lens communication, audio I/O, and hardware watchdog (`0xF2402000`) are unmodelled.
@@ -91,9 +91,9 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 
 ## Live Status Telemetry
 
-Recorded offline suite: **2091 tests**, with 88 skip records and no failures/errors in the integrated checkout ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. Latest evidence [E0588](docs/evidence/0588-qemu-usb-buspower-and-obj-fsm-dispatch.md); this suite is not attributed solely to Open Gate. Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
+Recorded offline suite: **2091 tests**, with 88 skip records and no failures/errors in the integrated checkout ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. Separate QEMU milestones are the [USB mode gate](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md) and [first firmware-driven live-view frame](docs/evidence/0591-qemu-a6400-first-live-view-frame.md). Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=f4c16b57c383)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=89ea55627db7)
 
 ![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
 
@@ -105,7 +105,7 @@ Please bring BIONZ X research, fixes, and camera support to this repository earl
 
 **Top 3 open tasks right now:**
 
-1. **Switch to the rear LCD through stock firmware input (QEMU):** The original LCD layout renders on console 0 with a diagnostic overlay ([E0572](docs/evidence/0572-qemu-a6400-rear-lcd-layout-on-panel.md)). Find the `InputService::getInputEventStatus` key/value that selects it without the overlay, or unblock `CamPig` IRQ 35→36 / `PQD_Ydet` at mode-sequencer step 32 ([E0569](docs/evidence/0569-qemu-sgc1-event-a.md), [QEMU checkpoint](qemu-a6400/STATUS.md)).
+1. **Resolve remaining live-view sequencer gates (QEMU):** Stock firmware displays the deterministic test image and consumes fresh Ydet records. Trace the captured boot's separate step-26 gate and verify the older packaged step-32 case without bypassing either ([E0591](docs/evidence/0591-qemu-a6400-first-live-view-frame.md)).
 2. **Complete native USB gadget startup (Unicorn / UVC):** Qualify OTG/class/gadgetcore completion after original registration, then prove process-owned SETCONFIG production, delivery and teardown ([E0534](docs/evidence/0534-original-process-usb-gadget-registration-and-otg-boundary.md)). The isolated local delivery route is already executable.
 3. **Establish GPU shared backing and rendering (Unicorn L3):** TGID completion/reset is verified, but strict replay stops on unsupplied shared bytes. Recover initialization and functional GPU work without assumed success ([E0530](docs/evidence/0530-gles-tgid-completion-and-shared-memory-boundary.md)).
 

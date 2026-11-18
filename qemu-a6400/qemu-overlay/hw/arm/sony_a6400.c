@@ -26,6 +26,7 @@
 #include "system/reset.h"
 #include "hw/core/boards.h"
 #include "hw/core/irq.h"
+#include "hw/core/split-irq.h"
 #include "hw/char/pl011.h"
 #include "hw/cpu/a9mpcore.h"
 #include "hw/misc/unimp.h"
@@ -35,6 +36,7 @@
 #include "hw/sd/sdhci.h"
 #include "hw/misc/cxd90014_sio.h"
 #include "hw/misc/cxd90014_adc.h"
+#include "hw/misc/cxd90045_cam.h"
 #include "hw/core/sysbus.h"
 #include "system/blockdev.h"
 #include "qemu/log.h"
@@ -1225,6 +1227,176 @@ static void sony_set_usb_vbus(Object *obj, bool present, Error **errp)
     }
 }
 
+static char *sony_a6400_liveview_source;
+static Cxd90045LiveViewSource sony_a6400_lv_src;
+
+static char *sony_a6400_get_liveview_source(Object *obj, Error **errp)
+{
+    return g_strdup(sony_a6400_liveview_source);
+}
+
+static void sony_a6400_set_liveview_source(Object *obj, const char *value,
+                                           Error **errp)
+{
+    g_free(sony_a6400_liveview_source);
+    sony_a6400_liveview_source = g_strdup(value);
+}
+
+static uint64_t cxd90045_sif_read(void *opaque, hwaddr off, unsigned size)
+{
+    uint32_t *r = opaque;
+    hwaddr w = off & ~3ULL;
+    unsigned sh = (off & 3) * 8;
+    uint32_t v;
+
+    if (w == 0x08) {
+        r[2] += 100;
+        v = r[2];
+    } else if (w == 0x0C) {
+        r[3] += 1000;
+        v = r[3];
+    } else {
+        v = r[w >> 2];
+    }
+    return size == 4 ? v : (v >> sh) & ((1u << (size * 8)) - 1);
+}
+
+static void cxd90045_sif_write(void *opaque, hwaddr off, uint64_t val,
+                               unsigned size)
+{
+    uint32_t *r = opaque;
+    hwaddr w = off & ~3ULL;
+    unsigned sh = (off & 3) * 8;
+    uint32_t m = size == 4 ? 0xFFFFFFFFu : ((1u << (size * 8)) - 1) << sh;
+
+    r[w >> 2] = (r[w >> 2] & ~m) | (((uint32_t)val << sh) & m);
+}
+
+static const MemoryRegionOps cxd90045_sif_ops = {
+    .read = cxd90045_sif_read,
+    .write = cxd90045_sif_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 4 },
+    .impl = { .min_access_size = 1, .max_access_size = 4 },
+};
+
+static void sony_a6400_create_liveview_pipeline(MachineState *machine,
+                                                MemoryRegion *sysmem,
+                                                qemu_irq *pic)
+{
+    static const struct {
+        hwaddr base;
+        uint32_t nch;
+        int irq0;
+        int irq1;
+        uint32_t irq0_mask;
+        int32_t lv_ch;
+    } aif_groups[] = {
+        { 0xF3020000ULL, 6, 0,  0,  0xF0u, -1 },
+        { 0xF3041000ULL, 2, 0,  0,  0xF0u, -1 },
+        { 0xF3881000ULL, 4, 40, 41, 0xF0u,  3 }, /* RC0 -> live-view DRAM */
+        { 0xF3501000ULL, 4, 42, 43, 0xF0u, -1 },
+        { 0xF3981000ULL, 4, 44, 45, 0xF0u,  3 }, /* RC1 */
+        { 0xF30A1000ULL, 2, 46, 0,  0xF0u, -1 },
+        { 0xF30B1000ULL, 2, 47, 0,  0xF0u, -1 },
+        { 0xF31A1000ULL, 2, 48, 0,  0xF0u, -1 },
+        { 0xF31B1000ULL, 2, 49, 0,  0xF0u, -1 },
+        { 0xF31C1000ULL, 2, 50, 0,  0xF0u, -1 },
+        { 0xF3811000ULL, 3, 0,  0,  0xF0u, -1 },
+        { 0xF3911000ULL, 3, 0,  0,  0xF0u, -1 },
+        { 0xF3800000ULL, 5, 0,  0,  0xF0u, -1 },
+        { 0xF3900000ULL, 5, 0,  0,  0xF0u, -1 },
+        { 0xF31D0000ULL, 4, 0,  0,  0xF0u, -1 },
+        { 0xF31E6000ULL, 3, 0,  0,  0xF0u, -1 },
+    };
+    static const struct {
+        const char *name;
+        hwaddr base;
+    } core_regfiles[] = {
+        { "cxd90045.rc0-core",  0xF3880000ULL },
+        { "cxd90045.rc1-core",  0xF3980000ULL },
+        { "cxd90045.f350-core", 0xF3500000ULL },
+    };
+    DeviceState *sg, *frames, *pig[2], *fe_aif[2];
+    MemoryRegion *sif_mmio = g_new(MemoryRegion, 1);
+    uint32_t *sif_regs = g_new0(uint32_t, 0x400);
+
+    cxd90045_liveview_source_parse(&sony_a6400_lv_src,
+                                   sony_a6400_liveview_source, &error_fatal);
+
+    sg = qdev_new(TYPE_CXD90045_CAMPIG);
+    qdev_prop_set_bit(sg, "is-sg", true);
+    qdev_prop_set_uint32(sg, "mmio-size", 0x2000);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(sg), &error_fatal);
+    sysbus_mmio_map_overlap(SYS_BUS_DEVICE(sg), 0, 0xF3120000ULL, -400);
+    sysbus_connect_irq(SYS_BUS_DEVICE(sg), 0, pic[35 - 32]);
+
+    frames = qdev_new(TYPE_SPLIT_IRQ);
+    qdev_prop_set_uint16(frames, "num-lines", ARRAY_SIZE(pig));
+    qdev_realize_and_unref(frames, NULL, &error_fatal);
+    qdev_connect_gpio_out_named(sg, "frame", 0, qdev_get_gpio_in(frames, 0));
+
+    memory_region_init_io(sif_mmio, OBJECT(machine), &cxd90045_sif_ops,
+                          sif_regs, "cxd90045.sif", 0x1000);
+    memory_region_add_subregion_overlap(sysmem, 0xF3122000ULL, sif_mmio, -400);
+
+    for (int u = 0; u < 2; u++) {
+        hwaddr fe_base = 0xF3000000ULL + (hwaddr)u * 0x100000ULL;
+
+        pig[u] = qdev_new(TYPE_CXD90045_CAMPIG);
+        qdev_prop_set_uint32(pig[u], "mmio-size", 0x20000);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(pig[u]), &error_fatal);
+        cxd90045_campig_set_source(pig[u], &sony_a6400_lv_src);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(pig[u]), 0, fe_base, -400);
+        sysbus_connect_irq(SYS_BUS_DEVICE(pig[u]), 0, pic[(36 + u) - 32]);
+        qdev_connect_gpio_out(frames, u,
+                             qdev_get_gpio_in_named(pig[u], "input-frame", 0));
+
+        fe_aif[u] = qdev_new(TYPE_CXD90045_AIF);
+        qdev_prop_set_uint32(fe_aif[u], "nch", 6);
+        qdev_prop_set_bit(fe_aif[u], "frame-sync", true);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(fe_aif[u]), &error_fatal);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(fe_aif[u]), 0,
+                                fe_base + 0x2000ULL, -300);
+        qdev_connect_gpio_out_named(pig[u], "frame", 0,
+                                    qdev_get_gpio_in_named(fe_aif[u],
+                                                           "frame", 0));
+    }
+
+    for (size_t k = 0; k < ARRAY_SIZE(core_regfiles); k++) {
+        DeviceState *rf = qdev_new("cxd90014-regfile");
+
+        qdev_prop_set_string(rf, "name", core_regfiles[k].name);
+        qdev_prop_set_uint64(rf, "size", 0x1000);
+        qdev_prop_set_uint64(rf, "base", core_regfiles[k].base);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(rf), &error_fatal);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(rf), 0,
+                                core_regfiles[k].base, -400);
+    }
+
+    for (size_t k = 0; k < ARRAY_SIZE(aif_groups); k++) {
+        DeviceState *aif = qdev_new(TYPE_CXD90045_AIF);
+
+        qdev_prop_set_uint32(aif, "nch", aif_groups[k].nch);
+        qdev_prop_set_uint32(aif, "irq0-mask", aif_groups[k].irq0_mask);
+        qdev_prop_set_int32(aif, "liveview-ch", aif_groups[k].lv_ch);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(aif), &error_fatal);
+        if (aif_groups[k].lv_ch >= 0) {
+            cxd90045_aif_set_source(aif, &sony_a6400_lv_src);
+        }
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(aif), 0,
+                                aif_groups[k].base, -300);
+        if (aif_groups[k].irq0) {
+            sysbus_connect_irq(SYS_BUS_DEVICE(aif), 0,
+                               pic[aif_groups[k].irq0 - 32]);
+        }
+        if (aif_groups[k].irq1) {
+            sysbus_connect_irq(SYS_BUS_DEVICE(aif), 1,
+                               pic[aif_groups[k].irq1 - 32]);
+        }
+    }
+}
+
 static void sony_a6400_submicro_xfer(void *opaque, int ch, uint32_t mode,
                                      uint8_t *buf, int len)
 {
@@ -1269,6 +1441,7 @@ static void sony_a6400_set_sm_file(Object *obj, const char *value,
 
 static void sony_a6400_init(MachineState *machine)
 {
+    bool liveview = sony_a6400_liveview_source && *sony_a6400_liveview_source;
     MemoryRegion *sysmem = get_system_memory();
     MemoryRegion *ram0 = g_new(MemoryRegion, 1);
     MemoryRegion *ram1 = g_new(MemoryRegion, 1);
@@ -1346,7 +1519,9 @@ static void sony_a6400_init(MachineState *machine)
      */
     create_unimplemented_device("cxd90045.unmodelled", 0xF0000000ULL,
                                 0x08000000ULL);
-    if (sony_a6400_sgc1_event_a) {
+    if (liveview) {
+        sony_a6400_create_liveview_pipeline(machine, sysmem, pic);
+    } else if (sony_a6400_sgc1_event_a) {
         sony_sgc1_create(machine, pic[35 - 32]);
     }
     if (sony_a6400_usb_vbus_test) {
@@ -1363,7 +1538,7 @@ static void sony_a6400_init(MachineState *machine)
      * E0566: CamPig IRQ setup reads back +0x50 before setting its next
      * enable bit. Bind only the observed word in this opt-in experiment.
      */
-    if (sony_a6400_campig_enable_readback) {
+    if (!liveview && sony_a6400_campig_enable_readback) {
         DeviceState *rf = qdev_new("cxd90014-regfile");
 
         qdev_prop_set_string(rf, "name", "cxd90045.campig-enable");
@@ -1415,7 +1590,10 @@ static void sony_a6400_init(MachineState *machine)
     /* GPIO p0..p17; pin IRQs p0.0-15 -> 121+, p0.16 -> 144, p1.0-6 -> 137+ */
     {
         DeviceState *gpio = qdev_new("cxd90014-gpio");
-        qdev_prop_set_string(gpio, "reset-high", CXD90045_GPIO_RESET_HIGH);
+        /* P0.2 is the active-low EVF eye contact input with rear controls. */
+        qdev_prop_set_string(gpio, "reset-high", sony_a6400_rear_controls ?
+                             "0.2," CXD90045_GPIO_RESET_HIGH :
+                             CXD90045_GPIO_RESET_HIGH);
         sysbus_realize_and_unref(SYS_BUS_DEVICE(gpio), &error_fatal);
         sysbus_mmio_map(SYS_BUS_DEVICE(gpio), 0, CXD90045_GPIO_BASE);
         for (i = 0; i <= 16; i++) {
@@ -1491,6 +1669,10 @@ static void sony_a6400_init(MachineState *machine)
         sysbus_connect_irq(SYS_BUS_DEVICE(vph), 1, pic[101 - 32]);
         sysbus_connect_irq(SYS_BUS_DEVICE(vph), 2, pic[102 - 32]);
         qdev_prop_set_bit(ev, "ext-vd", true);
+        if (liveview) {
+            qdev_prop_set_uint32(ev, "late-src2", 23);
+            qdev_prop_set_uint32(ev, "late-us2", 250);
+        }
         sysbus_realize_and_unref(SYS_BUS_DEVICE(ev), &error_fatal);
         qdev_connect_gpio_out(vph, 0, qdev_get_gpio_in(ev, 0));
         sysbus_mmio_map(SYS_BUS_DEVICE(ev), 0, 0xF3C30000ULL);
@@ -1657,6 +1839,12 @@ static void sony_a6400_machine_init(MachineClass *mc)
                                    sony_a6400_set_rear_controls);
     object_class_property_set_description(OBJECT_CLASS(mc), "rear-controls",
         "Connect host keys to a6400 ADC, GPIO and sub-micro inputs");
+    object_class_property_add_str(OBJECT_CLASS(mc), "liveview-source",
+                                  sony_a6400_get_liveview_source,
+                                  sony_a6400_set_liveview_source);
+    object_class_property_set_description(OBJECT_CLASS(mc), "liveview-source",
+        "Enable opt-in CXD90045 CamPig/PQD_Ydet/RC0 live-view pipeline "
+        "(bars, ramp, none, or pgm:PATH)");
     object_class_property_add_bool(OBJECT_CLASS(mc), "usb-vbus-test",
                                    sony_get_usb_vbus_test,
                                    sony_set_usb_vbus_test);
