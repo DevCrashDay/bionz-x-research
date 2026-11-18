@@ -39,14 +39,15 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/sysbus.h"
-#include "hw/irq.h"
-#include "hw/qdev-properties.h"
+#include "hw/core/sysbus.h"
+#include "hw/core/irq.h"
+#include "hw/core/qdev-properties.h"
 #include "qemu/timer.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
 #include "ui/console.h"
 #include "system/address-spaces.h"
+#include "system/memory.h"
 #include "qom/object.h"
 
 #define TYPE_CXD_VPH "cxd90014-vph"
@@ -250,7 +251,7 @@ static void vph_compose(VphState *s, uint32_t *dst, uint32_t W, uint32_t H,
     }
 }
 
-static void vph_update(void *opaque)
+static bool vph_update(void *opaque)
 {
     VphState *s = opaque;
     DisplaySurface *surf = qemu_console_surface(s->con);
@@ -261,11 +262,12 @@ static void vph_update(void *opaque)
     }
     vph_compose(s, surface_data(surf), W, H, R(0x144) & 1, 0, 2,
                 (R(0x404) & 1) ? 4 : 2, false);
-    dpy_gfx_update_full(s->con);
+    qemu_console_update_full(s->con);
+    return true;
 }
 
 /* HDMI: line output, console 1 (docs/RE_HDMI.md §2, §4.2) */
-static void vph_hdmi_update(void *opaque)
+static bool vph_hdmi_update(void *opaque)
 {
     VphState *s = opaque;
     uint32_t W = R(0x454) & 0xfff, H = (R(0x454) >> 16) & 0xfff;
@@ -297,7 +299,8 @@ static void vph_hdmi_update(void *opaque)
         vph_compose(s, dst, W, H, R(0x184) & 1, 1, 3,
                     (R(0x414) & 1) ? 4 : 2, true);
     }
-    dpy_gfx_update_full(s->hdmi_con);
+    qemu_console_update_full(s->hdmi_con);
+    return true;
 }
 
 static void vph_hdmi_tmds(void *opaque, int n, int level)
@@ -393,9 +396,9 @@ static void vph_realize(DeviceState *dev, Error **errp)
     VphState *s = CXD_VPH(dev);
     s->w = 640;
     s->h = 480;
-    s->con = graphic_console_init(dev, 0, &vph_gfx_ops, s);
+    s->con = qemu_graphic_console_create(dev, 0, &vph_gfx_ops, s);
     qemu_console_resize(s->con, s->w, s->h);
-    s->hdmi_con = graphic_console_init(dev, 1, &vph_hdmi_ops, s);
+    s->hdmi_con = qemu_graphic_console_create(dev, 1, &vph_hdmi_ops, s);
     qemu_console_resize(s->hdmi_con, 640, 480);
 }
 

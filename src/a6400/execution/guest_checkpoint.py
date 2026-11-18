@@ -34,7 +34,8 @@ def checkpoint_resume_state(probe):
     result = {'status': status, 'boundary': boundary, 'retry_pc': None}
     if status not in ('syscall_boundary', 'blocked_uipc', 'unsupported_filesystem',
                       'unsupported_uipc_contract', 'unsupported_gles_contract',
-                      'unsupported_stream_contract', 'unsupported_usb_contract', 'unsupported_kikilog_contract',
+                      'unsupported_stream_contract', 'unsupported_usb_contract',
+                      'unsupported_usb_otgcore_contract', 'unsupported_kikilog_contract',
                       'unsupported_nflasha4_contract'):
         return result
     pc = probe.mu.reg_read(arm.UC_ARM_REG_PC)

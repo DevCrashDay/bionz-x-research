@@ -1013,6 +1013,11 @@ class InterpreterProbe:
         still records the device pages, so the BAR VA can be reconstructed
         without touching guest state.
         """
+        gles = getattr(self, 'gles', None)
+        if gles is not None and gles.completion_policy == 'kernel-tgid':
+            self.install_gles_memory_guards()
+            return ([(gles.bar_virtual, gles.bar_length)]
+                    if gles.bar_virtual is not None else [])
         page_info = getattr(getattr(self, 'mmap', None), 'page_backing', {})
         pages = sorted(page for page, info in page_info.items()
                        if info.get('device') == 'dmpgles2')
@@ -1032,6 +1037,42 @@ class InterpreterProbe:
             gles.bar_virtual, length = ranges[0]
             gles.bar_length = min(length, len(getattr(gles, 'bar', b'\x00' * 0x4000)))
         return ranges
+
+    def _gles_memory_boundary(self, details):
+        self.report.update(status='unsupported_gles_contract', boundary={
+            'reason': 'gles_shared_contents_not_supplied',
+            'pc': self.mu.reg_read(arm.UC_ARM_REG_PC), **details})
+        self.mu.emu_stop()
+
+    def _gles_mmio_boundary(self, uc, access, address, size, value, virtual):
+        if access == unicorn.UC_MEM_READ and address == virtual and size == 4:
+            return
+        self.report.update(status='unsupported_gles_contract', boundary={
+            'reason': 'gles_mmio_operation_not_modelled',
+            'pc': uc.reg_read(arm.UC_ARM_REG_PC), 'address': address,
+            'physical': 0xf1000000 + address - virtual,
+            'size': size, 'access': access, 'value': value})
+        uc.emu_stop()
+
+    def install_gles_memory_guards(self):
+        """Keep uninitialized vmalloc bytes and unsupported MMIO distinct from RAM."""
+        from src.a6400.execution.guarded_bytes import GuardedGuestBytes
+        gles = self.gles
+        if gles.shared_mapping is not None:
+            if not hasattr(self, '_gles_shared_guard'):
+                self._gles_shared_guard = GuardedGuestBytes(
+                    self.mu, {'gles_shared_uninitialized'}, self._gles_memory_boundary,
+                    'gles-software-shared')
+            self._gles_shared_guard.bytes = gles.shared_unknown
+        if gles.bar_virtual is not None:
+            installed = self.__dict__.setdefault('_gles_mmio_guard_ranges', set())
+            region = (gles.bar_virtual, gles.bar_length)
+            if region not in installed:
+                self.mu.hook_add(unicorn.UC_HOOK_MEM_READ | unicorn.UC_HOOK_MEM_WRITE,
+                                 self._gles_mmio_boundary, begin=gles.bar_virtual,
+                                 end=gles.bar_virtual + gles.bar_length - 1,
+                                 user_data=gles.bar_virtual)
+                installed.add(region)
 
     def install_resumed_gles_bar_hooks(self):
         """Install observe-only BAR hooks on a resumed dmpgles2 device range."""
@@ -3055,7 +3096,8 @@ class InterpreterProbe:
                         return
                     event_pending = (cmd == 0xC0048203
                                      and getattr(self.gles, 'decoded_semantics', False)
-                                     and getattr(self.gles, 'engine_model', False))
+                                     and (getattr(self.gles, 'engine_model', False)
+                                          or self.gles.completion_policy == 'kernel-tgid'))
                     if (ret is None and (cmd == 0xC004820D or event_pending)
                             and getattr(self, 'threads', None) is not None):
                         # Kernel wait: completion wait 0xC004820D or event wait
@@ -3086,7 +3128,13 @@ class InterpreterProbe:
                              'pc': pc, 'instruction_address': pc - size, 'thumb': thumb, 'device': 'dmpgles2'}
                     if (cmd == 0xC004820E and getattr(self.gles, 'decoded_semantics', False)
                             and getattr(self, 'threads', None) is not None):
-                        woken = self.threads.handle_fd_wake(fd)
+                        if self.gles.completion_policy == 'kernel-tgid':
+                            target_tids = self.gles.transactions[-1]['woken_tids']
+                            woken = []
+                            for wait_fd in tuple(self.threads.fd_waiters):
+                                woken.extend(self.threads.handle_fd_wake(wait_fd, tids=target_tids))
+                        else:
+                            woken = self.threads.handle_fd_wake(fd)
                         if woken:
                             event['woken_tids'] = woken
                     self.report['serviced_syscalls'].append(event)
@@ -3565,6 +3613,18 @@ class InterpreterProbe:
                                  phys_addr=phys_addr, pgoff=pgoff)
                     if 0 <= event['returned'] < 0x80000000:
                         self.mmap.mark_device_range(event['returned'], length, 'mem')
+                        if (getattr(getattr(self, 'gles', None), 'completion_policy', 'legacy') == 'kernel-tgid'
+                                and phys_addr < 0xf1004000 and 0xf1000000 < phys_addr + length):
+                            if phys_addr != 0xf1000000 or length != 0x4000:
+                                self.report.update(status='unsupported_gles_contract', boundary={
+                                    'reason': 'gles_physical_mapping_shape_unqualified',
+                                    'physical': phys_addr, 'length': length, 'pc': pc})
+                                uc.emu_stop()
+                                return
+                            self.gles.bar_virtual = event['returned']
+                            self.gles.bar_length = length
+                            uc.mem_write(event['returned'], struct.pack('<I', 0x000b0000))
+                            self.install_gles_memory_guards()
                     self.report['serviced_syscalls'].append(event)
                     self.report['syscall_responses_supplied'] += 1
                     uc.reg_write(arm.UC_ARM_REG_R0, event['returned'])
@@ -3597,6 +3657,8 @@ class InterpreterProbe:
                             uc.mem_write(event['returned'], seed)
                         if getattr(self, 'gles_bar_trace', False) and self.gles.bar_length > 0:
                             self.install_gles_bar_hooks(event['returned'], self.gles.bar_length)
+                    if self.gles.completion_policy == 'kernel-tgid':
+                        self.install_gles_memory_guards()
                     return
         if svc and immediate == 0 and self.syscall_policy in ('mmap', 'kuser', 'uipc', 'threads'):
             if number == 125 and hasattr(self, 'stream') and self.stream.mapping:

@@ -17,8 +17,8 @@ Build an evidence-backed, multi-device Sony BIONZ X (`CXD90045`) environment in 
 ## 3. Current technical checkpoint
 
 See [docs/INDEX.md](docs/INDEX.md) and [docs/CURRENT_STATE.md](docs/CURRENT_STATE.md) for the full map. Active workstreams:
-- **L2 Kernel Boot (`UnicornMachine`):** `E0415–E0467` — `ARM-CXD900X0` (`0xDA9`), `UC_TLB_VIRTUAL` deferred at `ret_to_user` (`0x6010DF34`), reaches `ld-2.11.2.so` `USR` Thumb (`0x0402E790`, `CPSR=0x30`); next is Thumb TB warm-up at `0x0402E798` → BusyBox `_start` (`0x0000C439`) → `/bin/ash`.
-- **L3 User-Space (`InterpreterProbe`):** `E0298–E0340`, `E0473` — `--thread-timeslice` reaches 88+ threads (`THREAD_APP`, `Appframework`, `gui.so`); blocked on guest `stella HeapAllocator` `0x4C`/`0x50` pool-boundary overrun (`libObj+0x79FE14`).
+- **L2 Kernel Boot (`UnicornMachine`):** `E0533` — native CP15/TLB access removes re-entrant helper execution and manual Thumb warm-up. Two original `nflasha1` replays reach BusyBox `_start` (`0x0000C438`, `CPSR=0x60000030`) and `/bin/ash` echo/pwd roundtrips; next is the separate post-`uname` child/COW exception, not the historical linker entry.
+- **L3 User-Space (`InterpreterProbe`):** `E0526`, `E0530`, `E0534` — 88+ threads and historical allocator abort; isolated constructor fits `0x4C`, so the prior pool-overrun explanation is unproven. Strict GLES stops on unknown shared contents; original USB startup reaches FSM 7 but stops at OTG SET_MODE.
 - **Track B Physical UVC/PTP (`054C:0322`):** `E0468`, `E0471`, `E0476` — Run B25 `S1` root-caused EP0 Status-OUT NAK window; `E0476` status pre-arm module (`dcc2f64f…`, `117/8/0`, Unicorn `8/8 PASS`) awaits explicit user GO for Run B26.
 - **Multi-Device Platform (`CXD90045`):** `E0477–E0489`, `E0506–E0509` — 13 bodies / 9 kernels mapped + `ILCE-6400A` 1.01 reference qualification and USBSTOR native `GetModelInfo` (`0032858730`, 2.727 ms); `TargetProfile` registry in `src/a6400/targets/`.
 

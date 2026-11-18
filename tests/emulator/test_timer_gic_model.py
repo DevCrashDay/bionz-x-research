@@ -52,10 +52,11 @@ class TimerGicModelTests(unittest.TestCase):
         options = dict(machine_id=MACHINE_ID, instruction_limit=40000,
                        sample_interval=1000, timer_irq_model=True,
                        timer_ticks_per_instruction=1,
-                       timer_ticks_per_jiffy=1000)
+                       timer_ticks_per_jiffy=1000,
+                       ram_banks=((0, 0x800000),))
         options.update(kwargs)
         return UnicornMachine(program or gic_program(), b'\x00' * 64,
-                              build_atags('console=ttyAM0', [(0, 0x40000000)]),
+                              build_atags('console=ttyAM0', options['ram_banks']),
                               **options)
 
     def test_gic_reads_are_served_by_the_model(self):

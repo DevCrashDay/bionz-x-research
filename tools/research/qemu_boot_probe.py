@@ -23,6 +23,20 @@ from tools.research.liro_task_snapshot import decode_gic_trace, snapshot_interru
 DEFAULT_COMMANDS = ('cat /proc/version', 'cat /proc/interrupts', 'ps', 'ls /proc/udm')
 
 
+def source_reference_hashes(greeting: dict) -> dict[str, str]:
+    version = greeting['QMP']['version']['qemu']
+    parts = tuple(version[name] for name in ('major', 'minor', 'micro'))
+    if any(type(part) is not int or part < 0 for part in parts):
+        raise ValueError('QMP version requires nonnegative integer components')
+    label = '.'.join(map(str, parts))
+    patch = f'qemu-a6400/patches/qemu-v{label}-sony-a6400.patch'
+    if not (PROJECT_ROOT / patch).is_file():
+        raise ValueError(f'No pinned Sony source patch for QEMU {label}')
+    return {name: digest(PROJECT_ROOT / name) for name in (
+        'qemu-a6400/run.sh', 'qemu-a6400/qemu-overlay/hw/arm/sony_a6400.c',
+        'qemu-a6400/qemu-overlay/hw/timer/cxd4115_timer.c', patch)}
+
+
 def physical_range(text: str) -> tuple[int, int]:
     try:
         address, size = (int(value, 0) for value in text.split(':'))
@@ -202,11 +216,9 @@ def run(inputs: Path, output: Path, seconds: int, commands: tuple[str, ...],
                     report['qmp_greeting'] = qmp.greeting
                     executable = Path(os.readlink(f'/proc/{process.pid}/exe'))
                     report['qemu_binary'] = dict(path=str(executable), sha256=digest(executable))
-                    report['qemu_source_inputs'] = {
-                        name: digest(PROJECT_ROOT / name) for name in (
-                            'qemu-a6400/run.sh', 'qemu-a6400/qemu-overlay/hw/arm/sony_a6400.c',
-                            'qemu-a6400/qemu-overlay/hw/timer/cxd4115_timer.c',
-                            'qemu-a6400/patches/qemu-v10.1.0-sony-a6400.patch')}
+                    report['qemu_source_inputs'] = source_reference_hashes(qmp.greeting)
+                    report['qemu_source_inputs_kind'] = (
+                        'repository references, not identities of the native compilation inputs')
                     process.stdin.write(b'\n')
                     process.stdin.flush()
                 if log_path.stat().st_size > 32 * 1024 * 1024:

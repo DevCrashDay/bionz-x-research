@@ -3,6 +3,7 @@ import struct
 import unittest
 from pathlib import Path
 
+from project_paths import a6400_dump_dir
 from src.a6400.execution.exbl_image import (
     BLOCK_SIZE,
     DEFAULT_LOAD_BASE,
@@ -16,7 +17,7 @@ from src.a6400.execution.exbl_image import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-DUMP = ROOT / 'artifacts/dumps/a6400-nflasha-readonly/nflashaB0-4194304.bin'
+DUMP = a6400_dump_dir(ROOT) / 'nflashaB0-4194304.bin'
 
 
 def make_block(records, image_size=0x2000):

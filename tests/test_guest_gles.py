@@ -9,7 +9,9 @@ from src.a6400.execution.guest_gles import (
     GLES_LOCK_SEMAPHORE, GLES_UNLOCK_SEMAPHORE, GLES_RELEASE_RESOURCE, GLES_SIGNAL_COMPLETION,
     GLES_WAIT_COMPLETION, GLES_GET_POWER_STATE_ALT, GLES_GET_RESOURCE_SUB
 )
-from src.a6400.execution.kernel_task_identity import KernelTaskObservation, UnsupportedKernelBinding
+from src.a6400.execution.kernel_task_identity import (
+    KernelTaskIdentityTable, KernelTaskObservation, UnsupportedKernelBinding,
+)
 
 
 class GuestGlesTests(unittest.TestCase):
@@ -249,9 +251,8 @@ class GuestGlesTests(unittest.TestCase):
         self.assertEqual(gles.bar_virtual, event['returned'])
         self.assertEqual(gles.bar_length, 0x4000)
 
-    def test_mmap2_real_128k_bar_window_is_recognized(self):
-        # The real camera maps dmpgles2 as 128 KiB at pgoff 0 (E0313); the
-        # observed BAR identity word lives at the start of that window.
+    def test_legacy_mmap2_keeps_historical_128k_bar_assumption(self):
+        # Retained baseline only: original mmap identifies 128 KiB as software-shared, not BAR.
         import unicorn
         from src.a6400.execution.guest_mmap import GuestMmap
         mu = unicorn.Uc(unicorn.UC_ARCH_ARM, unicorn.UC_MODE_ARM)
@@ -352,6 +353,120 @@ class GuestGlesTests(unittest.TestCase):
         with self.assertRaises(UnsupportedGles) as error:
             gles.ioctl(owner['owner_id'], 0xdeadbeef, 0, lambda *_: b'', lambda *_: None)
         self.assertEqual(error.exception.details['reason'], 'unsupported_gles_ioctl')
+
+
+class TgidCompletionTests(unittest.TestCase):
+    def setUp(self):
+        table = KernelTaskIdentityTable()
+        for tid in (1000, 1001, 1002):
+            table.register(tid, 1000)
+        self.gles = GuestGles(GlesBinding(table=table), completion_policy='kernel-tgid')
+        self.owner = self.gles.open(2, 1000, 1000)['owner_id']
+        self.memory = {0x2000: struct.pack('<I', 0), 0x2010: b'\xa5' * 4,
+                       0x2020: b'\xa5' * 4, 0x2030: struct.pack('<I', 0x04000000)}
+        self.reads = []
+
+    def read(self, address, size):
+        self.assertEqual(size, 4)
+        self.reads.append(address)
+        return self.memory[address]
+
+    def write(self, address, data):
+        self.assertEqual(len(data), 4)
+        self.memory[address] = bytes(data)
+
+    def ioctl(self, command, argument, tid=1000):
+        return self.gles.ioctl(self.owner, command, argument, self.read, self.write, tid=tid)
+
+    def test_cross_thread_signal_resumes_wait_without_resetting_it_or_reading_padding(self):
+        self.assertIsNone(self.ioctl(GLES_GET_RESOURCE_SUB, 0x2010, tid=1001))
+        self.assertIsNone(self.ioctl(GLES_GET_RESOURCE_SUB, 0x2010, tid=1001))
+        self.assertEqual(self.memory[0x2010], b'\xa5' * 4)
+        self.assertEqual(self.ioctl(GLES_SIGNAL_COMPLETION, 0x2000), 0)
+        self.assertEqual(self.gles.transactions[-1]['woken_tids'], [1001])
+        self.assertEqual(self.ioctl(GLES_GET_RESOURCE_SUB, 0x2010, tid=1001), 0)
+        self.assertEqual(self.memory[0x2010], struct.pack('<I', 1))
+        self.assertEqual(self.reads, [0x2000])
+        self.assertIsNone(self.ioctl(GLES_GET_RESOURCE_SUB, 0x2010, tid=1001))
+
+    def test_open_completion_is_reset_and_early_signal_uses_fast_flag_once(self):
+        self.assertEqual(self.ioctl(GLES_SIGNAL_COMPLETION, 0x2000), 0)
+        self.assertEqual(self.gles.transactions[-1]['woken_tids'], [])
+        self.assertEqual(self.ioctl(GLES_GET_RESOURCE_SUB, 0x2010, tid=1001), 0)
+        self.assertIsNone(self.ioctl(GLES_GET_RESOURCE_SUB, 0x2010, tid=1001))
+
+    def test_complete_all_releases_all_existing_waiters_not_the_next_wait(self):
+        self.assertIsNone(self.ioctl(GLES_GET_RESOURCE_SUB, 0x2010, tid=1001))
+        self.assertIsNone(self.ioctl(GLES_GET_RESOURCE_SUB, 0x2020, tid=1002))
+        self.memory[0x2000] = struct.pack('<I', 1000)
+        self.assertEqual(self.ioctl(GLES_SIGNAL_COMPLETION, 0x2000), 0)
+        self.assertEqual(self.memory[0x2000], struct.pack('<I', 1000))
+        self.assertEqual(self.gles.transactions[-1]['woken_tids'], [1001, 1002])
+        for tid, argument in ((1001, 0x2010), (1002, 0x2020)):
+            self.assertEqual(self.ioctl(GLES_GET_RESOURCE_SUB, argument, tid=tid), 0)
+            self.assertEqual(self.memory[argument], struct.pack('<I', 1))
+        self.assertIsNone(self.ioctl(GLES_GET_RESOURCE_SUB, 0x2010, tid=1001))
+
+    def test_irq_wait_is_separate_and_does_not_invent_bit24_or_software_completion(self):
+        self.assertIsNone(self.ioctl(GLES_GET_RESOURCE_SUB, 0x2010, tid=1001))
+        self.assertIsNone(self.ioctl(GLES_RELEASE_RESOURCE, 0x2030))
+        self.gles.dev_a8 = 0x84000000  # Explicit interrupt fixture, not device execution.
+        self.assertEqual(self.ioctl(GLES_RELEASE_RESOURCE, 0x2030), 0)
+        self.assertEqual(self.memory[0x2030], struct.pack('<I', 0x04000000))
+        self.assertEqual(self.gles.dev_a8, 0x80000000)
+        self.assertIsNone(self.ioctl(GLES_GET_RESOURCE_SUB, 0x2010, tid=1001))
+        with self.assertRaisesRegex(UnsupportedGles, 'unmatched_irq'):
+            self.ioctl(GLES_RELEASE_RESOURCE, 0x2030)
+
+    def test_unknown_key_and_invalid_word_return_real_errors_without_wakeup(self):
+        self.assertIsNone(self.ioctl(GLES_GET_RESOURCE_SUB, 0x2010, tid=1001))
+        self.memory[0x2000] = struct.pack('<I', 0xdeadbeef)
+        self.assertEqual(self.ioctl(GLES_SIGNAL_COMPLETION, 0x2000), -14)
+        self.assertEqual(self.memory[0x2000], struct.pack('<I', 0x1fffffff))
+        self.assertEqual(self.gles.transactions[-1]['woken_tids'], [])
+        self.assertEqual(self.ioctl(GLES_SIGNAL_COMPLETION, 0x5efffffe), -14)
+        self.assertIsNone(self.ioctl(GLES_GET_RESOURCE_SUB, 0x2010, tid=1001))
+        self.memory[0x2000] = b'\0'
+        with self.assertRaisesRegex(UnsupportedGles, 'word_not_supplied'):
+            self.ioctl(GLES_SIGNAL_COMPLETION, 0x2000)
+
+    def test_unqualified_engine_and_legacy_context_migration_are_not_used(self):
+        self.gles.engine_model = True
+        with self.assertRaisesRegex(UnsupportedGles, 'unqualified_engine'):
+            self.ioctl(GLES_GET_RESOURCE_SUB, 0x2010, tid=1001)
+        with self.assertRaisesRegex(UnsupportedGles, 'unqualified_engine'):
+            self.gles.complete_engine_command()
+        with self.assertRaisesRegex(UnsupportedGles, 'unqualified_engine'):
+            self.gles._poll_engine_command(self.read, self.write)
+        self.assertEqual(self.gles.engine_completions, 0)
+        self.assertEqual(self.gles.owners[self.owner]['ctx'], {})
+
+    def test_only_unused_device_can_switch_from_legacy_to_tgid_policy(self):
+        unused = GuestGles(self.gles.binding)
+        unused.enable_tgid_completion()
+        self.assertEqual(unused.completion_policy, 'kernel-tgid')
+        used = GuestGles(self.gles.binding)
+        used.open(2, 1000, 1000)
+        with self.assertRaisesRegex(UnsupportedGles, 'preopen_state'):
+            used.enable_tgid_completion()
+        self.assertEqual(used.completion_policy, 'legacy')
+
+    def test_shared_mapping_is_not_a_bar_and_host_arguments_cannot_read_unknown_bytes(self):
+        import unicorn
+        from src.a6400.execution.guest_mmap import GuestMmap
+        mu = unicorn.Uc(unicorn.UC_ARCH_ARM, unicorn.UC_MODE_ARM)
+        mapper = GuestMmap(mu, type('FS', (), {'fds': {}})())
+        event = self.gles.mmap2(mapper, 0, 0x20000, 3, 1, 0, self.owner)
+        virtual = event['returned']
+        self.assertEqual(event['gles_mapping_kind'], 'software-shared')
+        self.assertEqual(mapper.page_backing[virtual]['device'], 'dmpgles2-shared')
+        self.assertIsNone(self.gles.bar_virtual)
+        self.assertIsNone(self.gles.transactions[-1]['physical'])
+        self.assertEqual(len(self.gles.shared_unknown), 0x20000)
+        with self.assertRaisesRegex(UnsupportedGles, 'argument_uninitialized'):
+            self.ioctl(GLES_SIGNAL_COMPLETION, virtual)
+        with self.assertRaisesRegex(UnsupportedGles, 'shared_alias'):
+            self.gles.mmap2(mapper, 0, 0x20000, 3, 1, 0, self.owner)
 
 
 if __name__ == '__main__':

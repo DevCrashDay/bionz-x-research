@@ -25,6 +25,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+from project_paths import a6400_dump_dir
 from src.a6400.execution.guest_vfat import VfatImage
 
 DUMP_DIR = 'artifacts/dumps/a6400-nflasha-readonly'
@@ -170,7 +171,7 @@ class NflashaBootSet:
         if label not in BOOT_SETS:
             raise BootSetError(f'unknown boot set {label!r}')
         root = Path(root)
-        directory = root / DUMP_DIR
+        directory = a6400_dump_dir(root)
         manifest_path = directory / MANIFEST
         image_path = directory / BOOT_SETS[label]['image']
         if not manifest_path.is_file() or not image_path.is_file():

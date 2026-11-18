@@ -1,9 +1,10 @@
 import gc
 import struct
 import unittest
+from unicorn import UC_HOOK_CODE
 from unicorn.arm_const import (UC_ARM_REG_CPSR, UC_ARM_REG_LR, UC_ARM_REG_PC,
                               UC_ARM_REG_R0, UC_ARM_REG_R2, UC_ARM_REG_R4,
-                              UC_ARM_REG_R8, UC_ARM_REG_SPSR,
+                              UC_ARM_REG_R8, UC_ARM_REG_R10, UC_ARM_REG_SPSR,
                               UC_ARM_REG_SP)
 
 from src.a6400.execution.machine_contract import build_atags
@@ -127,6 +128,161 @@ class VirtualTlbTest(unittest.TestCase):
         machine._refresh_user_ttbr0()
         # tiny machine TTBR0 reads 0 and no current->mm fallback exists
         self.assertEqual(machine._cached_ttbr0, 0)
+
+    def test_page_table_maintenance_preserves_thumb_and_banked_registers(self):
+        machine = make_machine(ram_banks=((0, 0x800000), (0x02001000, 0x1000)),
+                               mmio_ranges=(),
+                               sram=(0xFE000000, 0x1000))
+        uc = machine.uc
+        uc.cpr_write(15, 0, 2, 0, 0, 0, False, 0x10000)
+        uc.cpr_write(15, 0, 2, 0, 1, 0, False, 0x14000)
+        uc.cpr_write(15, 0, 2, 0, 0, 1, False, 0x18000)
+        uc.cpr_write(15, 0, 2, 0, 1, 1, False, 0x1C000)
+        for secure in (False, True):
+            uc.cpr_write(15, 0, 1, 1, 0, 1, False, 0 if secure else 1)
+            for name, args, expected in (
+                    ('_read_cp15_ttbr0', (), 0x18000 if secure else 0x10000),
+                    ('_read_cp15_ttbr1', (), 0x1C000 if secure else 0x14000),
+                    ('_flush_cputlb', (), None),
+                    ('_set_cp15_fault', (0x12345000, 0x805), True),
+                    ('_set_cp15_prefetch_fault', (0x0402E790, 0x5), True)):
+                with self.subTest(secure=secure, operation=name):
+                    uc.reg_write(UC_ARM_REG_CPSR, 0xD3)
+                    uc.reg_write(UC_ARM_REG_SP, 0x60006000)
+                    uc.reg_write(UC_ARM_REG_LR, 0x60123454)
+                    uc.reg_write(UC_ARM_REG_SPSR, 0x60000030)
+                    machine._set_pc_and_cpsr(0x0402E790, 0xA0000030)
+                    uc.reg_write(UC_ARM_REG_SP, 0x5E864F10)
+                    uc.reg_write(UC_ARM_REG_LR, 0x0402E79F)
+                    uc.reg_write(UC_ARM_REG_R0, 0x11223344)
+                    self.assertEqual(getattr(machine, name)(*args), expected)
+                    self.assertEqual(uc.reg_read(UC_ARM_REG_PC), 0x0402E790)
+                    self.assertEqual(uc.reg_read(UC_ARM_REG_CPSR), 0xA0000030)
+                    self.assertEqual(uc.reg_read(UC_ARM_REG_SP), 0x5E864F10)
+                    self.assertEqual(uc.reg_read(UC_ARM_REG_LR), 0x0402E79F)
+                    self.assertEqual(uc.reg_read(UC_ARM_REG_R0), 0x11223344)
+                    uc.reg_write(UC_ARM_REG_CPSR, 0xD3)
+                    self.assertEqual(uc.reg_read(UC_ARM_REG_SP), 0x60006000)
+                    self.assertEqual(uc.reg_read(UC_ARM_REG_LR), 0x60123454)
+                    self.assertEqual(uc.reg_read(UC_ARM_REG_SPSR), 0x60000030)
+
+    def test_thumb_entry_continues_after_page_table_maintenance_hook(self):
+        machine = make_machine(ram_banks=((0, 0x800000), (0x02001000, 0x1000)),
+                               mmio_ranges=(),
+                               sram=(0xFE000000, 0x1000))
+        uc = machine.uc
+        machine._mmu_enabled = True
+        machine._cached_ttbr0 = 0x10000
+        uc.cpr_write(15, 0, 2, 0, 0, 0, False, 0x10000)
+        uc.mem_write(0x10100, struct.pack('<I', 0x20001))
+        uc.mem_write(0x200B8, struct.pack('<I', 0x0042E03E))
+        uc.mem_write(0x0042E790, bytes.fromhex('dff868a0dff868406846fee7'))
+        uc.mem_write(0x0042E7FC, struct.pack('<2I', 0x11223344, 0x55667788))
+        machine._set_pc_and_cpsr(0x0402E790, 0x30)
+        uc.reg_write(UC_ARM_REG_SP, 0x5E864F10)
+        hits = []
+
+        def maintain_tables(uc, address, size, user_data):
+            hits.append(address)
+            machine._read_cp15_ttbr0()
+            machine._read_cp15_ttbr1()
+            machine._flush_cputlb()
+
+        uc.hook_add(UC_HOOK_CODE, maintain_tables,
+                    begin=0x0402E794, end=0x0402E794)
+        uc.emu_start(0x0402E791, 0, count=4)
+        self.assertEqual(hits, [0x0402E794])
+        self.assertEqual(uc.reg_read(UC_ARM_REG_R10), 0x11223344)
+        self.assertEqual(uc.reg_read(UC_ARM_REG_R4), 0x55667788)
+        self.assertEqual(uc.reg_read(UC_ARM_REG_R0), 0x5E864F10)
+        self.assertEqual(uc.reg_read(UC_ARM_REG_PC), 0x0402E79A)
+        self.assertEqual(uc.reg_read(UC_ARM_REG_CPSR), 0x30)
+
+    def test_softmmu_flush_rewalks_changed_user_data_mapping(self):
+        machine = make_machine(ram_banks=((0, 0x800000),), mmio_ranges=(),
+                               sram=(0xFE000000, 0x1000))
+        uc = machine.uc
+        machine._mmu_enabled = True
+        machine._cached_ttbr0 = 0x10000
+        uc.cpr_write(15, 0, 2, 0, 0, 0, False, 0x10000)
+        uc.mem_write(0x10100, struct.pack('<I', 0x20001))
+        uc.mem_write(0x200B8, struct.pack('<2I', 0x0042E03E, 0x0050003E))
+        uc.mem_write(0x0042E100, bytes.fromhex('1068'))  # ldr r0, [r2]
+        uc.mem_write(0x00500000, struct.pack('<I', 0x11223344))
+        uc.mem_write(0x00501000, struct.pack('<I', 0x55667788))
+        machine._set_pc_and_cpsr(0x0402E100, 0x30)
+        uc.reg_write(UC_ARM_REG_R2, 0x0402F000)
+        uc.emu_start(0x0402E101, 0, count=1)
+        self.assertEqual(uc.reg_read(UC_ARM_REG_R0), 0x11223344)
+        uc.mem_write(0x200BC, struct.pack('<I', 0x0050103E))
+        machine._flush_cputlb()
+        uc.emu_start(0x0402E101, 0, count=1)
+        self.assertEqual(uc.reg_read(UC_ARM_REG_R0), 0x55667788)
+        self.assertEqual(uc.reg_read(UC_ARM_REG_CPSR), 0x30)
+
+    def test_thumb_user_return_executes_original_entry_without_warmup(self):
+        from unittest.mock import patch
+
+        program = struct.pack('<3I', 0xE321F0D3, 0xE51FF004, 0x6010DF64)
+        machine = UnicornMachine(
+            program, b'\0' * 64, b'\0' * 64, machine_id=0xDA9,
+            ram_banks=((0, 0x800000),), mmio_ranges=(),
+            sram=(0xFE000000, 0x1000), virtual_tlb_enabled=True,
+            timer_irq_model=False, data_abort_delivery=False,
+            exclusive_fallback=False, instruction_limit=50, sample_interval=10)
+        uc = machine.uc
+        uc.mem_write(0x0010DF64, struct.pack('<I', 0xE1B0F00E))
+        uc.cpr_write(15, 0, 2, 0, 0, 0, False, 0x10000)
+        machine._cached_ttbr0 = 0x10000
+        uc.mem_write(0x10100, struct.pack('<I', 0x20001))
+        uc.mem_write(0x200B8, struct.pack('<I', 0x0042E03E))
+        uc.mem_write(0x0042E790, bytes.fromhex('dff868a0dff868406846fee7'))
+        uc.mem_write(0x0042E7FC, struct.pack('<2I', 0x11223344, 0x55667788))
+        words = [0] * 18
+        words[13:17] = [0x5E864F10, 0x0402E79F, 0x0402E790, 0x30]
+        machine.pt_frame_last = {
+            'gen': 1, 'words': words, 'sp': words[13], 'lr': words[14],
+            'pc': words[15], 'cpsr': words[16],
+        }
+        with patch.object(machine, '_emulate_thumb_prologue',
+                          wraps=machine._emulate_thumb_prologue) as warmup:
+            report = machine.run()
+        warmup.assert_not_called()
+        self.assertEqual(report['stop_reason'], 'instruction_limit')
+        self.assertIsNone(report['stop_error'])
+        self.assertEqual(report['insn_invalid_recoveries'], 0)
+        self.assertEqual(uc.reg_read(UC_ARM_REG_R10), 0x11223344)
+        self.assertEqual(uc.reg_read(UC_ARM_REG_R4), 0x55667788)
+        self.assertEqual(uc.reg_read(UC_ARM_REG_R0), 0x5E864F10)
+        self.assertEqual(uc.reg_read(UC_ARM_REG_PC), 0x0402E79A)
+        self.assertEqual(uc.reg_read(UC_ARM_REG_CPSR), 0x30)
+        self.assertTrue(any(row['pc'] == '0x0402e798' and row['thumb']
+                            for row in report['user_entry_trace']))
+
+    def test_invalid_arm_instruction_stops_without_forcing_thumb(self):
+        from unicorn.arm_const import UC_ARM_REG_FPEXC
+
+        machine = make_machine(ram_banks=((0, 0x800000),), mmio_ranges=(),
+                               sram=(0xFE000000, 0x1000),
+                               data_abort_delivery=False)
+        uc = machine.uc
+        machine._mmu_enabled = True
+        machine._cached_ttbr0 = 0x10000
+        uc.cpr_write(15, 0, 2, 0, 0, 0, False, 0x10000)
+        uc.mem_write(0x10100, struct.pack('<I', 0x20001))
+        uc.mem_write(0x200B8, struct.pack('<I', 0x0042E03E))
+        uc.mem_write(0x0042E100, struct.pack('<I', 0xE7F000F0))  # udf #0
+        uc.reg_write(UC_ARM_REG_FPEXC, 0x40000000)
+        machine._set_pc_and_cpsr(0x0402E100, 0x10)
+        report = machine.run()
+        self.assertEqual(report['stop_reason'], 'unicorn_error')
+        self.assertIn('UC_ERR_INSN_INVALID', report['stop_error'])
+        self.assertEqual(report['stop_pc'], 0x0402E100)
+        self.assertEqual(uc.reg_read(UC_ARM_REG_CPSR), 0x10)
+        self.assertEqual(report['insn_invalid_recoveries'], 0)
+        self.assertEqual(report['insn_invalid_unsupported'], [{
+            'pc': '0x0402e100', 'bytes': 'f000f0e7', 'mnemonic': 'udf #0',
+        }])
 
 
     def test_switch_mm_hook_uses_verified_image_address(self):

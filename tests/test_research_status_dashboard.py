@@ -323,7 +323,7 @@ class TestEpistemicHonesty(unittest.TestCase):
         self.assertEqual(len(DAILY_TEST_HISTORY), 32)
         self.assertEqual(DAILY_TEST_HISTORY[0].date, "2026-10-18")
         self.assertEqual(DAILY_TEST_HISTORY[0].total, 204)
-        self.assertEqual(DAILY_TEST_HISTORY[-1].date, STATUS_SNAPSHOT.as_of)
+        self.assertEqual(DAILY_TEST_HISTORY[-1].date, STATUS_SNAPSHOT.suite.recorded_at)
         self.assertEqual(DAILY_TEST_HISTORY[-1].total, STATUS_SNAPSHOT.suite.test_count)
         for point in DAILY_TEST_HISTORY:
             matches = list(EVIDENCE_DIR.glob(f"{int(point.evidence_id[1:]):04d}-*.md"))

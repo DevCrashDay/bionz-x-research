@@ -338,10 +338,38 @@ waits, not proof of one global deadlock.
 Commands, identities, failed receipts and limitations:
 [E0524](../docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md).
 
+## Earlier no-peripheral initialization wait (2026-11-17 / E0527)
+
+[E0527](../docs/evidence/0527-qemu-task43-initialization-flag-wait.md) identifies
+**Task 43** inside its first display-initialization wait at `0x63A67DBE`:
+`twai_flg(10, 3, TWF_ORW, result, -1)`. The flag object is `0x645248DC`,
+with pattern zero in two independent stopped snapshots. The actual saved
+caller is `0x63A67DC3`; the later task-main-loop mask `0x3373` is not this wait.
+IRQs 101/102 are enabled but have no input assertions in either native trace.
+Their original handlers conditionally set bits 1/2.
+
+Task 65 is dormant with no queued activation, not a demonstrated sub-micro
+deadlock. Task 1 separately waits on semaphore `0x00BF04EE`, after checkpoint
+line `0x143`, step 2. Neither observation proves a sole global blocker.
+
+These addresses are qualified for captured av-cam `dd8f8d0c...` and captured
+LIRO, not the packaged image used in the historical snapshot below.
+The new offline decoder reconstructs actual saved arguments and checks the
+linked object; no firmware, completion flag or device model was changed.
+
+At this snapshot the next boundary was the display/VPH register and timing
+producer for IRQs 101/102, including the original handler guards. These runs
+did not include the later peripheral models; their lack of application
+startup does not supersede the viewfinder/rear-panel results above.
+
 ## Historical E0521/E0522 snapshot
 
-Snapshot: 2026-11-15, after E0521 and E0522. Nothing below has been run on the real camera.
+Snapshot: 2026-11-15, after E0521 and E0522. No physical-camera run is described here.
 Labels: [C] confirmed by a run receipt or disassembly, [I] inference, [A] assumption.
+
+The 2026-11-17 [toolchain qualification](../docs/TOOLCHAIN.md) reproduces the
+four-core captured-firmware boot on QEMU 11.1.3. The historical findings and
+hardware limits below are unchanged.
 
 ## Where the boot stands
 
@@ -388,7 +416,10 @@ a6400 binaries, then cross-checked against `Oein/a5000-emulator` `docs/BOOT.md`.
 
 For each step, check `Oein/a5000-emulator` first for the CXD90014 equivalent.
 
-1. **Find what av-cam waits on.** No `liro-*` IRQ has fired. The a5000 analogue is
+1. **Find what av-cam waits on.** The captured-profile investigation is now
+   qualified by [E0527](../docs/evidence/0527-qemu-task43-initialization-flag-wait.md)
+   above; do not transfer its addresses to this packaged input set.
+   The original lead was: no `liro-*` IRQ has fired. The a5000 analogue is
    `docs/RE_AVCAM_IRQ_BOOT.md`: the boot checkpoint `prof` words in RAM, plus the "Liro Start"
    task blocked before sub-micro traffic. Locate the a6400 av-cam checkpoint variables and read them
    from the QEMU monitor (`xp`) to find the blocking task and wait object.
@@ -414,8 +445,9 @@ For each step, check `Oein/a5000-emulator` first for the CXD90014 equivalent.
 ## Reproduce
 
 ```bash
-./setup-qemu.sh && cd "$QEMU_TREE/build" && ninja qemu-system-arm qemu-img   # see README.md
-TIMEOUT=110 ./run.sh
+bash qemu-a6400/setup-qemu.sh
+ninja -C "$HOME/sony-a6400-qemu-11.1.3/build" qemu-system-arm qemu-img qemu-io
+TIMEOUT=110 bash qemu-a6400/run.sh
 ```
 
 Records: [E0521](../docs/evidence/0521-qemu-a6400-main-firmware-boots-to-avcam.md),

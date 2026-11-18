@@ -20,8 +20,8 @@
  * hw/arm/sony_a5000.c).
  */
 #include "qemu/osdep.h"
-#include "hw/sysbus.h"
-#include "hw/irq.h"
+#include "hw/core/sysbus.h"
+#include "hw/core/irq.h"
 #include "qemu/timer.h"
 #include "qemu/module.h"
 #include "qom/object.h"

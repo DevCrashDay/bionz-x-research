@@ -3,6 +3,7 @@ import struct
 import unittest
 from pathlib import Path
 
+from project_paths import a6400_dump_dir
 from src.a6400.execution.machine_contract import (
     MACHINE_NAME,
     MachineContractError,
@@ -12,7 +13,7 @@ from src.a6400.execution.machine_contract import (
 from src.a6400.execution.nflasha_boot_set import NflashaBootSet
 
 ROOT = Path(__file__).resolve().parents[1]
-DUMPS = ROOT / 'artifacts/dumps/a6400-nflasha-readonly'
+DUMPS = a6400_dump_dir(ROOT)
 DUMPS_PRESENT = ((DUMPS / 'nflasha1-8323072.bin').is_file()
                  and (DUMPS / 'nflasha3-50331648.bin').is_file())
 VIRTUAL_BASE = 0x60108000

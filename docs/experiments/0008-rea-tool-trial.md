@@ -1,5 +1,8 @@
 # Experiment 0008: REA on the backup-service module
 
+Historical trial. The current side-by-side upgrade, checks and preserved legacy
+environment are documented in [the toolchain guide](../TOOLCHAIN.md).
+
 ## Outcome
 
 **WSL follow-up (2026-10-19):** the Windows-only limitation below is superseded for the new Linux trial. Ubuntu 26.04.1 under WSL 2 now runs REA 6.7.0 with Ghidra 12.1.4 successfully on the same ARM ELF relocatable module. This is a static-analysis tool result, not a new guest execution or UI milestone. See the follow-up below; the original Windows observations remain historical.

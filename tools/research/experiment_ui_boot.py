@@ -102,11 +102,13 @@ def build_parser():
                         help='observe-only write watch on a guest range BEGIN:END (hex), bounded records')
     parser.add_argument('--allocator-audit', action='store_true',
                         help='observe-only glibc malloc/free audit (records sizes and validates free chunk headers)')
+    parser.add_argument('--heap-ownership-trace', action='store_true',
+                        help='passively trace identity-checked allocator calls/returns and stop at an ownership divergence')
     parser.add_argument('--stop-instruction', type=lambda value: int(value, 0), default=None,
                         help='observe-only hard stop when the absolute instruction count reaches this value')
     parser.add_argument('--guest-patch-logalloc-0x50', action='store_true',
                         help='experimental modified-firmware patch: change the stella log-block malloc size 0x4C->0x50 '
-                             'in the loaded libObj copy (separate output; recorded in the report)')
+                             'in an identity-checked loaded libObj copy (request-padding trial, not a verified fix)')
     parser.add_argument('--guest-inventory-dir', type=Path, default=None,
                         help='alternate inventory folder (guest-filesystem/baseline/elf-inventory) for a fidelity experiment')
     parser.add_argument('--guest-patch', action='append', default=[],
@@ -152,9 +154,9 @@ def build_parser():
                         help='keep only the last N serviced syscalls and UIPC transactions (deque); '
                              'exact totals, per-name/per-op counts and drop counts go to the report')
     parser.add_argument('--gles-engine-model', choices=('none', 'command-completion'), default='none',
-                        help='opt-in GPES device-work model: command submitted in BAR+0xE8 header '
-                             'yields the physically observed IRQ status class 0x40000000 (decoded ack; '
-                             'no guest ctx completion)')
+                        help='historical assumed-completion experiment, not a qualified GPU model: '
+                             'treats software-shared descriptor writes as engine work; incompatible '
+                             'with kernel-bound-tgid')
     parser.add_argument('--gles-engine-seed-observed-block', action='store_true',
                         help='seed the exact e0377-observed BAR command block (hash d38fef042304f2ae) '
                              'on resume, before running; evidence-backed device state only')
@@ -212,10 +214,13 @@ def build_parser():
                         help='stop on /dev/cec (default); driver-bound binds /dev/cec (248:27) with verified ioctl contracts')
     parser.add_argument('--mmca-char-device', choices=('stop', 'driver-bound'), default='stop',
                         help='stop on /dev/mmca-char (default); driver-bound binds /dev/mmca-char (250:0..2) and /dev/ms-char (249:0)')
-    parser.add_argument('--gles-device', choices=('stop', 'kernel-bound', 'kernel-bound-decoded'), default='stop',
+    parser.add_argument('--gles-device', choices=('stop', 'kernel-bound', 'kernel-bound-decoded',
+                                                  'kernel-bound-tgid'), default='stop',
                         help='stop on /dev/dmpgles2 (default); kernel-bound binds /dev/dmpgles2 with verified '
                              'TASK_SIZE 0x5f000000; kernel-bound-decoded additionally uses the grm_gles.ko-decoded '
-                             'GPES ioctl semantics (E0337/E0341: 0x8004820A suspend-status, 0xC004820D wait-completion)')
+                             'GPES ioctl semantics; kernel-bound-tgid selects original TGID completion/reset '
+                             'and selective wake semantics, without assumed engine events '
+                             '(fresh boot or unused pre-open checkpoint required)')
     parser.add_argument('--nanosleep-policy', choices=('immediate', 'block', 'timed'), default='immediate',
                         help='threads policy sleep handling: immediate return (default baseline) or block the '
                              'caller in blocked_sleep (no virtual deadline; opt-in for E0310/E0339 monitor loops), or timed: park until the guest clock reaches the deadline')
@@ -395,6 +400,10 @@ def main():
     if getattr(args, 'allocator_audit', False):
         probe.install_allocator_audit()
         print('[*] glibc allocator audit enabled (malloc/free chunk validation).')
+    if args.heap_ownership_trace:
+        from tools.research.heap_ownership_trace import HeapOwnershipTrace
+        HeapOwnershipTrace(probe).install()
+        print('[*] Passive allocation/free ownership trace enabled (no allocator replies or patches).')
     if getattr(args, 'stop_instruction', None):
         probe.install_instruction_stop(args.stop_instruction)
         print(f'[*] Hard stop at absolute instruction {args.stop_instruction}.')
@@ -422,24 +431,11 @@ def main():
         probe.report.setdefault('guest_patches', []).append(entry)
         print(f'[*] Experimental guest patch 0x{patch_va:08x}: {expected.hex()} -> {replacement.hex()}')
     if getattr(args, 'guest_patch_logalloc_0x50', False):
-        patch_va = 0x5482FE16
-        expected = b'\x4c\x20'
-        replacement = b'\x50\x20'
-        try:
-            current = bytes(probe.mu.mem_read(patch_va, 2))
-        except Exception as error:
-            raise SystemExit(f'guest patch: cannot read 0x{patch_va:08x}: {error}')
-        if current != expected:
-            raise SystemExit(f'guest patch: unexpected bytes at 0x{patch_va:08x}: '
-                             f'{current.hex()} (expected {expected.hex()})')
-        probe.mu.mem_write(patch_va, replacement)
-        probe.report['guest_patch'] = {
-            'label': 'stella_logalloc_chunksize_0x50_overlay',
-            'va': patch_va, 'expected_hex': expected.hex(),
-            'replacement_hex': replacement.hex(),
-            'source': 'extracted libObj.so offset 0x79FE16 (movs r0,#0x4C -> #0x50)'}
-        print(f'[*] Experimental guest patch applied at 0x{patch_va:08x}: '
-              f'{expected.hex()} -> {replacement.hex()} (log-block malloc 0x4C->0x50).')
+        from tools.research.stella_allocator_probe import apply_logalloc_patch
+        patch = apply_logalloc_patch(probe)
+        print(f"[*] Experimental guest patch applied at 0x{patch['va']:08x}: "
+              f"{patch['expected_hex']} -> {patch['replacement_hex']} "
+              "(log-block request padding 0x4C->0x50; not a verified fix).")
     if getattr(args, 'tty_device', 'stop') == 'log-sink':
         from src.a6400.execution.guest_tty import GuestTty
         probe.tty = GuestTty()

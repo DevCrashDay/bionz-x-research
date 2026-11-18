@@ -26,7 +26,6 @@ ROOT = Path(__file__).resolve().parents[1]
 PROBES = ROOT / 'probes'
 SOURCE = PROBES / 'uvc_dma_probe.c'
 VALIDATOR = PROBES / 'test_probe_report.py'
-DISTRO = 'Ubuntu'
 
 # Flags are identical to the repo's native-camera convention
 # (tools/research/build_native_monitor_collector.py) minus the sysroot libc,
@@ -90,7 +89,7 @@ def wsl(args, *, input_text=None, timeout=300):
     if sys.platform.startswith('linux'):
         command = [str(a) for a in args]
     else:
-        command = ['wsl', '-d', DISTRO, '--', *[str(a) for a in args]]
+        command = ['wsl.exe', '--exec', *[str(a) for a in args]]
     try:
         proc = subprocess.run(command,
                              input=None if input_text is None else input_text.encode('utf-8'),
@@ -409,7 +408,7 @@ def host_check(output_dir):
     (host_dir / 'manifest.json').write_bytes((json.dumps(manifest, indent=2) + '\n').encode('utf-8'))
 
     removed = wsl(['bash', '-c', f'rm -rf "{root}"'], timeout=60)
-    print(f'host-check report: {(host_dir / "report.json").relative_to(ROOT).as_posix()} '
+    print(f'host-check report: {host_dir / "report.json"} '
           f'(sha256 {manifest["results"]["report_sha256"]})')
     print(f'help exit {help_run.returncode}, smoke exit {smoke.returncode}, '
           f'validation ok, fixture removed={removed.returncode == 0}')

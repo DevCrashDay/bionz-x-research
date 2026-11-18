@@ -47,12 +47,17 @@ What is established (all with evidence records under
   [E0329](evidence/0329-libosal-receive-queue-protocol.md),
   [E0330](evidence/0330-libosal-queue-object-layout.md),
   [E0331](evidence/0331-usb-lane-local-queue-vs-sync-callback.md)).
+- The original process-local synchronous send, callback, asynchronous post,
+  receiver wake and `UsbControl::Main` now execute through FSM event `0x13`,
+  notification construction and balanced message destruction in an isolated
+  checked-fixture replay
+  ([E0524](evidence/0524-original-local-osal-setconfig-route.md)).
 
-**Current bottom line:** PTP (PC Remote) physically works and is demonstrable.
-UVC is 0% physical because the ZV-E10 modules are not loaded and physical module
-load is outside the owner's current read-only scope. The emulator path has all
-message formats and dispatch maps but still needs the sync-callback delivery
-model before a SET_CONFIG notification can reach the USB FSM.
+**Offline bottom line:** SETCONFIG delivery is a local sync-then-async route,
+not either decoded adjustment/input callback queue. Its isolated original-code
+replay does not prove a USB mode transition or full-process producer/heap
+fidelity. Physical progress and its separate authorization boundaries are in
+[UVC_PTP_STATUS.md](UVC_PTP_STATUS.md).
 
 ## Workstreams you can take
 
@@ -61,29 +66,32 @@ one, open or comment on the matching issue, and say which part you are taking.
 If you cannot run the Windows `venv`, you can still contribute decoders, tests
 and documentation in a plain Python environment for most items.
 
-### 1. Model kernel to user sync callback delivery (highest impact)
+### 1. Integrate the original local route with a state-valid gadget producer
 
-- Boundary: **new target — libosal local-queue post** for `0x00CA8192`
-  (`libosal_local_queue_post_unmodelled`). The adjustment lane is decoded and does
-  not carry SETCONFIG.
-- Context: [E0334](evidence/0334-sync-callback-lane-is-usb-adjustment.md),
+- Boundary: original gadget-class registration and full-process heap/ownership,
+  not a missing callback packet format or asynchronous post planner.
+- Context: [E0524](evidence/0524-original-local-osal-setconfig-route.md),
+  [E0338](evidence/0338-tty-log-sink-teardown-and-usb-event-map.md),
+  [E0334](evidence/0334-sync-callback-lane-is-usb-adjustment.md),
   [E0333](evidence/0333-sync-callback-packet-format.md),
   [E0332](evidence/0332-sync-callback-delivery-first-invocation.md),
   [E0331](evidence/0331-usb-lane-local-queue-vs-sync-callback.md).
 - Done: `0x00CA0288` is the USB adjustment channel
   (`UFW::AdjBase::funcOsalSyncCb`, 0x140-byte `OsalRequestPacket`, id 0x0701;
   `usb_sync_callback.py`); `0x00CA01A4` is `UsbControl::funcInputGetCb`.
-  `--uipc-inject-objmsg-packet-hex` + `--trace-usbcontrol-dispatch` exist, and
-  e0685 exercised the ADJ packet ABI.
-- Do: model the original in-process post to local queue `0x00CA8192` (queue object
-  update + futex wake, per E0329/E0330) as an opt-in contract, deliver the decoded
-  ObjMsg envelope through it, and observe
-  `preProcess -> PostMsg -> RcvMsg -> ProcessMsg -> DispatchEvent` (event 0x13).
-- Acceptance: the original code posts and consumes a message and FSM event `0x13`
-  is observed without host-side fabrication, or a precise new boundary is
-  recorded. Keep default baselines unchanged.
-- Files: `guest_uipc.py`, `interpreter_probe.py`, `usb_sync_callback.py`,
-  `tools/research/experiment_ui_boot.py`, `tests/test_sync_callback_delivery.py`.
+  The new replay executes `EventListner -> SendEvt -> osal_snd_sync_msg ->
+  preProcess -> PostMsg -> RcvMsg -> ProcessMsg -> DispatchEvent`; the original
+  queue allocator and dispatcher own both envelopes, not host queue writes.
+- Do: establish the original transitions that enable the gadget-class event
+  context, then replay through the original event reader and the process's own
+  heap. Do not fabricate an enabled context or suppress invalid frees.
+- Acceptance: state-valid original producer, local sync/async route and message
+  teardown are observed together, or a precise unsupported boundary is recorded.
+  Keep the isolated fixture proof distinct and preserve default baselines.
+- Files: [`probe_usb_local_setconfig.py`](../tools/research/probe_usb_local_setconfig.py),
+  [`interpreter_probe.py`](../src/a6400/execution/interpreter_probe.py),
+  [`guest_usb_event.py`](../src/a6400/execution/guest_usb_event.py),
+  [`test_usb_local_setconfig.py`](../tests/test_usb_local_setconfig.py).
 - Difficulty: medium.
 
 ### 2. Host-side UVC enumeration / SET_CONFIG contract
@@ -92,10 +100,12 @@ and documentation in a plain Python environment for most items.
 - Context: E0316/E0317 descriptor evidence and the
   [`usb_video_contract.py`](../src/a6400/execution/usb_video_contract.py)
   decoders.
-- Do: build an opt-in host enumeration harness (GET_DESCRIPTOR device/config,
-  SET_CONFIGURATION, interface/endpoint selection for UVC+PTP) that consumes the
-  byte-verified 173-byte descriptor and drives the already-decoded SET_CONFIG
-  message into the FSM once workstream 1 lands.
+- Done: [`usb_host_enum.py`](../src/a6400/execution/usb_host_enum.py) consumes the
+  byte-verified 173-byte descriptor and plans SET_CONFIGURATION; E0524 executes
+  the isolated original SETCONFIG delivery route.
+- Do: connect host enumeration to the state-valid producer from workstream 1,
+  keeping descriptor planning, physical event production and fixture execution
+  separately labelled.
 - Acceptance: descriptor bytes prove the UVC function is addressed; a SET_CONFIG
   event either reaches FSM event `0x13` (documented observation) or stops at a
   named boundary. No host-invented descriptors.

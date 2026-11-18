@@ -3,6 +3,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from tools.research.toolchain import rea_profile
+
 
 def bounded_json(path, maximum=8 * 1024 * 1024):
     if path.stat().st_size > maximum:
@@ -14,7 +16,9 @@ def bounded_json(path, maximum=8 * 1024 * 1024):
 
 
 class EvidenceCache:
-    def __init__(self, root, provider_version='12.1.4'):
+    def __init__(self, root, provider_version=None):
+        if provider_version is None:
+            provider_version = rea_profile()['ghidra_version']
         self.root = Path(root).resolve()
         self.provider_version = provider_version
         self.entries = {}
