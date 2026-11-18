@@ -227,3 +227,16 @@ diff --git a/system/runstate.c b/system/runstate.c
      { RUN_STATE_INMIGRATE, RUN_STATE_INTERNAL_ERROR },
      { RUN_STATE_INMIGRATE, RUN_STATE_IO_ERROR },
      { RUN_STATE_INMIGRATE, RUN_STATE_PAUSED },
+diff --git a/accel/tcg/tb-jmp-cache.h b/accel/tcg/tb-jmp-cache.h
+index c3a505e..9aacc66 100644
+--- a/accel/tcg/tb-jmp-cache.h
++++ b/accel/tcg/tb-jmp-cache.h
+@@ -12,7 +12,7 @@
+ #include "qemu/rcu.h"
+ #include "exec/cpu-common.h"
+ 
+-#define TB_JMP_CACHE_BITS 12
++#define TB_JMP_CACHE_BITS 14
+ #define TB_JMP_CACHE_SIZE (1 << TB_JMP_CACHE_BITS)
+ 
+ /*
