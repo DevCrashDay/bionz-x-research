@@ -240,14 +240,54 @@ on the virtual clock, using a 36 MHz source inferred in E0568. Event A
 latches status bit 0 and, when enabled, raises IRQ 35. The experiment
 covers the input event and leaves CamPig IRQ 36 and Ydet data unmodelled.
 
+### Experimental live-view input
+
+Set `LIVEVIEW_SOURCE=bars` to enable Sgc1 raster completion, CamPig/Ydet, and
+RC0 DMA. `ramp` selects a different built-in test image; `pgm:/absolute/path`
+uses a binary P5 grayscale image with an 8-bit maxval. `none` supplies a
+black scene with the models enabled. Leave `LIVEVIEW_SOURCE` unset to keep
+the default machine. The two diagnostic switches above are not required
+when the live-view model is enabled.
+
+The CamPig/AIF overlay retains the a5000 model attribution and is licensed
+under GPL-2.0-or-later; see [COPYING](COPYING).
+
+From the repository root in WSL, with the rebuilt QEMU and verified
+captured boot inputs:
+
+```bash
+qemu=/path/to/pinned/qemu-checkout
+inputs=/path/to/verified/prepared-inputs
+micro=/path/to/wbi-powered-submicro-384.bin
+work=$(mktemp -d /tmp/a6400-liveview.XXXXXX)
+cp -- "$micro" "$work/submicro.bin"
+printf '3385ec340e931aa7b7dbb954da99e5b6239174ba90441eb2c905f01bcf5bbda9  %s\n' \
+    "$work/submicro.bin" | sha256sum --check &&
+A6400_QEMU_DIR="$qemu" A6400_QEMU_DATA_DIR="$inputs" RUN_DIR="$work/run" \
+    SUBMICRO_PAGE= ULOGIO= \
+    EVSEL_LATE_US=500 REAR_CONTROLS=1 REAR_LCD_DIAGNOSTIC=0 LIVEVIEW_SOURCE=bars \
+    QEMU_EXTRA="-icount shift=0,sleep=on -M submicro-frames=$work/submicro.bin -qmp unix:$work/qmp,server=on,wait=off" \
+    bash qemu-a6400/run.sh
+```
+
+`REAR_CONTROLS=1` idles the active-low EVF eye contact input high so the
+firmware can select the rear LCD without the diagnostic overlay. If the
+NTSC notice covers the image, dismiss it with the normal rear-center
+control (QMP `send-key` with qcode `ret`, 180 ms hold). Verify VPH head 0
+and its ch51 luma plane, not just the ch53 overlay.
+[E0591](../docs/evidence/0591-qemu-a6400-first-live-view-frame.md) records
+the matched control and chart, fixture provenance and model assumptions.
+A visible test image does not qualify the physical sensor, RAW/color ISP,
+or mode-sequencer completion.
+
 `tools/a6400_probe.py` boots, waits until a checkpoint appears in
 `/proc/snsc_boot_time`, runs shell commands, and stops QEMU.
 
 The overlay adds SIO, GPIO, ADC, the timing-event block, VPH/SYSV, a Sugilite
 GPU, SA DSP ID responses, and a P2S writer. Five guest seconds after
 `SetContentTarget`, graphic console 0 shows the viewfinder readout (E0536).
-The YUV layer is still off, and forcing `isOutputEvf` to return 0 does not
-select the rear-LCD skin (E0541). See [STATUS.md](STATUS.md).
+In that replay the YUV layer was off. Forcing `isOutputEvf` to return 0 did
+not select the rear-LCD skin (E0541). See [STATUS.md](STATUS.md).
 
 ## USB and sensor diagnostics
 
