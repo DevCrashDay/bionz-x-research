@@ -93,7 +93,7 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 
 Recorded offline suite: **2091 tests**, with 88 skip records and no failures/errors in the integrated checkout ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. Latest evidence [E0588](docs/evidence/0588-qemu-usb-buspower-and-obj-fsm-dispatch.md); this suite is not attributed solely to Open Gate. Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=d0901fb1ee6c)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=f4c16b57c383)
 
 ![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
 
