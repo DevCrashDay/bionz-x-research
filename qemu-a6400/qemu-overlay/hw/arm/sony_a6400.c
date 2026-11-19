@@ -61,6 +61,7 @@
 #define CXD90045_UART0_SPI       (150 - 32)
 #define CXD90045_TIMER_BASE      0xF2403000ULL
 #define CXD90045_TIMER_IRQ0      153
+#define CXD90045_WDT_BASE        0xF2402000ULL
 #define CXD90045_MAX_CPUS        4
 #define CXD90045_SIO_BASE        0xF2405000ULL
 #define CXD90045_SIO_IRQ0        201
@@ -523,6 +524,129 @@ static void cxd90045_create_xdmac(MemoryRegion *sysmem, hwaddr base,
     memory_region_init_io(&s->mmio, NULL, &cxd90045_xdmac_ops, s,
                           "cxd90045.xdmac", 0x10000);
     memory_region_add_subregion(sysmem, base, &s->mmio);
+}
+
+/*
+ * Opt-in work DMA copy engine at 0xF0102000 (E0641), from the only stock
+ * user, av-cam 0x635DC8B8..0x635DC93E (E0640):
+ *   +0x030 bit0 engine enable; +0x008/+0x00C = 0x40 (role not established)
+ *   channel block +0x1C0: +0x00 source PA, +0x04 destination PA, +0x08 = 0,
+ *   +0x0C config = 0x1C491000 | count (count bits [11:0] in 32-bit words,
+ *   0 = 4096: av-cam writes 0x1C491000 for its 16 KiB chunks and
+ *   0x1C491000 | rest for the last one), +0x10 = 1 start
+ *   +0x01C bit6 busy for that channel; av-cam polls until it clears.
+ * Only that configuration is executed, as a plain word copy [I: the source
+ * is an ARM vector table copied out of the av-cam image to a run address].
+ * Any other config, a start while disabled, or a start on another offset is
+ * logged under -d unimp and performs no copy, so an unknown mode is never
+ * reported as done with data.  Executed copies are also logged under -d unimp
+ * (first and partial chunks) because the model covers one mode only.  The copy completes synchronously, so busy
+ * reads 0 (timing not modelled).  Registers otherwise read back.
+ */
+#define CXD90045_WDMA_BASE       0xF0102000ULL
+#define WDMA_EN                  0x030
+#define WDMA_BUSY                0x01C
+#define WDMA_CH_SRC              0x1C0
+#define WDMA_CH_DST              0x1C4
+#define WDMA_CH_CFG              0x1CC
+#define WDMA_CH_START            0x1D0
+#define WDMA_CFG_MODE_MASK       0xFFFFF000u
+#define WDMA_CFG_MODE_COPY       0x1C491000u
+
+static bool sony_a6400_work_dma;
+
+typedef struct CxdWorkDma {
+    MemoryRegion mmio;
+    uint32_t regs[0x1000 >> 2];
+    uint64_t copies, bytes, refused;
+} CxdWorkDma;
+
+static uint64_t cxd90045_wdma_read(void *opaque, hwaddr offset, unsigned size)
+{
+    CxdWorkDma *s = opaque;
+    if (offset == WDMA_BUSY) {
+        return s->regs[WDMA_BUSY >> 2] & ~0x40u;   /* copy already finished */
+    }
+    return s->regs[offset >> 2];
+}
+
+static void cxd90045_wdma_start(CxdWorkDma *s)
+{
+    uint32_t src = s->regs[WDMA_CH_SRC >> 2];
+    uint32_t dst = s->regs[WDMA_CH_DST >> 2];
+    uint32_t cfg = s->regs[WDMA_CH_CFG >> 2];
+    uint32_t words = (cfg & 0xFFFu) ? (cfg & 0xFFFu) : 0x1000u;
+    uint8_t buf[4096];
+
+    if (!(s->regs[WDMA_EN >> 2] & 1) ||
+        (cfg & WDMA_CFG_MODE_MASK) != WDMA_CFG_MODE_COPY || (src | dst) & 3) {
+        s->refused++;
+        qemu_log_mask(LOG_UNIMP, "cxd90045.work-dma: refused start en=0x%x "
+                      "cfg=0x%08x src=0x%08x dst=0x%08x (unsupported, no copy)\n",
+                      s->regs[WDMA_EN >> 2], cfg, src, dst);
+        return;
+    }
+    for (uint32_t off = 0, rem = words * 4; rem; ) {
+        uint32_t chunk = MIN(rem, (uint32_t)sizeof(buf));
+        address_space_read(&address_space_memory, src + off,
+                           MEMTXATTRS_UNSPECIFIED, buf, chunk);
+        address_space_write(&address_space_memory, dst + off,
+                            MEMTXATTRS_UNSPECIFIED, buf, chunk);
+        off += chunk;
+        rem -= chunk;
+    }
+    s->copies++;
+    s->bytes += words * 4;
+    if (s->copies == 1 || (cfg & 0xFFFu)) {
+        qemu_log_mask(LOG_UNIMP, "cxd90045.work-dma: copy #%" PRIu64
+                      " 0x%08x -> 0x%08x, %u bytes (total %" PRIu64 ")\n",
+                      s->copies, src, dst, words * 4, s->bytes);
+    }
+}
+
+static void cxd90045_wdma_write(void *opaque, hwaddr offset, uint64_t value,
+                                unsigned size)
+{
+    CxdWorkDma *s = opaque;
+    s->regs[offset >> 2] = (uint32_t)value;
+    if (offset == WDMA_CH_START && (value & 1)) {
+        cxd90045_wdma_start(s);
+        s->regs[WDMA_CH_START >> 2] = 0;
+    } else if (offset >= 0x040 && offset < 0x1000 &&
+               (offset & 0x3F) == 0x10 && offset != WDMA_CH_START && (value & 1)) {
+        s->refused++;
+        qemu_log_mask(LOG_UNIMP, "cxd90045.work-dma: start at +0x%03" HWADDR_PRIx
+                      " is not a modelled channel (no copy)\n", offset);
+    }
+}
+
+static const MemoryRegionOps cxd90045_wdma_ops = {
+    .read = cxd90045_wdma_read,
+    .write = cxd90045_wdma_write,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+    .valid = { .min_access_size = 4, .max_access_size = 4 },
+};
+
+static void cxd90045_create_work_dma(MemoryRegion *sysmem)
+{
+    CxdWorkDma *s = g_new0(CxdWorkDma, 1);
+    memory_region_init_io(&s->mmio, NULL, &cxd90045_wdma_ops, s,
+                          "cxd90045.work-dma", 0x1000);
+    memory_region_add_subregion_overlap(sysmem, CXD90045_WDMA_BASE, &s->mmio, 0);
+}
+
+static bool sony_get_work_dma(Object *obj, Error **errp)
+{
+    return sony_a6400_work_dma;
+}
+
+static void sony_set_work_dma(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "work-dma is a startup option");
+        return;
+    }
+    sony_a6400_work_dma = enabled;
 }
 
 /*
@@ -1209,6 +1333,30 @@ static void sony_set_dwc3_gadget(Object *obj, bool enabled, Error **errp)
     sony_a6400_dwc3_gadget = enabled;
 }
 
+/*
+ * Opt-in hardware watchdog (Custom OS prerequisite 3, E0636).  The stock
+ * kernel's cxd900x0_wdt_setup/start/stop and watchdog_touch/tick
+ * (nflasha3-Image, 0x60120050..0x60120534) drive one CXD4115 channel at
+ * 0xF2402000: CTRL 0x80000012, CMP 1001 * timeout_ms, CTRL 0x80001012
+ * (START), kick CLR 0x10, stop CTRL 0 + CLR 0x11.  Off by default so the
+ * earlier unmodelled (write-dropped) baseline is unchanged.
+ */
+static bool sony_a6400_watchdog;
+
+static bool sony_get_watchdog(Object *obj, Error **errp)
+{
+    return sony_a6400_watchdog;
+}
+
+static void sony_set_watchdog(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "watchdog is a startup option");
+        return;
+    }
+    sony_a6400_watchdog = enabled;
+}
+
 static bool sony_get_pl330_dma(Object *obj, Error **errp)
 {
     return sony_a6400_pl330_dma;
@@ -1521,6 +1669,24 @@ static void sony_a6400_init(MachineState *machine)
     for (i = 0; i < 16; i++) {
         sysbus_connect_irq(SYS_BUS_DEVICE(timer), i,
                            pic[CXD90045_TIMER_IRQ0 + i - 32]);
+    }
+
+    if (sony_a6400_watchdog) {
+        /*
+         * One-channel CXD4115 instance with CTRL bit 31 = reset on match.
+         * Expiry runs QEMU's -action watchdog= policy (default reset).  No
+         * IRQ is connected: the kernel's wdt_intr is reached through GPIO
+         * 0xF2915050, not through this channel [I].
+         */
+        DeviceState *wdt = qdev_new("cxd4115-timer");
+
+        qdev_prop_set_uint32(wdt, "num-channels", 1);
+        qdev_prop_set_bit(wdt, "watchdog", true);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(wdt), &error_fatal);
+        sysbus_mmio_map(SYS_BUS_DEVICE(wdt), 0, CXD90045_WDT_BASE);
+    }
+    if (sony_a6400_work_dma) {
+        cxd90045_create_work_dma(get_system_memory());
     }
 
     /*
@@ -1982,6 +2148,16 @@ static void sony_a6400_machine_init(MachineClass *mc)
                                    sony_set_pl330_dma);
     object_class_property_set_description(OBJECT_CLASS(mc), "pl330-dma",
         "Enable the PL330 DMAC controller at 0xF0030000 and IRQs 115..119");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "watchdog",
+                                   sony_get_watchdog, sony_set_watchdog);
+    object_class_property_set_description(OBJECT_CLASS(mc), "watchdog",
+        "Model the CXD4115 hardware watchdog at 0xF2402000; expiry follows "
+        "-action watchdog= (E0636)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "work-dma",
+                                   sony_get_work_dma, sony_set_work_dma);
+    object_class_property_set_description(OBJECT_CLASS(mc), "work-dma",
+        "Model the work DMA copy channel at 0xF0102000 (+0x1C0, mode "
+        "0x1C491000 only; E0641)");
     object_class_property_add_bool(OBJECT_CLASS(mc), "usb-vbus",
                                    sony_get_usb_vbus, sony_set_usb_vbus);
     object_class_property_set_description(OBJECT_CLASS(mc), "usb-vbus",

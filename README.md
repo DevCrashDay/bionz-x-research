@@ -15,9 +15,11 @@ An open, evidence-backed reverse-engineering, emulation (**QEMU** + **Unicorn**)
 Stock USB attach boundary: original startup code inhibits the physical USB
 key; messages reach Linux input processing but its live subscription is
 suppressed. Paired captured-code traces identify the native owner/store and
-the unobserved initialization release path. No ready flag, application event
-or new hardware response was supplied
-([E0613](docs/evidence/0613-original-usb-key-inhibit-owner-and-release-boundary.md)).
+the initialization release path. Its original readiness check is blocked by
+`ModelCamera` (`0x0B`); native stores change readiness `1,0,1,0`, while
+`ModelStillRec` is ready. The exact state dependency remains open. No ready
+flag, application event or new hardware response was supplied
+([E0619](docs/evidence/0619-native-usb-release-model-camera-readiness.md)).
 
 Contributor boot scores for the merged read-back windows and the v11 speed
 patches are filed with the pull-request comments:
@@ -36,6 +38,9 @@ decodes `DGU5` `MISCREG`/eFuse (`0xF2915000=0x00000500`, `0xF2915010=0x0c01002b`
 on live `ILCE-6400`), confirms no kernel signature verification in `a6400`/`a6400A`,
 documents synchronous `libJiritsu.so` `dlopen` (`0x5D08`), and adds the offline
 `<= 512 KiB` RAM-chunk partition dump planner (`--mode plan-chunk-dump`).
+[E0644](docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md) supersedes
+[E0642](docs/evidence/0642-a6400-f30a-fill-engine-and-liro-ram-section.md)'s
+sub-core inference, confirming the LIRO `ram` section is `av-cam` RW data.
 
 QEMU EP0 milestone: original firmware now completes six host-driven standard
 control transfers to address 1, configuration 1 and UDC `configured` in two
@@ -87,7 +92,7 @@ Legend: `🟢 Verified` · `🟡 Partial / Opt-in` · `⚪ Open Boundary` · `�
 - **Live camera sensor, shutter & recording (QEMU & Unicorn):** The QEMU frame uses synthetic luma, not a real sensor stream or validated RAW/color ISP. AF/AE, still capture and movie recording to SD are unverified (see [QEMU checkpoint](qemu-a6400/STATUS.md)).
 - **Touch-panel hardware in QEMU:** The `sony-a6400` board has no emulated touch controller, so touch mods (`MTF2`) cannot be exercised via clicks in QEMU ([`MOD_DEVELOPMENT.md`](qemu-a6400/MOD_DEVELOPMENT.md)).
 - **USB Gadget (UVC / PTP / MSC) in QEMU:** The stock view-driven server-start gate remains unqualified ([E0589](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md)). Explicit diagnostic commands and optional captured-register/host-token policies now enumerate the original bus-power/HID function to UDC configured ([E0598](docs/evidence/0598-qemu-token-driven-ep0-configuration.md)). A genuine UVC function, non-EP0 data endpoints, transfer chains, packetization and video remain unqualified; the USB Streaming Test item still only counts loader lifecycle calls.
-- **Peripherals & Radios (QEMU & Unicorn):** Wi-Fi / Bluetooth (`BCM4339`), HDMI output, E-mount lens communication, audio I/O, and hardware watchdog (`0xF2402000`) are unmodelled.
+- **Peripherals & Radios (QEMU & Unicorn):** Wi-Fi / Bluetooth (`BCM4339`), HDMI output, E-mount lens communication, audio I/O, are unmodelled; the hardware watchdog (`0xF2402000`) is modelled only as opt-in `watchdog=on` ([E0636](docs/evidence/0636-qemu-cxd4115-hardware-watchdog-opt-in.md)).
 - **Full Unicorn L3 GUI & Non-a6400 Boot:** `InterpreterProbe` (Unicorn L3) does not yet produce a GUI frame (`stella` heap & GPES barriers), and only `ILCE-6400` is a verified execution target (other `CXD90045` bodies are reference profiles).
 
 ---
@@ -126,7 +131,7 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 
 Recorded offline suite: **2091 tests**, with 88 skip records and no failures/errors in the integrated checkout ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. Separate QEMU milestones are the [USB mode gate](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md) and [first firmware-driven live-view frame](docs/evidence/0591-qemu-a6400-first-live-view-frame.md). Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=9142e967b933)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=5c61f7d4070b)
 
 ![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
 

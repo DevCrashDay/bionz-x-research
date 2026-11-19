@@ -4,6 +4,29 @@
 The entries below are dated history: their test counts and boundaries describe the state at
 the time of writing and are not updated retroactively.
 
+## Custom OS prerequisites (QEMU / hardware fidelity before physical RAM/`kexec` boot)
+
+Before attempting a RAM-only (`kexec` or loader-module) boot of a standalone custom Linux OS on a physical `ILCE-6400`, the following QEMU and hardware-contract gaps must be resolved first:
+
+1. **Real MMIO peripheral models (clocks, PMIC, display engine):** Replace plain read-back MMIO windows (such as `0xF2800000`, `0xF3500000`, `0xF3880000`) with verified models derived from original kernel/read-only observations, rather than assuming bootloader-left state is sufficient.
+2. **Active DMA and multi-core teardown guards (`kexec` safety):** Identify all active DMA engines (display/OSD, USB, sensor) and secondary-core states before handover; add strict QEMU checks that flag unquiesced DMA or active secondary cores before jumping to a new kernel.
+3. **Watchdog and power-rail modeling:** Identify the hardware watchdog and PMIC keepalive/reset registers and model them in QEMU so missed heartbeats trigger the same reset/shutdown behavior as physical hardware.
+4. **ARMv7 cache/MMU teardown sequence verification:** Since QEMU TCG does not simulate L1/L2 cache-line coherency, use a proven mainline ARMv7 `soft_restart` / cache-clean-and-invalidate + MMU-off sequence and verify in emulation that all required barriers and control-register transitions (`SCTLR.M`/`C`/`I`, `DSB`, `ISB`) execute prior to jump.
+
+Status (2026-11-19): item 3 is partly done — opt-in `watchdog=on` (`WATCHDOG=1`) models the
+CXD4115 watchdog channel at `0xF2402000` from the stock kernel's `cxd900x0_wdt_*` contract;
+expiry follows `-action watchdog=` ([E0636](evidence/0636-qemu-cxd4115-hardware-watchdog-opt-in.md)).
+PMIC keepalive/reset registers and hardware reset scope are still open.
+Item 4 is covered in emulation by the `handover_guard` TCG plugin, which checks SCTLR.M/C/I, a full
+set/way clean+invalidate after C-off, ICIALLU, DSB/ISB order and IRQ/FIQ masking at the handover
+address ([E0638](evidence/0638-qemu-handover-guard-cache-mmu-teardown.md)); outer L2 is not
+checked. The same guard covers item 2: secondary cores parked in WFx (G9) and, with a contract file,
+DMA quiescence (G10, [E0639](evidence/0639-qemu-handover-guard-dma-quiescence.md)): DWC3 and
+PL330 from documented interfaces, VPH/sensor AIF inferred, and the work DMA engine at
+`0xF0102000` from its original av-cam routine ([E0640](evidence/0640-a6400-work-dma-0xf0102000-contract.md);
+its copies run with opt-in `work-dma=on`, [E0641](evidence/0641-qemu-work-dma-copy-model-opt-in.md)). Item 1 (plain
+read-back windows, E0614–E0618) remains open.
+
 QEMU USB Control local send (2026-11-18,
 [E0583](evidence/0583-qemu-usb-local-sync-send.md)):
 both messages reach the original synchronous UsbControl callback.

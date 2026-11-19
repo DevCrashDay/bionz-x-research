@@ -25,6 +25,9 @@
 # USB_VBUS_TEST=1 (enable the runtime usb-vbus QMP property).
 # USB_CID_HIGH=1 (opt-in FUSB CID bit 1 high / peripheral idle, E0587).
 # DWC3_GADGET=1 (opt-in CXD90045 DWC3 gadget at 0xF020C000 and IRQ 229, E0590).
+# WATCHDOG=1 (opt-in CXD4115 hardware watchdog at 0xF2402000, E0636; expiry follows
+# QEMU -action watchdog=, add e.g. QEMU_EXTRA="-icount shift=0,sleep=on -action watchdog=pause").
+# WORK_DMA=1 (opt-in work DMA copy channel at 0xF0102000, E0641).
 # REAR_CONTROLS=1 (route host keys to emulated rear camera controls).
 # REAR_LCD_DIAGNOSTIC=1 (E0572 device select on the run's qcow2 overlay).
 # SERIAL (QEMU -serial backend for ttyAM0; default mon:stdio). The mod tools use a unix socket.
@@ -143,6 +146,12 @@ if [ "${DWC3_GADGET:-0}" = 1 ]; then
 fi
 if [ "${PL330_DMA:-0}" = 1 ]; then
     MACHINE="$MACHINE,pl330-dma=on"
+fi
+if [ "${WATCHDOG:-0}" = 1 ]; then
+    MACHINE="$MACHINE,watchdog=on"
+fi
+if [ "${WORK_DMA:-0}" = 1 ]; then
+    MACHINE="$MACHINE,work-dma=on"
 fi
 LIVEVIEW_ARGS=()
 if [ -n "${LIVEVIEW_SOURCE:-}" ]; then

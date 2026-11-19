@@ -221,20 +221,20 @@ STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
     as_of="2026-11-19",
     latest=EvidenceRef(
-        evidence_id="E0643",
-        path="docs/evidence/0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md",
+        evidence_id="E0644",
+        path="docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md",
         date="2026-11-19",
-        title="CXD90045 MISCREG/eFuse decode and A6400A Jiritsu chunk planner",
+        title="LIRO ram section is av-cam RW data, not a sub-core image",
         demonstrated=(
-            "DGU5 (nflashaB0) and main kernels (a6400 8.2.6.0 and a6400A 8.2.7.6) have no kernel signature check; "
-            "live a6400 MSC /dev/mem reads 0xF2915000=0x00000500 and 0xF2915010=0x0c01002b. "
-            "a6400A libJiritsu.so synchronous dlopen at 0x5D08 explained; offline plan-chunk-dump added."
+            "Static scan of av-cam.bin finds 1,878 references into the LIRO ram run region [0x645ACF00, 0x6467BD64) "
+            "pointing to data rather than function prologues, superseding E0642's sub-core inference; "
+            "handover_guard exec_range traces 499,175 blocks in 120 s before the current stall."
         ),
         boundary=(
-            "BootROM before 0xFE047000 is uninspected; a6400A USB modes remain closed offline "
-            "without a physical a6400A capture or persistent camera modification."
+            "Offline av-cam.bin static analysis and bounded QEMU traces only; no camera access. "
+            "av-cam never reaches the consumer code inside 120 s."
         ),
-        tier="READ-ONLY PHYSICAL + OFFLINE",
+        tier="OFFLINE",
     ),
     headline="Native Unicorn ash | guarded USB startup | first QEMU live-view test chart",
     cards=(
