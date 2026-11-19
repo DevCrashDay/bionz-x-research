@@ -221,20 +221,20 @@ STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
     as_of="2026-11-19",
     latest=EvidenceRef(
-        evidence_id="E0637",
-        path="docs/evidence/0637-camcore-f301-contributor-boot-score.md",
+        evidence_id="E0643",
+        path="docs/evidence/0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md",
         date="2026-11-19",
-        title="Contributor boot score for the CamCore 0xF3010000 register model",
+        title="CXD90045 MISCREG/eFuse decode and A6400A Jiritsu chunk planner",
         demonstrated=(
-            "The merged CamCore window keeps the posted step-26 state while distinct unmodelled "
-            "addresses fall from 2322 to 1310. Twenty-eight observed reads are named: 16 "
-            "read-modify-write words and 0x5020 return the guest's last write, and 11 status words stay 0."
+            "DGU5 (nflashaB0) and main kernels (a6400 8.2.6.0 and a6400A 8.2.7.6) have no kernel signature check; "
+            "live a6400 MSC /dev/mem reads 0xF2915000=0x00000500 and 0xF2915010=0x0c01002b. "
+            "a6400A libJiritsu.so synchronous dlopen at 0x5D08 explained; offline plan-chunk-dump added."
         ),
         boundary=(
-            "Contributor emulator report only. This workspace did not re-run the scorer. The model is "
-            "on by default, captured step 26 stays open, and no physical camera result is claimed."
+            "BootROM before 0xFE047000 is uninspected; a6400A USB modes remain closed offline "
+            "without a physical a6400A capture or persistent camera modification."
         ),
-        tier="EMULATOR REPORT",
+        tier="READ-ONLY PHYSICAL + OFFLINE",
     ),
     headline="Native Unicorn ash | guarded USB startup | first QEMU live-view test chart",
     cards=(

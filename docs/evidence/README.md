@@ -10,6 +10,7 @@ Current consolidated state: [README research status](../../README.md) and
 
 | ID | Date | Claim |
 | --- | --- | --- |
+| [E0643](0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md) | 2026-11-19 | `DGU5`/`vmlinux.bin` (`a6400` `8.2.6.0` & `a6400A` `8.2.7.6`) contain no kernel signature verification; `DGU5` `MISCREG`/eFuse (`0xF2915000`/`0xF2915010`) live read-only MSC probe returns `0x00000500`/`0x0c01002b`; `ILCE-6400A` `libJiritsu.so` `adj_cmd_set_file2` (`0x5D08`) `dlopen`s `libJit.so` synchronously, and offline `plan-chunk-dump` adds single-slot `<=512 KiB` RAM-chunk partition dump planning (`nflashaB0`/`B1` allowlisted, `nflasha23` rejected) |
 | [E0637](0637-camcore-f301-contributor-boot-score.md) | 2026-11-19 | Contributor boot score for the merged CamCore model at 0xF3010000: same step 26, unmodelled addresses 2322 to 1310. Default-on read-back of 28 observed reads; not re-run here |
 | [E0618](0618-f388-readback-contributor-boot-score.md) | 2026-11-19 | Contributor boot score for the merged 0xF388 read-back window: same step 26 and VPH prefix, unmodelled pairs 2416 to 2322, four corrected read-modify-write words. Not re-run here; not a physical camera result |
 | [E0617](0617-v11-sd-insert-check-contributor-boot-score.md) | 2026-11-19 | Contributor boot score for the merged v11 per-block SD insertion check: same step 26, t_reach about 42.7 s to 37.0 s, insertion-check CPU 24.09% to 0.08%. Not re-run here |

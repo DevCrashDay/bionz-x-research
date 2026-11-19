@@ -31,8 +31,18 @@ WBI_NEEDLES = (
 )
 RAM_PREFIXES = ("/tmp/", "/tmp_bt/", "/tmp_network/")
 EXCLUDED_STORAGE = {"/dev/nflasha23"}
-STORAGE_PATH = re.compile(r"/dev/nflasha[0-9]+")
+STORAGE_PATH = re.compile(r"/dev/nflasha(?:B[01]|[0-9]+)")
 CHUNK_BYTES = 512 * 1024
+A6400A_DUMP_PARTITIONS: dict[str, int] = {
+    "/dev/nflashaB0": 4_194_304,
+    "/dev/nflashaB1": 4_194_304,
+    "/dev/nflasha1": 8_323_072,
+    "/dev/nflasha3": 50_331_648,
+    "/dev/nflasha4": 12_582_912,
+    "/dev/nflasha5": 62_914_560,
+    "/dev/nflasha7": 8_388_608,
+    "/dev/nflasha15": 314_572_800,
+}
 
 
 class JiritsuUnverified(RuntimeError):
@@ -120,6 +130,20 @@ def ephemeral_runner(daemon_path: str) -> bytes:
     return script.encode()
 
 
+def _validated_ram_dir(ram_dir: str) -> str:
+    """Validate a RAM directory path without trailing slash, traversal, or newlines."""
+    if (
+        not ram_dir.startswith(RAM_PREFIXES)
+        or ram_dir.endswith("/")
+        or ".." in ram_dir
+        or "\n" in ram_dir
+        or "\r" in ram_dir
+        or "/setting" in ram_dir
+    ):
+        raise ValueError("Chunk directory must be a RAM path without a trailing slash")
+    return ram_dir
+
+
 def readable_storage(path: str) -> str:
     """Allow a raw nflasha partition read and reject the excluded region."""
     if path in EXCLUDED_STORAGE or STORAGE_PATH.fullmatch(path) is None:
@@ -127,20 +151,103 @@ def readable_storage(path: str) -> str:
     return path
 
 
+def chunk_cleanup_command(ram_dir: str) -> str:
+    """Remove any staged chunk file in RAM so tmpfs holds at most one chunk."""
+    _validated_ram_dir(ram_dir)
+    return f"busybox rm -f {ram_dir}/chunk"
+
+
 def chunk_read_command(path: str, ram_dir: str, offset: int, count: int) -> str:
-    """One read-only dd plus sha256sum into a RAM file."""
+    """One read-only dd plus sha256sum into a single reused RAM chunk file."""
     readable_storage(path)
-    if not ram_dir.startswith(RAM_PREFIXES) or ram_dir.endswith("/") or ".." in ram_dir:
-        raise ValueError("Chunk directory must be a RAM path without a trailing slash")
+    _validated_ram_dir(ram_dir)
     if offset < 0 or count <= 0 or offset % 4096 or count % 4096 or count > CHUNK_BYTES:
         raise ValueError("Chunk range must be a positive 4096-byte multiple up to 512 KiB")
     destination = ram_dir + "/chunk"
     skip = offset // 4096
     blocks = count // 4096
     return (
-        f"busybox dd if={path} of={destination} bs=4096 skip={skip} count={blocks} "
+        f"busybox rm -f {destination} "
+        f"&& busybox dd if={path} of={destination} bs=4096 skip={skip} count={blocks} "
         f"&& busybox sha256sum {destination}"
     )
+
+
+def plan_partition_chunk_dump(
+    path: str,
+    total_bytes: int | None = None,
+    ram_dir: str = "/tmp_network/a6400a-dump",
+    chunk_bytes: int = CHUNK_BYTES,
+) -> dict:
+    """Plan a bounded single-slot RAM-chunk read sequence for an allowlisted partition."""
+    readable_storage(path)
+    cleanup_cmd = chunk_cleanup_command(ram_dir)
+    if total_bytes is None:
+        if path not in A6400A_DUMP_PARTITIONS:
+            raise ValueError(f"Partition capacity is not configured for {path}")
+        total_bytes = A6400A_DUMP_PARTITIONS[path]
+    if total_bytes <= 0 or total_bytes % 4096:
+        raise ValueError("Partition total_bytes must be a positive 4096-byte multiple")
+    if chunk_bytes <= 0 or chunk_bytes > CHUNK_BYTES or chunk_bytes % 4096:
+        raise ValueError("chunk_bytes must be a positive 4096-byte multiple up to 512 KiB")
+
+    ram_chunk_path = ram_dir + "/chunk"
+    chunks = []
+    for index, offset in enumerate(range(0, total_bytes, chunk_bytes)):
+        count = min(chunk_bytes, total_bytes - offset)
+        chunks.append(
+            {
+                "index": index,
+                "offset": offset,
+                "count": count,
+                "ram_chunk_path": ram_chunk_path,
+                "camera_command": chunk_read_command(path, ram_dir, offset, count),
+                "cleanup_command": cleanup_cmd,
+            }
+        )
+
+    return {
+        "partition": path,
+        "total_bytes": total_bytes,
+        "chunk_bytes": chunk_bytes,
+        "chunk_count": len(chunks),
+        "max_ram_bytes": min(total_bytes, chunk_bytes),
+        "ram_dir": ram_dir,
+        "ram_chunk_path": ram_chunk_path,
+        "dlopen_constraint": (
+            "adj_cmd_set_file2 at 0x5d08 dlopens /tmp/jiritsu/libJit.so synchronously "
+            "on im.elf; never stage full partitions in tmpfs or re-upload libJit.so "
+            "in the same power cycle"
+        ),
+        "chunks": chunks,
+    }
+
+
+def ephemeral_chunk_worker_script(ram_dir: str = "/tmp_network/a6400a-dump") -> bytes:
+    """Return a RAM-only polling worker script for /tmp/jiritsu/run.sh."""
+    _validated_ram_dir(ram_dir)
+    script = (
+        "#!/bin/sh\n"
+        "busybox grep ' /tmp_network tmpfs ' /proc/mounts >/dev/null || exit 31\n"
+        f"busybox mkdir -p '{ram_dir}' || exit 32\n"
+        f"busybox cat /proc/$$/status >'{ram_dir}/ready'\n"
+        "while :; do\n"
+        f" if [ -f '{ram_dir}/input' ] && [ -f '{ram_dir}/go' ]; then\n"
+        f"  busybox mv '{ram_dir}/input' '{ram_dir}/current' || exit 33\n"
+        f"  . '{ram_dir}/current' >'{ram_dir}/output.tmp' 2>&1\n"
+        "  rc=$?\n"
+        f"  printf '\\n__A6400A_RC__:%s\\n' \"$rc\" >>'{ram_dir}/output.tmp'\n"
+        f"  busybox mv '{ram_dir}/output.tmp' '{ram_dir}/output'\n"
+        f"  busybox rm -f '{ram_dir}/current' '{ram_dir}/go'\n"
+        " else\n"
+        "  busybox sleep 1\n"
+        " fi\n"
+        "done\n"
+    )
+    encoded = script.encode("ascii")
+    if b"/setting" in encoded or b"ld.so.preload" in encoded or b"/dev/nflasha23" in encoded:
+        raise ValueError("Ephemeral worker must not reference flash or excluded storage")
+    return encoded
 
 
 def verify_chunk(data: bytes, camera_line: str, expected_count: int) -> str:
