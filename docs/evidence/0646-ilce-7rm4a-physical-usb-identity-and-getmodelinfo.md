@@ -14,8 +14,9 @@ body on firmware 1.13 — the image E0570/E0645 analysed — the unchanged read-
 INQUIRY (`Sony` / `DSC` / `1.00`) and then the Sony `GetModelInfo` request `7a 01`. The first response
 read returned Sony BUSY (sense `9/0x81/0x81`), the second returned a clean 8192-byte reply carrying the
 model string **`ILCE-7RM4A`** and the opaque five-byte product code **`0032853030`**, 0.205 s after the
-request. That closes all three camera questions E0645 section 4 listed: the differing `usbg_storage.ko`
-does route a host CDB `0x7A` to the extcmd handler over Mass Storage; the live identity is the expected
+request. That closes all three camera questions E0645 section 4 listed: the Mass Storage gadget running on
+1.13 does route a host CDB `0x7A` to the extcmd handler (that it is the packaged `usbg_storage.ko`
+`b541a2dd…` E0645 hashed is inferred from the version, not read live); the live identity is the expected
 one; and the body answers after one BUSY, like the a6400A's first-transaction behaviour class (E0508,
 E0509). `ilce_7rm4a`'s `usb_pid` in the probe moves from `None` to the observed `0x0D9D`.
 
@@ -77,12 +78,17 @@ Observations and boundaries on this table:
 All runs were launched from the repository root. The receipts live under the git-ignored `artifacts/`
 tree and are cited by hash; none is committed.
 
-| # | command (`python -m tools.research.a6400a_native_readonly --target ilce_7rm4a --pid 0x0D9D …`) | shell | result | receipt SHA-256 |
+| # | command (`python -m tools.research.a6400a_native_readonly --target ilce_7rm4a --pid 0x0D9D …`) | launched by | result | receipt SHA-256 |
 | --- | --- | --- | --- | --- |
-| 1 | `--inquiry --output-dir artifacts/e0646-ilce7rm4a-inquiry` | non-elevated | `blocked`: discovery and LUN 0 admission passed (disk index 2), then `CreateFileW` on `\\.\PhysicalDrive2` failed with WinError 5; `operations: []`, no CDB sent | `7d5690b4886616614e79ab70aa86ab76bf5a150fe96ff4bb0ef1ca0a16c46d23` |
-| 2 | same as 1 (output directory reused) | elevated | refused by the tool's non-overwrite rule at `mkdir`, before the host lock, discovery or any handle; no receipt written, run 1's receipt verified intact | — |
-| 3 | `--inquiry --output-dir artifacts/e0646-ilce7rm4a-inquiry-admin` | elevated | `passed` | `4b9d4fc5eb3d120bb9da267996c0342b95600b042e47b6bc32a87437517542a7` |
-| 4 | `--inquiry --model-info --output-dir artifacts/e0646-ilce7rm4a-model-info` | elevated | `passed` | `337d1c066b7f7fecc805e0d299a23e38ad73c2ee99c83fc0a2e2ca93e571e128` |
+| 1 | `--inquiry --output-dir artifacts/e0646-ilce7rm4a-inquiry` | agent, non-elevated shell | `blocked`: discovery and LUN 0 admission passed (disk index 2), then `CreateFileW` on `\\.\PhysicalDrive2` failed with WinError 5; `operations: []`, no CDB sent | `7d5690b4886616614e79ab70aa86ab76bf5a150fe96ff4bb0ef1ca0a16c46d23` |
+| 2 | same as 1 (output directory reused) | owner, PowerShell opened as administrator | refused by the tool's non-overwrite rule at `mkdir`, before the host lock, discovery or any handle (so elevation was not exercised); no receipt written, run 1's receipt verified intact | — |
+| 3 | `--inquiry --output-dir artifacts/e0646-ilce7rm4a-inquiry-admin` | owner, same shell | `passed` | `4b9d4fc5eb3d120bb9da267996c0342b95600b042e47b6bc32a87437517542a7` |
+| 4 | `--inquiry --model-info --output-dir artifacts/e0646-ilce7rm4a-model-info` | owner, same shell | `passed` | `337d1c066b7f7fecc805e0d299a23e38ad73c2ee99c83fc0a2e2ca93e571e128` |
+
+That runs 3 and 4 had administrator rights is inferred from the `CreateFileW` open succeeding where
+run 1's failed with WinError 5; the token itself was not inspected. The receipts are kept in the
+owner's working copy under `artifacts/` (git-ignored by repository policy) and are reproduced in the
+tables below; their hashes pin them.
 
 Every receipt records `mode_switches`, `updater_initialization`, `driver_changes`, `sector_io`,
 `camera_file_writes` and `serials_retained` as `false`.
@@ -123,7 +129,7 @@ a different namespace from the updater's `fdat.model` (`0x91030003` for this bod
 
 | E0645 §4 question | answer | basis |
 | --- | --- | --- |
-| (a) Does the differing `usbg_storage.ko` route host CDB `0x7A` to the extcmd handler over Mass Storage? | **Yes**, on 1.13 | the request was accepted and a well-formed `command=1, direction=1` reply came back on the same CDB |
+| (a) Does the differing `usbg_storage.ko` route host CDB `0x7A` to the extcmd handler over Mass Storage? | **Yes** for the gadget running on 1.13 | the request was accepted and a well-formed `command=1, direction=1` reply came back on the same CDB; identity of the running module with the packaged `b541a2dd…` file is inferred, not measured |
 | (b) Live model string and product code | `ILCE-7RM4A`, `0032853030` | run 4 |
 | (c) Prompt answer or BUSY first? | **one BUSY, then the reply** | run 4, response read 1 |
 
@@ -131,7 +137,16 @@ This is one transaction on one body on one boot. Repeatability across power cycl
 first BUSY is systematic, are not established; the a6400A's own first-BUSY cause also remains unproven
 (E0509).
 
-## 6. Camera state
+## 6. Superseded
+
+- E0570 §0 and its profile boundary, "the owner's body … reported running the current release": wrong
+  for this body when this session began (it ran 1.12). E0570's offline measurements stand.
+- E0645 §3 and §4 "Not yet observed: the a7R IVA Mass Storage USB PID" and the `usb_pid=None` entry:
+  superseded by the observed `0x0D9D`.
+- E0645 §4 "Not shown (needs a camera)" items (a)–(c): answered by section 5 above, for firmware 1.13
+  and one transaction. E0645's offline hash comparison stands unchanged.
+
+## 7. Camera state
 
 No anomaly was observed during or after the runs: the device was still present as `054C:0D9D`
 (`REV_0200`) in a passive PnP hardware-id re-read after run 4. A later passive read at `19:37:15Z` showed no Sony
@@ -139,7 +154,7 @@ device because the owner had unplugged the cable, as the owner confirmed. No cam
 check (`/proc/uptime`, debugger) exists on this body, so "no anomaly" is the owner's and the host's
 observation, not a camera-internal measurement.
 
-## 7. Repository changes
+## 8. Repository changes
 
 - `tools/research/a6400a_native_readonly.py`: `IDENTITIES["ilce_7rm4a"].usb_pid` `None` → `0x0D9D`.
   The SCSI allowlist and every bound (8 s budget, 40 reads, no resubmit, no sector I/O, no mode switch)
@@ -150,8 +165,11 @@ observation, not a camera-internal measurement.
 - Tests: `tests/test_a6400a_native_readonly.py` (observed PID, PC Remote PID never admitted, one BUSY
   then reply on constructed fixtures with no live bytes) and `tests/test_target_profiles.py`
   (observed tiers, `0x0D9F` not claimed as stock, sources cite this record).
+- Status map: `docs/CURRENT_STATE.md`, `README.md`, the evidence index and the rendered status SVG.
+- Validation: full offline suite in a fresh `venv` with the pinned `requirements.txt` on Windows,
+  Python 3.14.10: **2046 run, OK, 209 skipped** (firmware/hardware-gated); no camera access by tests.
 
-## 8. Confidence and limitations
+## 9. Confidence and limitations
 
 - **Measured (host/wire):** the VID/PID/REV/class/service rows, the LUN count, every CDB, status,
   sense, byte count and timing in section 4, the parsed model string and product code, and the
@@ -164,7 +182,7 @@ observation, not a camera-internal measurement.
 - **Status:** `ilce_7rm4a` remains a reference profile, not an execution or installation target. No
   root, debugger or dump access is claimed.
 
-## 9. Next experiment
+## 10. Next experiment
 
 A repeat of run 4 after a cold power cycle would show whether the first BUSY is systematic. An MTP
 observation would complete the per-mode PID table. Both are read-only and fit the same tool and

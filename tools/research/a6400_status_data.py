@@ -229,7 +229,8 @@ STATUS_SNAPSHOT = StatusSnapshot(
             "On the owner's a7R IVA running 1.13, read-only Windows PnP shows Mass Storage 054C:0D9D "
             "(REV_0200, USBSTOR) and PC Remote 054C:0D9F. The unchanged probe's INQUIRY returned "
             "Sony/DSC/1.00 and GetModelInfo 7a/01 returned one Sony BUSY, then ILCE-7RM4A with product "
-            "code 0032853030 in 0.205 s, so the differing usbg_storage.ko routes 0x7A over Mass Storage. "
+            "code 0032853030 in 0.205 s, so the Mass Storage gadget running on 1.13 routes 0x7A to the "
+            "extcmd handler. "
             "The probe's ilce_7rm4a usb_pid is now the observed 0x0D9D."
         ),
         boundary=(
