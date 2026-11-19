@@ -221,18 +221,23 @@ STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
     as_of="2026-11-19",
     latest=EvidenceRef(
-        evidence_id="E0644",
-        path="docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md",
+        evidence_id="E0645",
+        path="docs/evidence/0645-ilce-7rm4a-getmodelinfo-extcmd-chain-identical.md",
         date="2026-11-19",
-        title="LIRO ram section is av-cam RW data, not a sub-core image",
+        title="ILCE-7RM4A GetModelInfo extcmd chain is byte-identical to the a6400A",
         demonstrated=(
-            "Static scan of av-cam.bin finds 1,878 references into the LIRO ram run region [0x645ACF00, 0x6467BD64) "
-            "pointing to data rather than function prologues, superseding E0642's sub-core inference; "
-            "handover_guard exec_range traces 499,175 blocks in 120 s before the current stall."
+            "The binaries that define GetModelInfo are byte-identical on the a7R IVA (libusbcmd.so "
+            "sets opcode 0x7A, usb_extcmd.ko holds the BUSY/ready decision, libInfraDevInfoSender.so "
+            "sends the reply), so the opcode and request/reply format transfer from E0509 and 7a/01 "
+            "is confirmed correct for this body. The read-only probe is generalized with a "
+            "CameraIdentity registry; the a7R IVA Mass Storage PID stays unset and the probe refuses "
+            "until --pid supplies an observed value, so no identity is guessed."
         ),
         boundary=(
-            "Offline av-cam.bin static analysis and bounded QEMU traces only; no camera access. "
-            "av-cam never reaches the consumer code inside 120 s."
+            "Offline SHA-256 and symbol comparison only; no camera access. The one differing binary "
+            "is the mass-storage gadget usbg_storage.ko that classifies/routes the SCSI CDB, so "
+            "SCSI-side delivery of 0x7A, the live model string and product code, the Mass Storage "
+            "BUSY behaviour and the a7R IVA Mass Storage USB PID all still need the camera."
         ),
         tier="OFFLINE",
     ),

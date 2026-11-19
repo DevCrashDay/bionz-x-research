@@ -6,9 +6,9 @@ import unittest
 from unittest import mock
 
 from tools.research.a6400a_native_readonly import (
-    INQUIRY_CDB, MODEL_CDB, MODEL_REQUEST, admit_request, parse_model_info,
-    NativeTransport, ScsiPacket, SonyBusy, main, probe_identity,
-    read_model_info, select_target,
+    INQUIRY_CDB, MODEL_CDB, MODEL_REQUEST, A6400A, IDENTITIES, CameraIdentity,
+    admit_request, build_discover, parse_model_info, NativeTransport, ScsiPacket,
+    SonyBusy, main, probe_identity, read_model_info, select_target,
 )
 
 
@@ -233,3 +233,56 @@ class BusyReadTests(unittest.TestCase):
         transport._ioctl = partial_busy
         with self.assertRaisesRegex(ValueError, "partial data; no retry"):
             transport.exchange(MODEL_CDB, read_size=8192)
+
+
+class MultiBodyIdentityTests(unittest.TestCase):
+    """The probe generalizes to other bodies without inventing an identity (E0645)."""
+
+    def a7r4a(self):
+        # The A7R IVA Mass Storage PID is only known once observed on a host; the
+        # registered entry carries None and must be supplied via with_pid/--pid.
+        self.assertIsNone(IDENTITIES["ilce_7rm4a"].usb_pid)
+        return IDENTITIES["ilce_7rm4a"].with_pid(0x0F0F)
+
+    def metadata(self, pair, model="Sony DSC USB Device"):
+        return {"usb_pair": pair, "service": "USBSTOR", "status": "OK",
+                "config_error": 0, "camera_count": 1,
+                "disks": [{"disk_index": 3, "lun": 0, "model": model,
+                           "parent_identity_verified": True}]}
+
+    def test_unobserved_pid_refuses_pair_and_discovery(self):
+        with self.assertRaisesRegex(ValueError, "not observed yet"):
+            _ = IDENTITIES["ilce_7rm4a"].usb_pair
+
+    def test_default_target_is_unchanged_a6400a(self):
+        self.assertEqual(A6400A.target_id, "ilce_6400a")
+        self.assertEqual(A6400A.usb_pair, "054c:0f0f")
+        self.assertEqual(A6400A.expected_model, "ILCE-6400A")
+        self.assertIn("PID_0F0F", build_discover())
+        self.assertIn("usb_pair='054c:0f0f'", build_discover())
+        self.assertIn("Expected exactly one healthy a6400A USBSTOR camera.", build_discover())
+
+    def test_select_target_admits_only_the_bodys_own_pid(self):
+        identity = self.a7r4a()
+        self.assertEqual(select_target(self.metadata("054c:0f0f"), identity), 3)
+        # A camera presenting the a6400A/a6400 pair is not this body.
+        with self.assertRaisesRegex(ValueError, "admission failed"):
+            select_target(self.metadata("054c:0994"), identity)
+
+    def test_model_info_expects_this_bodys_model_string(self):
+        reply = model_info(b"ILCE-7RM4A")
+        self.assertEqual(parse_model_info(reply, "ILCE-7RM4A")["model"], "ILCE-7RM4A")
+        # The default (a6400A) parser must reject the A7R IVA reply, and vice versa.
+        with self.assertRaisesRegex(ValueError, "identity mismatch"):
+            parse_model_info(reply)
+        with self.assertRaisesRegex(ValueError, "identity mismatch"):
+            parse_model_info(model_info(b"ILCE-6400A"), "ILCE-7RM4A")
+
+    @mock.patch("tools.research.a6400a_native_readonly.discover")
+    def test_main_refuses_a_body_without_an_observed_pid(self, discover):
+        error = io.StringIO()
+        with redirect_stderr(error), self.assertRaises(SystemExit) as caught:
+            main(["--target", "ilce_7rm4a", "--inquiry", "--output-dir", "unused"])
+        self.assertEqual(caught.exception.code, 2)
+        self.assertIn("not observed yet", error.getvalue())
+        discover.assert_not_called()
