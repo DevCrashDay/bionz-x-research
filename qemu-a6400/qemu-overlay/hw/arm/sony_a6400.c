@@ -1847,6 +1847,49 @@ static void sony_a6400_init(MachineState *machine)
     }
 
     /*
+     * CamCore block at 0xF3000000 (64 KiB), the same device with the
+     * per-block rule table selected by "base".  The fresh v11 baseline log
+     * (loop/runs/L0028/base/qemu-d.log) has 789 distinct (kind, offset)
+     * pairs, 57 read offsets and 732 write-only offsets.  23 read offsets
+     * are read-back (every baseline read is followed by a write: ldr/bfi/
+     * str RMW words); the other 34 return 0 (never-written status words,
+     * 0x2008/0x2280/0x2400/0x2480 whose reads are mostly not followed by a
+     * write, and the guest-written one-shot words, all 0 on the baseline
+     * path).  Mapped at -600, below the E0566 CamPig read-back word at
+     * 0xF3000050 (-500), so that opt-in model still wins.
+     */
+    {
+        DeviceState *cc = qdev_new("cxd90045-camcore");
+
+        qdev_prop_set_string(cc, "name", "cxd90045.camcore-f300");
+        qdev_prop_set_uint64(cc, "size", 0x10000);
+        qdev_prop_set_uint64(cc, "base", 0xF3000000ULL);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(cc), &error_fatal);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(cc), 0, 0xF3000000ULL, -600);
+    }
+
+    /*
+     * CamCore block at 0xF3120000 (64 KiB).  The fresh v11 baseline log has
+     * 100 distinct (kind, offset) pairs, 13 read offsets and 87 write-only
+     * offsets.  5 read offsets are read-back (every baseline read is
+     * followed by a write); the other 8 return 0 (never-written status,
+     * guest-written one-shot words, and +0x0410, whose read-back=1 enables
+     * extra channels and stalls YUV, so it keeps the baseline 0).  Mapped at
+     * -600, below the SGC1 words
+     * at +0x48/+0x50/+0x210/+0x220/+0x224 (-500), so sony_sgc1_create still
+     * owns those.
+     */
+    {
+        DeviceState *cc = qdev_new("cxd90045-camcore");
+
+        qdev_prop_set_string(cc, "name", "cxd90045.camcore-f312");
+        qdev_prop_set_uint64(cc, "size", 0x10000);
+        qdev_prop_set_uint64(cc, "base", 0xF3120000ULL);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(cc), &error_fatal);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(cc), 0, 0xF3120000ULL, -600);
+    }
+
+    /*
      * Imager / ComboPHY window (E0534).  av-cam keeps absolute pointers
      * here (Leo clk 0xFC021000, MIPI D-PHY register blocks, sensor tables
      * under 0xFC0Axxxx).  Reads of unassigned space are 0, so a
