@@ -28,6 +28,9 @@ patches are filed with the pull-request comments:
 and [E0618](docs/evidence/0618-f388-readback-contributor-boot-score.md).
 They keep captured step 26 (`0x0323`/`0x0320`). This workspace did not re-run
 that scorer, and no physical camera result is claimed.
+[E0637](docs/evidence/0637-camcore-f301-contributor-boot-score.md) records the
+same kind of score for the merged CamCore window at `0xF3010000`: unmodelled
+addresses 2,322 to 1,310, still step 26.
 
 QEMU EP0 milestone: original firmware now completes six host-driven standard
 control transfers to address 1, configuration 1 and UDC `configured` in two
@@ -118,7 +121,7 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 
 Recorded offline suite: **2091 tests**, with 88 skip records and no failures/errors in the integrated checkout ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. Separate QEMU milestones are the [USB mode gate](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md) and [first firmware-driven live-view frame](docs/evidence/0591-qemu-a6400-first-live-view-frame.md). Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=f4f10d9b6461)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=4537fe4b76b2)
 
 ![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
 

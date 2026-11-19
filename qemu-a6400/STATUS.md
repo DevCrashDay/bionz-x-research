@@ -1,5 +1,16 @@
 # QEMU `sony-a6400`: findings and next steps
 
+## CamCore block at 0xF3010000 (2026-11-19 / E0637)
+
+`cxd90045-camcore` stores writes in the 64 KiB block and answers the 28
+reads observed in the contributor's baseline log: 16 read-modify-write
+words and `0x5020` return the guest's last write, and 11 never-written
+status words stay 0. Unlisted reads return 0 and are logged. The posted
+boot stays at step 26 while unmodelled addresses fall from 2,322 to 1,310.
+The model is on by default; opt-in live view still overlays it at priority
+-400. Not re-run here and not checked on a physical camera. See
+[E0637](../docs/evidence/0637-camcore-f301-contributor-boot-score.md).
+
 ## Contributor boot scores for merged emulator patches (2026-11-19 / E0614–E0618)
 
 Pull requests #35, #37 and #40 map plain `cxd90014-regfile` read-back over
