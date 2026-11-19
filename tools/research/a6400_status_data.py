@@ -221,19 +221,18 @@ STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
     as_of="2026-11-19",
     latest=EvidenceRef(
-        evidence_id="E0618",
-        path="docs/evidence/0618-f388-readback-contributor-boot-score.md",
+        evidence_id="E0637",
+        path="docs/evidence/0637-camcore-f301-contributor-boot-score.md",
         date="2026-11-19",
-        title="Contributor boot score for the 0xF388 read-back window",
+        title="Contributor boot score for the CamCore 0xF3010000 register model",
         demonstrated=(
-            "The merged 0xF388 read-back window keeps the posted step-26 state and VPH prefix while "
-            "unmodelled pairs fall from 2416 to 2322. The comment names four read-modify-write words "
-            "after a first review refuted a one-word claim. E0614-E0617 record the same contributor's "
-            "scores for the 0xF280 and 0xF350 windows, TB_JMP_CACHE_BITS 14, and the v11 SD insertion check."
+            "The merged CamCore window keeps the posted step-26 state while distinct unmodelled "
+            "addresses fall from 2322 to 1310. Twenty-eight observed reads are named: 16 "
+            "read-modify-write words and 0x5020 return the guest's last write, and 11 status words stay 0."
         ),
         boundary=(
-            "Contributor emulator report only. This workspace did not re-run the scorer. The 0xF388 block "
-            "is unidentified, captured step 26 stays open, and no physical camera result is claimed."
+            "Contributor emulator report only. This workspace did not re-run the scorer. The model is "
+            "on by default, captured step 26 stays open, and no physical camera result is claimed."
         ),
         tier="EMULATOR REPORT",
     ),

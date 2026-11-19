@@ -10,6 +10,7 @@ Current consolidated state: [README research status](../../README.md) and
 
 | ID | Date | Claim |
 | --- | --- | --- |
+| [E0637](0637-camcore-f301-contributor-boot-score.md) | 2026-11-19 | Contributor boot score for the merged CamCore model at 0xF3010000: same step 26, unmodelled addresses 2322 to 1310. Default-on read-back of 28 observed reads; not re-run here |
 | [E0618](0618-f388-readback-contributor-boot-score.md) | 2026-11-19 | Contributor boot score for the merged 0xF388 read-back window: same step 26 and VPH prefix, unmodelled pairs 2416 to 2322, four corrected read-modify-write words. Not re-run here; not a physical camera result |
 | [E0617](0617-v11-sd-insert-check-contributor-boot-score.md) | 2026-11-19 | Contributor boot score for the merged v11 per-block SD insertion check: same step 26, t_reach about 42.7 s to 37.0 s, insertion-check CPU 24.09% to 0.08%. Not re-run here |
 | [E0616](0616-tb-jmp-cache-bits-14-contributor-boot-score.md) | 2026-11-19 | Contributor boot score for merged TB_JMP_CACHE_BITS 12 to 14: same final state, t_reach about 37.3 s to 32.1 s on the QEMU 10.1.0 build. v11 was not re-measured for this hunk alone |

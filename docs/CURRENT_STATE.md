@@ -20,6 +20,15 @@ later `0x3373` loop. Its unasserted IRQs and dormant Task 65 remain bounded
 observations; they do not replace the later QEMU device-model and rear-panel
 results above.
 
+## CamCore register model (2026-11-19 / E0637)
+
+Merged pull request #42 maps `cxd90045-camcore` over `0xF3010000` (64 KiB,
+priority -500) in the default machine. The posted score keeps step 26 and
+lowers distinct unmodelled addresses from 2,322 to 1,310. It was not re-run
+here. The opt-in live-view CamPig window still covers this block when that
+pipeline is enabled. See
+[E0637](evidence/0637-camcore-f301-contributor-boot-score.md).
+
 ## Contributor emulator scores (2026-11-19 / E0614–E0618)
 
 Comments on merged pull requests #35, #37, #38, #39 and #40 are recorded as
