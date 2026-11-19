@@ -239,6 +239,35 @@ class TestEvidenceDiscipline(unittest.TestCase):
         )
 
 
+class TestIlce7rm4aObservedIdentity(unittest.TestCase):
+    """E0646: read-only USB identity observed on the owner's a7R IVA running firmware 1.13."""
+
+    def setUp(self):
+        self.profile = get_profile("ilce_7rm4a")
+
+    def test_observed_pids_are_tiered_as_observed_not_stock(self):
+        pids = self.profile.usb.pids
+        self.assertEqual(self.profile.usb.vid, 0x054C)
+        self.assertEqual(pids["mass_storage"].value, 0x0D9D)
+        self.assertEqual(pids["mass_storage"].tier, PID_TIER_OBSERVED)
+        self.assertEqual(pids["pc_remote"].value, 0x0D9F)
+        self.assertEqual(pids["pc_remote"].tier, PID_TIER_OBSERVED)
+        self.assertEqual(self.profile.usb.bcd_device, 0x0200)
+
+    def test_pc_remote_pid_is_not_claimed_from_the_packaged_descriptor_set(self):
+        stock = {pid.value for pid in self.profile.usb.pids.values() if pid.tier == PID_TIER_STOCK}
+        self.assertEqual(len(stock), 18)
+        self.assertIn(0x0D9D, stock)
+        self.assertNotIn(0x0D9F, stock)
+
+    def test_product_code_and_usb_cite_the_physical_record(self):
+        self.assertEqual(self.profile.product_code, "0032853030")
+        e0646 = "docs/evidence/0646-ilce-7rm4a-physical-usb-identity-and-getmodelinfo.md"
+        self.assertEqual([ref.path for ref in self.profile.sources["product_code"]], [e0646])
+        self.assertIn(e0646, [ref.path for ref in self.profile.sources["usb"]])
+        self.assertEqual(self.profile.status, STATUS_REFERENCE)
+
+
 class TestJsonView(unittest.TestCase):
     def test_registry_is_json_serializable(self):
         payload = json.dumps(registry_dict())

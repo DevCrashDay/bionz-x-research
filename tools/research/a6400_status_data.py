@@ -221,25 +221,24 @@ STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
     as_of="2026-11-19",
     latest=EvidenceRef(
-        evidence_id="E0645",
-        path="docs/evidence/0645-ilce-7rm4a-getmodelinfo-extcmd-chain-identical.md",
+        evidence_id="E0646",
+        path="docs/evidence/0646-ilce-7rm4a-physical-usb-identity-and-getmodelinfo.md",
         date="2026-11-19",
-        title="ILCE-7RM4A GetModelInfo extcmd chain is byte-identical to the a6400A",
+        title="ILCE-7RM4A answers native GetModelInfo on firmware 1.13",
         demonstrated=(
-            "The binaries that define GetModelInfo are byte-identical on the a7R IVA (libusbcmd.so "
-            "sets opcode 0x7A, usb_extcmd.ko holds the BUSY/ready decision, libInfraDevInfoSender.so "
-            "sends the reply), so the opcode and request/reply format transfer from E0509 and 7a/01 "
-            "is confirmed correct for this body. The read-only probe is generalized with a "
-            "CameraIdentity registry; the a7R IVA Mass Storage PID stays unset and the probe refuses "
-            "until --pid supplies an observed value, so no identity is guessed."
+            "On the owner's a7R IVA running 1.13, read-only Windows PnP shows Mass Storage 054C:0D9D "
+            "(REV_0200, USBSTOR) and PC Remote 054C:0D9F. The unchanged probe's INQUIRY returned "
+            "Sony/DSC/1.00 and GetModelInfo 7a/01 returned one Sony BUSY, then ILCE-7RM4A with product "
+            "code 0032853030 in 0.205 s, so the differing usbg_storage.ko routes 0x7A over Mass Storage. "
+            "The probe's ilce_7rm4a usb_pid is now the observed 0x0D9D."
         ),
         boundary=(
-            "Offline SHA-256 and symbol comparison only; no camera access. The one differing binary "
-            "is the mass-storage gadget usbg_storage.ko that classifies/routes the SCSI CDB, so "
-            "SCSI-side delivery of 0x7A, the live model string and product code, the Mass Storage "
-            "BUSY behaviour and the a7R IVA Mass Storage USB PID all still need the camera."
+            "One transaction on one boot; BUSY repeatability is not established. The body was on 1.12 "
+            "until its owner updated it, correcting E0570's current-release note. No /proc, memory, "
+            "partition, root or debugger access; 0x0D9F is not among the packaged descriptors and its "
+            "source is unidentified; MTP and UVC were not observed."
         ),
-        tier="OFFLINE",
+        tier="READ-ONLY PHYSICAL",
     ),
     headline="Native Unicorn ash | guarded USB startup | first QEMU live-view test chart",
     cards=(
