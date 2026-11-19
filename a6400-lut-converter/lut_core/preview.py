@@ -158,7 +158,8 @@ def apply_overlay(image, kind, delta_e, clamp, split):
 
 
 def compose_preview(mode, cube, preset, profile, source, img01, *, encoding, video_range,
-                    interpolation, ev=0.0, exposure_scale=1.0, rec709=None, wide=None):
+                    interpolation, ev=0.0, exposure_scale=1.0, rec709=None, wide=None,
+                    spatial_mode="off"):
     """Build the two monitor images for a split mode, plus cube-vs-ISP diagnostics.
 
     Wide-gamut output and the ideal cube pass through the same Rec.709 display view.
@@ -172,6 +173,9 @@ def compose_preview(mode, cube, preset, profile, source, img01, *, encoding, vid
         wide_ref, wide_preset, wide_profile, wide_range = wide
         rec_sim, _rec_residual = _isp(rec_preset, rec_profile, codes, rec_range, rec_ref.interpolation)
         wide_sim, residual = _isp(wide_preset, wide_profile, codes, wide_range, wide_ref.interpolation)
+        if spatial_mode not in (None, "off"):
+            from .spatial_test import apply_spatial_mode
+            wide_sim = apply_spatial_mode(wide_sim, spatial_mode)
         left = preview_rgb(rec_sim, rec_profile.output_space)
         right = preview_rgb(wide_sim, wide_profile.output_space)
         wide_ideal = _match_encoder(wide_ref.sample(codes), wide_profile, wide_range)
@@ -179,6 +183,9 @@ def compose_preview(mode, cube, preset, profile, source, img01, *, encoding, vid
     else:
         ideal = np.clip(cube.sample(codes), 0, 1)
         simulated, residual = _isp(preset, profile, codes, video_range, interpolation)
+        if spatial_mode not in (None, "off"):
+            from .spatial_test import apply_spatial_mode
+            simulated = apply_spatial_mode(simulated, spatial_mode)
         ideal_encoded = _match_encoder(ideal, profile, video_range)
         if isinstance(cube, Alexa35Reference):
             display_space = "gamma24-rec709"

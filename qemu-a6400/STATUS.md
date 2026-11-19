@@ -1,5 +1,109 @@
 # QEMU `sony-a6400`: findings and next steps
 
+## Contributor boot scores for merged emulator patches (2026-11-19 / E0614–E0618)
+
+Pull requests #35, #37 and #40 map plain `cxd90014-regfile` read-back over
+`0xF2800000` (32 KiB), `0xF3500000` (64 KiB) and `0xF3880000` (64 KiB).
+#38 raises `TB_JMP_CACHE_BITS` from 12 to 14 in the v11 patch. #39 checks
+SD/eMMC insertion once per block in the v11 data path. The posted scores
+keep step 26 (`0x0323`/`0x0320`) and the same `[VPH]` prefix. They were not
+re-run in this workspace and were not checked on a physical camera. See
+[E0614](../docs/evidence/0614-f280-clock-readback-contributor-boot-score.md)
+through
+[E0618](../docs/evidence/0618-f388-readback-contributor-boot-score.md).
+
+## Stock USB input is inhibited by original startup policy (2026-11-19 / E0613)
+
+Captured-code traces pass physical USB messages through I-InputRecv and
+I-InputMain, then observe native suppression reason `0x11` for the live
+`0x15040010` subscription. Startup code itself writes the physical-key inhibit
+byte `0 -> 1`; its native clear helper is not reached in paired bounded runs.
+The next boundary is original initialization/release. The P display and
+opt-in luma do not establish that initialization completed. No hardware model
+or firmware input changed; 56 receipt checks pass. See
+[E0613](../docs/evidence/0613-original-usb-key-inhibit-owner-and-release-boundary.md).
+
+## Original UDC reaches configured through host-driven EP0 (2026-11-18 / E0598)
+
+Opt-in `-global cxd90045-dwc3.strict-ep0=on` retires EP0 TRBs only on explicit
+host requests, supports status ZLPs and NRDY/NAK retries without queuing a
+failed token, and refuses unsupported length/chain/DMA inputs. Two final
+original-firmware runs complete DEVICE, address 1, CONFIGURATION header/body,
+SET_CONFIGURATION(1) and GET_CONFIGURATION=1; UDC is configured. The original
+function is bus-power/HID, not UVC. All 33 native EP0 checks and 44 profile
+checks pass; the legacy DEVICE replay is unchanged. Packetization/timing,
+error recovery, non-EP0 endpoints and video are unqualified. See
+[E0598](../docs/evidence/0598-qemu-token-driven-ep0-configuration.md).
+
+## First original USB DEVICE descriptor (2026-11-18 / E0597)
+
+Passive original-code tracing roots E0596's failure in the missing bit-0
+read at 0xF0200024. Two single-word physical MSC reads return 1. Optional
+`-global cxd90045-dwc3.captured-start-gate=on` supplies that read-only
+connected-state snapshot, independently of captured-hwparams; defaults stay
+unchanged. Original E305 and create now return 0, service reaches state 3,
+created=1, and the driver arms its event ring and RUN. GET_DESCRIPTOR returns
+the original 18-byte bus-power DEVICE descriptor (054C:096F).
+Native qtest: 44/44; bounded original guard cases: 8/8.
+This is not full enumeration or UVC; control status/address/configuration,
+snapshot reset/disconnect semantics and data transfers remain unqualified.
+See [E0597](../docs/evidence/0597-qemu-original-gadget-start-and-device-descriptor.md).
+
+## Original USB service command path (2026-11-18 / E0596)
+
+An offline diagnostic mod with an explicit captured-library profile sends
+original configure/start messages through firmware constructors, allocator
+and MsgSender. Configure/start sends return 0, UsbControl reaches FSM 7 with
+masks 4/4, and the kernel logs transfer to Gadget. No descriptor is closed
+or duplicated and no ioctl/FSM/event reply is fabricated. The sampled
+bus-power registry entry still has created=0; DWC3 ring/RUN and IN replies
+remain absent. Data-function activation and UVC are unqualified. The
+packaged profile correctly refuses the captured libraries, including a
+different libc allocator layout. See
+[E0596](../docs/evidence/0596-qemu-original-usb-service-startup.md).
+
+## Physical DWC3 hardware-parameter profile (2026-11-18 / E0595)
+
+Two read-only MSC camera samples agree on GSNPSID and GHWPARAMS0–8.
+All nine hardware-parameter words differ from the historical QEMU model.
+Opt in with `-global cxd90045-dwc3.captured-hwparams=on`, or
+`qemu_usb_host_probe --captured-hwparams`. Native qtest passes 20 reads
+across the unchanged default and physical profile. This qualifies register
+identity only; advertised capabilities and USB transfers remain unqualified.
+See [E0595](../docs/evidence/0595-dwc3-physical-hardware-parameter-profile.md).
+
+## OTG separate-open diagnostic boundary (2026-11-18 / E0594)
+
+The opt-in `qemu_usb_host_probe --otg-mode-probe` stages an offline ARM
+helper on a disposable overlay. Its O_RDWR open of `/dev/usb/otgcore`
+returns EBUSY before SET_MODE(2); it cannot independently start the gadget
+in the running stock guest. No event ring, RUN or USB descriptor reply is
+observed. Continue through the original USB service's ownership contracts.
+See [E0594](../docs/evidence/0594-qemu-otg-exclusive-open-boundary.md).
+
+## Virtual USB host on the DWC3 model: no gadget start (2026-11-18 / E0593)
+
+- `python3 -m tools.research.qemu_usb_host_probe` boots with `dwc3-gadget`, `usb-vbus-test` and
+  `usb-cid-high`, then binds a host socket with `-global cxd90045-dwc3.chardev=...`. It sends VBUS,
+  `CONN` and GET_DESCRIPTOR, and reads the model registers over QMP.
+- The original driver only performs the soft reset (DCTL `0x40000000`, GCTL `0x800` then `0`). The
+  event ring and DCTL.RUN stay 0, `dwc3.0` stays `not attached`, IRQ 229 stays 0, and no `IN` reply
+  arrives. `dwc3_trace.c` now builds for plugin API 7.
+- Next boundary: start a gadget through original code (stock `StartGadget`, E0589, or the
+  `libInfraUsbCmn` createGadget ioctls, E0534), then repeat the probe. See
+  [E0593](../docs/evidence/0593-qemu-dwc3-virtual-host-and-gadget-start-gap.md).
+
+## Mods-tab command items for a "USB Streaming" entry (2026-11-18 / E0592)
+
+- New `SMOD_V2_FLAG_ACTION` (`pack_mod_v2 --action`) makes a Mods row a command item
+  with no ON/OFF value. Pressing it switches the mod ON and queues the MENU key, so the menu closes
+  to the shooting screen. A second press switches it OFF.
+- With the launcher QEMU build and captured inputs: `mod_on 041da000`, `action_close 041da000`,
+  then the menu closed. The row read `Active` on reopening, and a second press logged `mod_off`.
+  Artifacts: `artifacts/qemu-a6400/e0592-action-item/`. No UVC function, gadget, or
+  notice is involved. The USB boundary is still E0589. See
+  [E0592](../docs/evidence/0592-mod-loader-command-items-usb-streaming-entry.md).
+
 ## `DefRootView::ActionOpenUSB` gates USB server `dlopen` and `StartGadget` (`0x0A2000`) (2026-11-18 / E0589)
 
 - Static analysis proves `libObj.so+0x83A9C4` (`CEC`) ignores `0x0A400A`/`0x0A400B`,

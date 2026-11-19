@@ -18,6 +18,12 @@ Runtime mods for Sony **BIONZ X (`CXD90045`)** cameras run **RAM-only** through 
 
 ---
 
+### Command items (`SMOD_V2_FLAG_ACTION`)
+
+A mod packed with `pack_mod_v2 --action` appears in the `Mods` tab as a command instead of an ON/OFF switch, like the ZV-E10's "USB Streaming" entry. Pressing it starts the mod, and the menu closes to the shooting screen. The row then reads `Active`, and pressing it again stops the mod. Verified in Unicorn and QEMU only ([E0592](../docs/evidence/0592-mod-loader-command-items-usb-streaming-entry.md)). A UVC streaming mod that uses it does not exist yet.
+
+---
+
 ## Option 1: Install & Run in QEMU (No Camera Needed)
 
 You can develop, install, and hot-reload real `SMOD v2` mods inside the emulated `sony-a6400` machine before touching hardware:

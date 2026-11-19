@@ -50,5 +50,19 @@ Keep future discoveries linked to an image identity and original instruction spa
   debayer, sensor response and texture, remains a paired capture task.
 
 See [E0505](evidence/0505-av-cam-cc-3dlut-and-ec-gamma-pipeline.md),
+[E0599](evidence/0599-av-cam-debayer-psf-and-imx284-readout.md),
+[E0600](evidence/0600-arri-sdk-debayer-afa-texture-and-anr-pipeline.md),
+[E0601](evidence/0601-av-cam-sigitp-bayer-detail-and-pqd-stage-map.md),
+[E0602](evidence/0602-sabin-dcv-psf-and-spica-tap-mtf-vs-arri.md),
+[E0603](evidence/0603-a6400-arri-spatial-texture-emulation-synthesis.md),
 the [converter workflow](../a6400-lut-converter/README.md) and
 [ARRI LogC4](https://www.arri.com/en/learn/camera-systems/image-science/log-c).
+
+## Spatial, Debayer, and `/usr/sabin/` Surfaces (`E0599`–`E0603`)
+
+| Transform or boundary | Firmware observation and format | What to establish before tuning |
+| --- | --- | --- |
+| Movie Bayer & `MovItp` | `SigItpBayerSetter` (`0x644fa368`), `SigItpArSetter` (`0x644fa358`), `calcMovBayerSetParam` (`0x6396a900`), and `job_YC_MovItp_CalcParam_Sync` (`0x6396c980` → `r0+0x2016c`). | Map live `r0+0x2016c` values in 4K Movie mode and link to `CamCore` MMIO (`0xFC000000`). |
+| `PP_Detail*` packing | Validated at `0x63bd8190` (`+0x1c6..+0x1cb`); packed into 8-byte command packets at `0x6383d1d8` and `0x6384aa98`. | Pair `PP_DetailCrispening` / `BWBalance` / `Limit` with ARRI `ada7Hw` shadow damping (`<1024`/`2048`) in chart captures. |
+| `dcv_psf_table_movie*.bin` | Selector `0x6395c842..0x6395c90e` picks `movie_bayer.bin` (`18,288` B), `movie_4k.bin` (`10,728` B), `macro_movie.bin`, or `movie.bin`. First block (`0x0ec..0x14c`) is a near-zero-sum (`+36`) delta kernel (`+7812` center, `-1520` lobes). | Locate the runtime RAM copy target of `0x6395c97c` for guarded non-destructive attenuation tests. |
+| `spica_musashi_mov_4k_*` | `y_tap_step1/2.bin` (`48,000` B) and `c_tap_step1/2.bin` (`40,000` B, 10-tap/20-halfword period) in 15-bit two's complement (`0..32767`). | Verify 6K→4K luma/chroma roll-off against `ALEV4_AFATexture_09T_0.1.0` and `GENERIC_AfaSmoothChroma_09T_0.0.7`. |

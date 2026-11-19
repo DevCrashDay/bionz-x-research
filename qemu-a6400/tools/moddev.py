@@ -152,6 +152,8 @@ class ModDev:
     loader: Path                     # Mod Loader v2 build: core.bin, mlv2.req, mlv2_guard_arm
     mods: list[Path]
     nudge: callable = None           # called when the core has not acted yet (e.g. MENU twice)
+    extra_files: list[tuple[str, Path, bool]] = field(default_factory=list)
+    setup_cmds: list[str] = field(default_factory=list)
     status: dict = field(default_factory=lambda: {"state": "waiting for the guest shell", "events": []})
     seen: dict = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)   # one shell command at a time
@@ -268,6 +270,12 @@ class ModDev:
         for m in self.mods:
             self.push(f"/tmp_bt/mods/{m.name}", m.read_bytes())
             self.seen[m] = m.stat().st_mtime_ns
+        for guest_path, host_path, executable in self.extra_files:
+            self.push(guest_path, host_path.read_bytes())
+            if executable:
+                self.sh(f"chmod 755 {guest_path}")
+        for cmd in self.setup_cmds:
+            self.sh(cmd)
         check = self.sh(f"{GUEST_GUARD} check {GUEST_REQ}; echo GUARD_EXIT=$?")
         self.event(" ".join(l for l in check.splitlines() if l.startswith(("TARGET", "STATE", "MLV2_RESULT"))))
         if "hooks=stock" not in check:

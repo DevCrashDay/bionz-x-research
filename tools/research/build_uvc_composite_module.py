@@ -233,6 +233,11 @@ def main():
     run('arm-linux-gnueabi-gcc', [*cflags,*legacy_flags, '-c', rel(shim_src), '-o', rel(compiled_shim)])
     run('arm-linux-gnueabi-gcc', [*cflags, '-c', rel(bridge_src), '-o', rel(compiled_bridge)])
     extra_objects=[];extra_sources=[]
+    if not args.shared_ptp_enumeration_candidate:
+        adapter_src = ROOT / 'tools/native_camera/uvc_ptp_adapter.c'
+        adapter_obj = out / 'uvc_ptp_adapter.o'
+        run('arm-linux-gnueabi-gcc', [*cflags, '-c', rel(adapter_src), '-o', rel(adapter_obj)])
+        extra_sources.append(adapter_src); extra_objects.append(adapter_obj)
     if args.shared_ptp_enumeration_candidate:
         names=['uvc_ptp_mode_gate','uvc_ptp_ioctl_guard','uvc_ptp_stop_attest','uvc_ptp_route_lease','uvc_ptp_code_sync','uvc_ptp_route_dryrun','uvc_ptp_entry_hook','uvc_ptp_descriptors','uvc_ptp_descriptor_lease','uvc_ptp_adapter','uvc_ptp_soft_disconnect','uvc_ptp_session','uvc_ptp_native_backend','uvc_module_self_ref','uvc_ptp_module_shim']
         if args.producer_admission:

@@ -219,21 +219,23 @@ class StatusSnapshot:
 
 STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
-    as_of="2026-11-18",
+    as_of="2026-11-19",
     latest=EvidenceRef(
-        evidence_id="E0591",
-        path="docs/evidence/0591-qemu-a6400-first-live-view-frame.md",
-        date="2026-11-18",
-        title="First firmware-driven live-view frame in QEMU",
+        evidence_id="E0618",
+        path="docs/evidence/0618-f388-readback-contributor-boot-score.md",
+        date="2026-11-19",
+        title="Contributor boot score for the 0xF388 read-back window",
         demonstrated=(
-            "Original firmware consumes fresh Ydet records and launches RC0 DMA. "
-            "An opt-in test chart matches guest ch51 and rear-LCD pixels outside the OSD; the control is black."
+            "The merged 0xF388 read-back window keeps the posted step-26 state and VPH prefix while "
+            "unmodelled pairs fall from 2416 to 2322. The comment names four read-modify-write words "
+            "after a first review refuted a one-word claim. E0614-E0617 record the same contributor's "
+            "scores for the 0xF280 and 0xF350 windows, TB_JMP_CACHE_BITS 14, and the v11 SD insertion check."
         ),
         boundary=(
-            "Captured boot remains at sequencer step 26; release of the older packaged step-32 wait, "
-            "physical sensor fidelity, and Sony USB enumeration are not verified."
+            "Contributor emulator report only. This workspace did not re-run the scorer. The 0xF388 block "
+            "is unidentified, captured step 26 stays open, and no physical camera result is claimed."
         ),
-        tier="OFFLINE + QEMU",
+        tier="EMULATOR REPORT",
     ),
     headline="Native Unicorn ash | guarded USB startup | first QEMU live-view test chart",
     cards=(

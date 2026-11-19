@@ -18,6 +18,7 @@
 #include "hw/core/qdev-properties-system.h"
 #include "chardev/char-fe.h"
 #include "system/dma.h"
+#include "system/address-spaces.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
 #include "qom/object.h"
@@ -111,11 +112,13 @@ typedef struct CxdDwc3Ep {
     uint8_t pending_out[1024];
     uint32_t pending_out_len;
     bool has_pending_out;
+    bool nrdy_pending;
 } CxdDwc3Ep;
 
 struct CxdDwc3State {
     SysBusDevice parent_obj;
     MemoryRegion mr;
+    MemoryRegion captured_start_gate_mr;
     qemu_irq irq;
     CharFrontend chr;
 
@@ -140,10 +143,18 @@ struct CxdDwc3State {
     uint32_t dalepena;
 
     bool host_connected;
+    bool captured_hwparams;
+    bool captured_start_gate;
+    bool strict_ep0;
+    bool strict_bulk;
+    uint8_t control_stage; /* 0 SETUP, 1 DATA, 2 STATUS; host protocol bookkeeping */
+    bool control_data_in;
+    bool control_has_data;
     CxdDwc3Ep eps[DWC3_MAX_EPS];
 
     char rx_line[2200];
     size_t rx_len;
+    bool rx_overflow;
 };
 
 static void dwc3_update_irq(CxdDwc3State *s)
@@ -185,6 +196,11 @@ static void dwc3_push_devt(CxdDwc3State *s, uint32_t type, uint32_t info)
 static void dwc3_push_depevt(CxdDwc3State *s, uint32_t ep, uint32_t type,
                              uint32_t status, uint32_t param)
 {
+    if (s->strict_ep0 && ep < 2 &&
+        ((type == DEPEVT_XFERCOMPLETE && !(s->eps[ep].cfg1 & (1U << 8))) ||
+         (type == DEPEVT_XFERNOTREADY && !(s->eps[ep].cfg1 & (1U << 10))))) {
+        return;
+    }
     uint32_t ev = ((ep & 0x1FU) << 1) | ((type & 0xFU) << 6) |
                   ((status & 0xFU) << 12) | ((param & 0xFFFFU) << 16);
     dwc3_push_event(s, ev);
@@ -215,6 +231,10 @@ static void dwc3_ep_process_trb(CxdDwc3State *s, uint32_t ep_idx)
 {
     CxdDwc3Ep *ep = &s->eps[ep_idx];
     CxdDwc3Trb trb;
+
+    if (s->strict_ep0) {
+        return; /* Ownership changes only in response to a host token. */
+    }
 
     if (!ep->trb_active || ep->trb_addr == 0) {
         return;
@@ -253,7 +273,8 @@ static void dwc3_ep_process_trb(CxdDwc3State *s, uint32_t ep_idx)
         dma_memory_write(&address_space_memory, ep->trb_addr,
                          &out_trb, sizeof(out_trb), MEMTXATTRS_UNSPECIFIED);
         ep->trb_active = false;
-        dwc3_push_depevt(s, ep_idx, DEPEVT_XFERCOMPLETE, 0, 0);
+        dwc3_push_depevt(s, ep_idx, DEPEVT_XFERCOMPLETE,
+                     (trb.ctrl & TRB_CTRL_LST) ? 8U : 0U, 0);
         return;
     }
 
@@ -280,7 +301,8 @@ static void dwc3_ep_process_trb(CxdDwc3State *s, uint32_t ep_idx)
     ep->has_pending_out = false;
     ep->pending_out_len = 0;
     ep->trb_active = false;
-    dwc3_push_depevt(s, ep_idx, DEPEVT_XFERCOMPLETE, 0, 0);
+    dwc3_push_depevt(s, ep_idx, DEPEVT_XFERCOMPLETE,
+                     (trb.ctrl & TRB_CTRL_LST) ? 8U : 0U, 0);
 }
 
 static void dwc3_device_reset(CxdDwc3State *s)
@@ -293,6 +315,7 @@ static void dwc3_device_reset(CxdDwc3State *s)
     s->gevntcount = 0;
     s->gevnt_head = 0;
     memset(s->eps, 0, sizeof(s->eps));
+    s->control_stage = 0;
     dwc3_update_irq(s);
 }
 
@@ -322,6 +345,7 @@ static void dwc3_handle_ep_cmd(CxdDwc3State *s, uint32_t ep_idx, uint32_t val)
     case DEPCMD_STARTTRANSFER:
         ep->trb_addr = ((uint64_t)ep->par0 << 32) | ep->par1;
         ep->trb_active = true;
+        ep->nrdy_pending = false;
         val = (val & ~0x007F0000U) | ((ep_idx + 1U) << 16);
         ep->cmd = val & ~DEPCMD_CMDACT;
         dwc3_ep_process_trb(s, ep_idx);
@@ -346,6 +370,22 @@ static void dwc3_handle_ep_cmd(CxdDwc3State *s, uint32_t ep_idx, uint32_t val)
 static uint64_t cxd_dwc3_read(void *opaque, hwaddr offset, unsigned size)
 {
     CxdDwc3State *s = CXD90045_DWC3(opaque);
+
+    /* E0595: physical ILCE-6400 MSC observation, not inferred capabilities.
+     * Keep the historical profile available for earlier replay baselines. */
+    if (s->captured_hwparams) {
+        static const uint32_t params[] = {
+            0x4020404aU, 0x0160c93bU, 0x00000001U, 0x06a4d085U,
+            0x47822020U, 0x04204108U, 0x0a0a8020U, 0x04881472U,
+        };
+        if (offset >= REG_GHWPARAMS0 && offset <= REG_GHWPARAMS7 &&
+            (offset & 3) == 0) {
+            return params[(offset - REG_GHWPARAMS0) / 4];
+        }
+        if (offset == REG_GHWPARAMS8) {
+            return 0x00000a0aU;
+        }
+    }
 
     if (offset >= REG_EP_BASE && offset < REG_EP_END) {
         uint32_t ep = (offset - REG_EP_BASE) / 0x10U;
@@ -560,10 +600,329 @@ static size_t decode_hex(const char *hex, uint8_t *out, size_t max_out)
     return n;
 }
 
+static void strict_reply(CxdDwc3State *s, const char *text)
+{
+    qemu_chr_fe_write_all(&s->chr, (const uint8_t *)text, strlen(text));
+}
+
+static bool strict_hex(const char *hex, uint8_t *data, uint32_t *length)
+{
+    size_t n = strlen(hex);
+    if (n > 2048 || (n & 1)) {
+        return false;
+    }
+    for (size_t i = 0; i < n; i++) {
+        if (hex_nibble(hex[i]) < 0) {
+            return false;
+        }
+    }
+    *length = decode_hex(hex, data, 1024);
+    return true;
+}
+
+static bool strict_ram_range(uint64_t address, uint32_t length)
+{
+    /* Declared sony-a6400 RAM windows, never a catch-all MMIO zero reply. */
+    return (address < 0x40000000ULL && length <= 0x40000000ULL - address) ||
+           (address >= 0x80000000ULL && address < 0xbf800000ULL &&
+            length <= 0xbf800000ULL - address);
+}
+
+/* Opt-in bounded EP0 host-token contract. No token is queued across NAK:
+ * the host retries after the original driver arms its own TRB. Unsupported
+ * lengths, chains and DMA accesses leave ownership unchanged and report an
+ * explicit boundary rather than a fabricated successful transfer. */
+static void strict_token(CxdDwc3State *s, uint32_t ep_idx, bool setup,
+                         const uint8_t *payload, uint32_t length)
+{
+    CxdDwc3Ep *ep = &s->eps[ep_idx];
+    CxdDwc3Trb trb;
+    char reply[80];
+    uint32_t kind, capacity, expected;
+    uint8_t data[1024];
+    uint64_t address;
+    bool in = dwc3_ep_is_in(ep_idx);
+
+    if (!s->host_connected || !(s->dctl & DCTL_RUN_STOP) ||
+        !(s->dalepena & (1U << ep_idx))) {
+        snprintf(reply, sizeof(reply), "NAK %u\n", ep_idx);
+        strict_reply(s, reply);
+        return;
+    }
+    if (setup) {
+        s->eps[0].stalled = false;
+        s->eps[1].stalled = false;
+    }
+    if (ep->stalled) {
+        snprintf(reply, sizeof(reply), "STALL %u\n", ep_idx);
+        strict_reply(s, reply);
+        return;
+    }
+    if (setup && s->control_stage != 0) {
+        strict_reply(s, "ERROR unsupported-control-abort\n");
+        return;
+    }
+    expected = setup ? 2 : (s->control_stage == 1 ? 5 :
+                           (s->control_stage == 2 ? (s->control_has_data ? 4 : 3) : 0));
+    if (!setup && (!expected ||
+        (in != (s->control_stage == 1 ? s->control_data_in : !s->control_data_in)))) {
+        strict_reply(s, "ERROR control-direction-or-stage\n");
+        return;
+    }
+    uint64_t ring_base = ((uint64_t)s->gevntadrhi << 32) | s->gevntadrlo;
+    if ((s->gevntsiz & 0xFFFCU) < 4 ||
+        !strict_ram_range(ring_base, s->gevntsiz & 0xFFFCU) ||
+        s->gevntcount + 4 > (s->gevntsiz & 0xFFFCU)) {
+        strict_reply(s, "ERROR event-ring-unavailable\n");
+        return;
+    }
+    if (!ep->trb_active || !ep->trb_addr) {
+        goto nak;
+    }
+    if (!strict_ram_range(ep->trb_addr, sizeof(trb)) ||
+        dma_memory_read(&address_space_memory, ep->trb_addr, &trb,
+                        sizeof(trb), MEMTXATTRS_UNSPECIFIED) != MEMTX_OK) {
+        strict_reply(s, "ERROR trb-dma-read\n");
+        return;
+    }
+    trb.bpl = le32_to_cpu(trb.bpl);
+    trb.bph = le32_to_cpu(trb.bph);
+    trb.size = le32_to_cpu(trb.size);
+    trb.ctrl = le32_to_cpu(trb.ctrl);
+    kind = (trb.ctrl >> 4) & 0x3f;
+    if (!(trb.ctrl & TRB_CTRL_HWO)) {
+        goto nak;
+    }
+    if (kind != expected) {
+        strict_reply(s, "ERROR trb-control-type\n");
+        return;
+    }
+    capacity = trb.size & 0xffffff;
+    address = ((uint64_t)trb.bph << 32) | trb.bpl;
+    if (capacity > sizeof(data) || (trb.size & 0xff000000U) || (trb.ctrl & 4U)) {
+        strict_reply(s, "ERROR unsupported-trb-length-flags-or-chain\n");
+        return;
+    }
+    if ((setup && (length != 8 || capacity < 8)) ||
+        (!in && length > capacity) || (s->control_stage == 2 && (length || (in && capacity)))) {
+        strict_reply(s, "ERROR token-length\n");
+        return;
+    }
+    if (in && capacity && (!strict_ram_range(address, capacity) ||
+        dma_memory_read(&address_space_memory, address, data,
+                    capacity, MEMTXATTRS_UNSPECIFIED) != MEMTX_OK)) {
+        strict_reply(s, "ERROR payload-dma-read\n");
+        return;
+    }
+    if (!in && length && (!strict_ram_range(address, length) ||
+        dma_memory_write(&address_space_memory, address, payload,
+                    length, MEMTXATTRS_UNSPECIFIED) != MEMTX_OK)) {
+        strict_reply(s, "ERROR payload-dma-write\n");
+        return;
+    }
+    CxdDwc3Trb completed = {
+        .bpl = cpu_to_le32(trb.bpl), .bph = cpu_to_le32(trb.bph),
+        .size = cpu_to_le32(in ? 0 : capacity - length),
+        .ctrl = cpu_to_le32(trb.ctrl & ~TRB_CTRL_HWO),
+    };
+    if (dma_memory_write(&address_space_memory, ep->trb_addr, &completed,
+                        sizeof(completed), MEMTXATTRS_UNSPECIFIED) != MEMTX_OK) {
+        strict_reply(s, "ERROR trb-dma-write\n");
+        return;
+    }
+    ep->trb_active = false;
+    ep->nrdy_pending = false;
+    if (setup) {
+        uint32_t requested = payload[6] | (payload[7] << 8);
+        s->control_data_in = (payload[0] & 0x80) != 0;
+        s->control_has_data = requested != 0;
+        s->control_stage = requested ? 1 : 2;
+        /* A no-data request always has an IN status phase. */
+        if (!requested) {
+            s->control_data_in = false;
+        }
+    } else {
+        s->control_stage = s->control_stage == 1 ? 2 : 0;
+    }
+    dwc3_push_depevt(s, ep_idx, DEPEVT_XFERCOMPLETE,
+                     (trb.ctrl & TRB_CTRL_LST) ? 8U : 0U, 0);
+    if (in) {
+        dwc3_emit_host_in(s, ep_idx, data, capacity);
+    } else {
+        snprintf(reply, sizeof(reply), "ACK %u %u\n", ep_idx, length);
+        strict_reply(s, reply);
+    }
+    return;
+nak:
+    if (!setup && !ep->nrdy_pending && (ep->cfg1 & (1U << 10))) {
+        dwc3_push_depevt(s, ep_idx, DEPEVT_XFERNOTREADY,
+                        s->control_stage == 2 ? 2 : 1, 0);
+        ep->nrdy_pending = true;
+    }
+    snprintf(reply, sizeof(reply), "NAK %u\n", ep_idx);
+    strict_reply(s, reply);
+}
+
+#define STRICT_BULK_MAX_BYTES (256U * 1024U)
+#define TRBCTL_NORMAL         1U
+#define TRBCTL_LINK           8U
+
+static CxdDwc3Ep *strict_resolve_ep(CxdDwc3State *s, uint32_t ep_idx)
+{
+    CxdDwc3Ep *ep = &s->eps[ep_idx];
+    if (ep->trb_active || ep->cfg1 != 0) {
+        return ep;
+    }
+    for (uint32_t j = 2; j < DWC3_MAX_EPS; j++) {
+        if (((s->eps[j].cfg1 >> 25) & 0x1FU) == ep_idx) {
+            return &s->eps[j];
+        }
+    }
+    return ep;
+}
+
+static void strict_bulk_in(CxdDwc3State *s, uint32_t ep_idx)
+{
+    CxdDwc3Ep *ep = strict_resolve_ep(s, ep_idx);
+    CxdDwc3Trb trb;
+    char reply[64];
+    uint32_t kind, capacity;
+    uint64_t address;
+
+    if (!s->host_connected || !(s->dctl & DCTL_RUN_STOP) ||
+        !(s->dalepena & (1U << ep_idx))) {
+        snprintf(reply, sizeof(reply), "NAK %u\n", ep_idx);
+        strict_reply(s, reply);
+        return;
+    }
+    if (ep->stalled) {
+        snprintf(reply, sizeof(reply), "STALL %u\n", ep_idx);
+        strict_reply(s, reply);
+        return;
+    }
+    uint64_t ring_base = ((uint64_t)s->gevntadrhi << 32) | s->gevntadrlo;
+    if ((s->gevntsiz & 0xFFFCU) < 4 ||
+        !strict_ram_range(ring_base, s->gevntsiz & 0xFFFCU) ||
+        s->gevntcount + 4 > (s->gevntsiz & 0xFFFCU)) {
+        strict_reply(s, "ERROR event-ring-unavailable\n");
+        return;
+    }
+    if (!ep->trb_active || !ep->trb_addr) {
+        goto nak;
+    }
+    for (int hop = 0; hop < 2; hop++) {
+        if (!strict_ram_range(ep->trb_addr, sizeof(trb)) ||
+            dma_memory_read(&address_space_memory, ep->trb_addr, &trb,
+                            sizeof(trb), MEMTXATTRS_UNSPECIFIED) != MEMTX_OK) {
+            strict_reply(s, "ERROR trb-dma-read\n");
+            return;
+        }
+        trb.bpl = le32_to_cpu(trb.bpl);
+        trb.bph = le32_to_cpu(trb.bph);
+        trb.size = le32_to_cpu(trb.size);
+        trb.ctrl = le32_to_cpu(trb.ctrl);
+        if (!(trb.ctrl & TRB_CTRL_HWO)) {
+            goto nak;
+        }
+        kind = (trb.ctrl >> 4) & 0x3f;
+        if (kind == TRBCTL_LINK && hop == 0) {
+            ep->trb_addr = ((uint64_t)trb.bph << 32) | trb.bpl;
+            continue;
+        }
+        break;
+    }
+    if (kind != TRBCTL_NORMAL) {
+        strict_reply(s, "ERROR trb-bulk-type\n");
+        return;
+    }
+    capacity = trb.size & 0xffffffU;
+    address = ((uint64_t)trb.bph << 32) | trb.bpl;
+    if (capacity > STRICT_BULK_MAX_BYTES || (trb.size & 0xff000000U)) {
+        strict_reply(s, "ERROR unsupported-bulk-length\n");
+        return;
+    }
+    uint8_t *data = capacity ? g_malloc(capacity) : NULL;
+    if (capacity && (!strict_ram_range(address, capacity) ||
+        dma_memory_read(&address_space_memory, address, data,
+                        capacity, MEMTXATTRS_UNSPECIFIED) != MEMTX_OK)) {
+        g_free(data);
+        strict_reply(s, "ERROR payload-dma-read\n");
+        return;
+    }
+    CxdDwc3Trb completed = {
+        .bpl = cpu_to_le32(trb.bpl),
+        .bph = cpu_to_le32(trb.bph),
+        .size = cpu_to_le32(0),
+        .ctrl = cpu_to_le32(trb.ctrl & ~TRB_CTRL_HWO),
+    };
+    if (dma_memory_write(&address_space_memory, ep->trb_addr, &completed,
+                         sizeof(completed), MEMTXATTRS_UNSPECIFIED) != MEMTX_OK) {
+        g_free(data);
+        strict_reply(s, "ERROR trb-dma-write\n");
+        return;
+    }
+    ep->trb_addr += sizeof(CxdDwc3Trb);
+    if (trb.ctrl & TRB_CTRL_LST) {
+        ep->trb_active = false;
+    }
+    ep->nrdy_pending = false;
+    uint32_t phys_ep = (uint32_t)(ep - s->eps);
+    dwc3_push_depevt(s, phys_ep, DEPEVT_XFERCOMPLETE,
+                     (trb.ctrl & TRB_CTRL_LST) ? 8U : 0U, 0);
+    dwc3_emit_host_in(s, ep_idx, data, capacity);
+    g_free(data);
+    return;
+nak:
+    if (!ep->nrdy_pending &&
+        ((ep->cfg1 & (1U << 10)) || (s->dalepena & (1U << ep_idx)))) {
+        dwc3_push_depevt(s, (uint32_t)(ep - s->eps), DEPEVT_XFERNOTREADY, 0, 0);
+        ep->nrdy_pending = true;
+    }
+    snprintf(reply, sizeof(reply), "NAK %u\n", ep_idx);
+    strict_reply(s, reply);
+}
+
+static void strict_host_line(CxdDwc3State *s, const char *line)
+{
+    uint8_t data[1024];
+    uint32_t length;
+    if (!strncmp(line, "SETUP ", 6)) {
+        if (!strict_hex(line + 6, data, &length) || length != 8) {
+            strict_reply(s, "ERROR setup-encoding-or-length\n");
+        } else {
+            strict_token(s, 0, true, data, length);
+        }
+    } else if (!strcmp(line, "IN 1")) {
+        strict_token(s, 1, false, NULL, 0);
+    } else if (s->strict_bulk && !strncmp(line, "IN ", 3)) {
+        char *end = NULL;
+        unsigned long ep_idx = strtoul(line + 3, &end, 10);
+        if (!end || *end != '\0' || ep_idx < 2 || ep_idx >= DWC3_MAX_EPS ||
+            !dwc3_ep_is_in((uint32_t)ep_idx)) {
+            strict_reply(s, "ERROR unsupported-host-command\n");
+        } else {
+            strict_bulk_in(s, (uint32_t)ep_idx);
+        }
+    } else if (!strncmp(line, "OUT 0 ", 6)) {
+        if (!strcmp(line + 6, "-")) {
+            strict_token(s, 0, false, NULL, 0);
+        } else if (strict_hex(line + 6, data, &length) && length) {
+            strict_token(s, 0, false, data, length);
+        } else {
+            strict_reply(s, "ERROR out-encoding\n");
+        }
+    } else {
+        strict_reply(s, "ERROR unsupported-host-command\n");
+    }
+}
+
 static void dwc3_handle_host_line(CxdDwc3State *s, const char *line)
 {
     if (strcmp(line, "CONN") == 0) {
         s->host_connected = true;
+        s->control_stage = 0;
+        s->eps[0].stalled = false;
+        s->eps[1].stalled = false;
         if (s->dctl & DCTL_RUN_STOP) {
             dwc3_push_devt(s, DEVT_USBRESET, 0);
             dwc3_push_devt(s, DEVT_CONNECTDONE, 0);
@@ -573,6 +932,8 @@ static void dwc3_handle_host_line(CxdDwc3State *s, const char *line)
         if (s->dctl & DCTL_RUN_STOP) {
             dwc3_push_devt(s, DEVT_DISCONNECT, 0);
         }
+    } else if (s->strict_ep0) {
+        strict_host_line(s, line);
     } else if (strncmp(line, "SETUP ", 6) == 0) {
         CxdDwc3Ep *ep0 = &s->eps[0];
         size_t n = decode_hex(line + 6, ep0->pending_out, sizeof(ep0->pending_out));
@@ -612,6 +973,12 @@ static void cxd_dwc3_chr_read(void *opaque, const uint8_t *buf, int size)
             continue;
         }
         if (c == '\n') {
+            if (s->strict_ep0 && s->rx_overflow) {
+                strict_reply(s, "ERROR host-line-too-long\n");
+                s->rx_len = 0;
+                s->rx_overflow = false;
+                continue;
+            }
             s->rx_line[s->rx_len] = '\0';
             if (s->rx_len > 0) {
                 dwc3_handle_host_line(s, s->rx_line);
@@ -619,6 +986,8 @@ static void cxd_dwc3_chr_read(void *opaque, const uint8_t *buf, int size)
             }
         } else if (s->rx_len + 1 < sizeof(s->rx_line)) {
             s->rx_line[s->rx_len++] = c;
+        } else if (s->strict_ep0) {
+            s->rx_overflow = true;
         }
     }
 }
@@ -636,8 +1005,30 @@ static void cxd_dwc3_reset(DeviceState *dev)
     s->gevntsiz = 0;
     s->host_connected = false;
     s->rx_len = 0;
+    s->rx_overflow = false;
     dwc3_device_reset(s);
 }
+
+/* E0597: fixed connected-MSC observation, not a reset/timing model. Only
+ * this read-only word is supplied; the legacy unimplemented baseline stays
+ * unchanged unless the captured-start-gate policy is explicitly selected. */
+static uint64_t cxd_start_gate_read(void *opaque, hwaddr offset, unsigned size)
+{
+    return 1;
+}
+
+static bool cxd_start_gate_accepts(void *opaque, hwaddr offset, unsigned size,
+                                  bool is_write, MemTxAttrs attrs)
+{
+    return !is_write;
+}
+
+static const MemoryRegionOps cxd_start_gate_ops = {
+    .read = cxd_start_gate_read,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 4, .max_access_size = 4,
+               .accepts = cxd_start_gate_accepts },
+};
 
 static void cxd_dwc3_realize(DeviceState *dev, Error **errp)
 {
@@ -648,6 +1039,12 @@ static void cxd_dwc3_realize(DeviceState *dev, Error **errp)
                           TYPE_CXD90045_DWC3, DWC3_MMIO_SIZE);
     sysbus_init_mmio(sbd, &s->mr);
     sysbus_init_irq(sbd, &s->irq);
+    if (s->captured_start_gate) {
+        memory_region_init_io(&s->captured_start_gate_mr, OBJECT(s),
+                              &cxd_start_gate_ops, s, "cxd90045.captured-start-gate", 4);
+        memory_region_add_subregion_overlap(get_system_memory(), 0xF0200024ULL,
+                                            &s->captured_start_gate_mr, 0);
+    }
 
     if (qemu_chr_fe_backend_connected(&s->chr)) {
         qemu_chr_fe_set_handlers(&s->chr, cxd_dwc3_chr_can_read,
@@ -657,6 +1054,10 @@ static void cxd_dwc3_realize(DeviceState *dev, Error **errp)
 
 static const Property cxd_dwc3_props[] = {
     DEFINE_PROP_CHR("chardev", CxdDwc3State, chr),
+    DEFINE_PROP_BOOL("captured-hwparams", CxdDwc3State, captured_hwparams, false),
+    DEFINE_PROP_BOOL("captured-start-gate", CxdDwc3State, captured_start_gate, false),
+    DEFINE_PROP_BOOL("strict-ep0", CxdDwc3State, strict_ep0, false),
+    DEFINE_PROP_BOOL("strict-bulk", CxdDwc3State, strict_bulk, false),
 };
 
 static void cxd_dwc3_class_init(ObjectClass *klass, const void *data)

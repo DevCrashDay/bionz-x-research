@@ -53,10 +53,16 @@ def main(argv=None):
     ap.add_argument("--logc4-display-cube", type=Path, help="official ARRI LogC4-to-Gamma24_Rec709-D65 v1 LUT")
     ap.add_argument("--gamma-model", choices=("uniform", "movie", "compare"), default="uniform")
     ap.add_argument("--charts", action="store_true", help="write reference and 4:2:0 validation charts (requires Pillow)")
+    ap.add_argument("--spatial-test", action="store_true", help="run offline ARRI vs Sony debayer/DCV spatial comparison")
     ap.add_argument("--interpolation", choices=("trilinear", "tetrahedral"),
                     help="override the preset interpolation model")
     ap.add_argument("--video-range", choices=("legal", "full"), help="override the default output range")
     a = ap.parse_args(argv)
+    if a.spatial_test:
+        from lut_core.spatial_test import run_spatial_comparison
+        out_png = run_spatial_comparison(a.out_dir)
+        print(f"Wrote spatial comparison chart: {out_png}")
+        return 0
     if bool(a.cube) == bool(a.arri):
         ap.error("supply input .cube files or choose --arri")
     if a.arri and a.source != SONY_SOURCE:

@@ -559,4 +559,65 @@ if len(sys.argv) > 5 and layout_aware:
     check(bytes(cam.m.mem_read(MTL_HOOK + OB, 12)) == MTL_ORIG, "user OFF restores the original lookup")
     check(cam.open_menu() == ["Mods Tab Look", "OFF"], "the next scan does not switch it ON again")
 
+if (B / "ActionTest.mod").exists():
+    print("Scenario 15: command item (SMOD_V2_FLAG_ACTION) starts the mod and closes the menu")
+    action_mod = (B / "ActionTest.mod").read_bytes()
+    _, _, tsyms = extract_elf_text((B / "test_mod.elf").read_bytes(), expected_code_addr=0)
+    check(struct.unpack_from("<I", action_mod, 8)[0] & 0x10 == 0x10, "file carries the action flag")
+    OP_NEW, EV_CTOR, EV_PUSH, EV_SLOT = 0x05E15974, 0x05E14E20, 0x05E18D5C, 0x07089984
+    ref_maps = b"".join(row + b"\n" for row in (
+        b"05d18000-0700e000 r-xp 00000000 fc:0f 22409      /usr/lib/libObj.so",
+        b"07016000-07106000 rw-p 012f6000 fc:0f 22409      /usr/lib/libObj.so"))
+
+    class EventCamera(Camera):
+        def __init__(self, files):
+            super().__init__(files)
+            self.events = []
+            self.m.mem_map(0x05E14000, 0x6000)
+            self.m.mem_map(0x064B5000, 0x1000)                 # ModsTabLook check reads here
+            self.m.mem_map(0x07089000, 0x1000)
+            self.m.mem_write(EV_SLOT, struct.pack("<I", 0x07089A00))
+            self.m.mem_write(0x07089A00, struct.pack("<I", 0x0708A5A5))
+
+        def code(self, m, pc, size, _):
+            r = [m.reg_read(x) for x in (A.UC_ARM_REG_R0, A.UC_ARM_REG_R1, A.UC_ARM_REG_R2, A.UC_ARM_REG_R3)]
+            if pc == OP_NEW:
+                self.ret(0x07089B00 if r[0] == 16 else 0)
+            elif pc == EV_CTOR:
+                self.events.append(("ctor", r[0], r[1], r[2] & 0xFF, r[3] & 0xFF)); self.ret(r[0])
+            elif pc == EV_PUSH:
+                self.events.append(("push", r[0], r[1], r[2])); self.ret(0)
+            else:
+                super().code(m, pc, size, _)
+
+    def row_text(cam):
+        return [t for off, t in cam.texts if off == 0x9350 + 0xB60]
+
+    cam = EventCamera({"/tmp_bt/mlv2/core.bin": core_bin, "/tmp_bt/mods/UsbStreaming.mod": action_mod,
+                       "/proc/self/maps": ref_maps})
+    texts = cam.open_menu()
+    check(texts == ["USB Streaming Test", ""], f"listed without an ON/OFF value ({texts})")
+    cam.texts.clear()
+    cam.press(0)
+    base = None
+    for line in cam.log:
+        if line.startswith("action_close "):
+            base = int(line.split()[1], 16)
+    check(base is not None and cam.u32(base + tsyms["t_counter"]) == 1, "press switched the mod ON (on() ran once)")
+    check(cam.events == [("ctor", 0x07089B00, 0x15010102, 4, 1), ("push", 0x0708A5A5, 0x07089B00, 1)],
+          f"MENU key event queued to the live event manager ({cam.events})")
+    check(row_text(cam) == ["Active"], f"row shows Active ({row_text(cam)})")
+    check(cam.open_menu() == ["USB Streaming Test", "Active"], "running state survives a rescan")
+    cam.events.clear(); cam.texts.clear()
+    cam.press(0)
+    check(cam.u32(base + tsyms["t_counter"]) == 0x101 and not cam.events and row_text(cam) == [""],
+          "second press stops it (off() ran), menu stays open, value cleared")
+
+    cam = EventCamera({"/tmp_bt/mlv2/core.bin": core_bin, "/tmp_bt/mods/UsbStreaming.mod": action_mod})
+    cam.open_menu()
+    cam.press(0)
+    check(any(l.startswith("action_close_unavailable") for l in cam.log) and not cam.events,
+          "without a known libObj.so base no event is posted (reported, menu stays open)")
+    check(cam.open_menu() == ["USB Streaming Test", "Active"], "the mod itself still started")
+
 print("ALL SCENARIOS PASSED")
