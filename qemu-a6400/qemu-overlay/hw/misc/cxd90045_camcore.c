@@ -1,28 +1,43 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
- * CXD90045 CamCore register block at 0xF3010000 (64 KiB).
+ * CXD90045 CamCore register blocks.
  *
- * The av-cam core maps this block 1:1 (virtual 0xF30x0000 = physical, see
- * docs/evidence/0564-qemu-ydet-window-configuration-reaches-camcore.md).
- * In the baseline access log (loop/runs/L0016/run1/qemu-d.log) it has 1012
- * distinct (kind, offset) pairs but only 28 distinct read offsets; the other
- * 984 offsets are write-only configuration.  This device stores every write
- * and gives each observed read offset a named rule instead of the catch-all
- * zero/LOG_UNIMP behaviour:
+ * The av-cam core maps the CamCore windows 1:1 (virtual 0xF30x0000 =
+ * physical, see docs/evidence/0564-qemu-ydet-window-configuration-reaches-
+ * camcore.md).  Three instances share this device, each selected by the
+ * "base" property:
  *
- *  - RF   read back the last value written (the 16 read-modify-write words,
- *         plus 0x5020, which the guest writes 0x01030001 and then reads).
- *  - Z0   return 0: polled status words the guest never writes.  Each getter
- *         PC and mask comes from a gdbstub read watchpoint on the baseline
- *         build (loop/scratch/L0025/watch3.log, watch4.log, disasm2.txt);
- *         returning 0 is the baseline behaviour and no value is invented.
- *         The RMW load PCs below are from this lead's watchpoints on the v11
- *         baseline (loop/scratch/L0027/watch*.log, disasm.txt); each one is
- *         an ldr/bfi/str sequence to the same word.
+ *   0xF3010000 (64 KiB)  L0027: 1012 distinct (kind, offset) pairs,
+ *                        28 read offsets, 984 write-only.
+ *   0xF3000000 (64 KiB)  L0028: 789 distinct pairs, 57 read offsets,
+ *                        732 write-only.
+ *   0xF3120000 (64 KiB)  L0028: 100 distinct pairs, 13 read offsets,
+ *                        87 write-only.
+ *
+ * The per-block rule tables come from the L0026 spec
+ * (loop/scratch/L0026/spec.md, 70/70 reading PCs verified by its red team)
+ * and this lead's recount on the fresh v11 baseline log
+ * loop/runs/L0028/base/qemu-d.log (classify-base.txt):
+ *
+ *  - RF   read back the last value written.  An offset is RF only when every
+ *         baseline read of it is immediately followed by a write to the same
+ *         offset (a true read-modify-write word).
+ *  - Z0   return 0: every read offset that is not such a read-modify-write
+ *         word.  That covers status words the guest never writes and the
+ *         guest-written words whose reads are copies/one-shot getters, for
+ *         which returning 0 is the baseline (catch-all) behaviour.  No value
+ *         is invented.
+ *
+ * Rule counts: 0xF3010000 17 RF + 11 Z0 (unchanged L0027); 0xF3000000
+ * 23 RF + 34 Z0; 0xF3120000 5 RF + 8 Z0.  0xF3120000 +0x0410 is Z0, not RF:
+ * the guest writes 1 and its boolean caller (0x63cd493b subs/cmp) takes a
+ * different branch when the read returns 1, enabling channels 6/12/13/15
+ * whose unmodelled status then stalls the YUV path.  The baseline zero path
+ * is the observed one, so this one-shot gate holds 0; no value is invented.
  *
  * All observed reads are in the table, so no read offset depends on a
- * blanket fallback.  An unlisted read returns 0 and is logged with
- * LOG_UNIMP, so a new read offset is never silent.
+ * blanket fallback.  An unlisted read returns 0 and is logged with LOG_UNIMP,
+ * so a new read offset is never silent.
  *
  * The off-by-default "trace" property logs every access (kind, offset,
  * size, value) with qemu_log, so the guest write stream can be compared
@@ -53,10 +68,11 @@ typedef struct CamCoreRule {
 } CamCoreRule;
 
 /*
- * One entry per observed read offset (28).  PCs are the Thumb load
- * instructions; the gdbstub watchpoint reports the following instruction.
+ * 0xF3010000 (L0027, unchanged): one entry per observed read offset (28).
+ * PCs are the Thumb load instructions; the gdbstub watchpoint reports the
+ * following instruction.
  */
-static const CamCoreRule camcore_rules[] = {
+static const CamCoreRule camcore_rules_f301[] = {
     { 0x4b00, CAM_RF,   0xffffffff, "RMW at 0x63cdf21a: ldr/bfi/str same word" },
     { 0x4b04, CAM_RF,   0xffffffff, "RMW at 0x63cdf25e: ldr/bfi/str same word" },
     { 0x5020, CAM_RF,   0xffffffff, "read back guest write 0x01030001; "
@@ -88,23 +104,119 @@ static const CamCoreRule camcore_rules[] = {
     { 0x5e00, CAM_RF,   0xffffffff, "RMW at 0x63cd9396: ldr/bfi/str same word" },
 };
 
+/*
+ * 0xF3000000: one entry per observed read offset (57).  Counts are from
+ * loop/scratch/L0028/classify-base.txt (fresh v11 base, 60 s) and are the
+ * same in the 100 s base-long log (5.43 s guest): 23 RF offsets, every read
+ * followed by a write (ldr/bfi/str RMW); 34 Z0 offsets (never-written
+ * status plus the 4 offsets whose reads are mostly not followed by a write
+ * and the guest-written one-shot words, all 0 on the baseline path).
+ */
+static const CamCoreRule camcore_rules_f300[] = {
+    { 0x0038, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cd5530" },
+    { 0x01C0, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cd0dac" },
+    { 0x0408, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cd0e06" },
+    { 0x0410, CAM_ZERO, 0xffffffff, "not RMW (no read->write); 0 at 0x63cd0e52" },
+    { 0x0438, CAM_ZERO, 0x3fff3fff, "not RMW (no read->write); 0 at 0x63cd0f70" },
+    { 0x043C, CAM_ZERO, 0x3fff3fff, "not RMW (no read->write); 0 at 0x63cd0f9c" },
+    { 0x0458, CAM_ZERO, 0xffffffff, "not RMW (no read->write); 0 at 0x63cd1032" },
+    { 0x0710, CAM_ZERO, 0xffffffff, "not RMW (no read->write); 0 at 0x63cd44ce" },
+    { 0x0810, CAM_ZERO, 0xffffffff, "not RMW (no read->write); 0 at 0x63ccff94" },
+    { 0x0904, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cd0152" },
+    { 0x0910, CAM_ZERO, 0xffffffff, "not RMW (no read->write); 0 at 0x63cd0198" },
+    { 0x0E10, CAM_ZERO, 0xffffffff, "status, never written; getter 0x63cd040e" },
+    { 0x2008, CAM_ZERO, 0xffffffff, "status: 6/12 reads not -> write; "
+                                    "getter 0x639be844" },
+    { 0x2280, CAM_ZERO, 0xffffffff, "status: 854/1067 reads not -> write; "
+                                    "getter 0x639be9e8" },
+    { 0x2284, CAM_ZERO, 0x80000000, "status, never written; getter 0x639bea4e" },
+    { 0x229C, CAM_ZERO, 0xffffffff, "status, never written; getter 0x639beb5a" },
+    { 0x22C4, CAM_ZERO, 0xffffffff, "not RMW (no read->write); 0 at 0x639be90a" },
+    { 0x22DC, CAM_ZERO, 0xffffffff, "not RMW (no read->write); 0 at 0x639be95e" },
+    { 0x2400, CAM_ZERO, 0xffffffff, "status: 858/1072 reads not -> write; "
+                                    "getter 0x639be9e8" },
+    { 0x2404, CAM_ZERO, 0xffffffff, "status, never written; getter 0x639be77c" },
+    { 0x241C, CAM_ZERO, 0xffffffff, "status, never written; getter 0x639beb5a" },
+    { 0x2444, CAM_ZERO, 0xffffffff, "not RMW (no read->write); 0 at 0x639be90a" },
+    { 0x245C, CAM_ZERO, 0xffffffff, "not RMW (no read->write); 0 at 0x639be95e" },
+    { 0x2480, CAM_ZERO, 0xffffffff, "status: 858/1072 reads not -> write; "
+                                    "getter 0x639be9e8" },
+    { 0x2484, CAM_ZERO, 0xffffffff, "status, never written; getter 0x639be77c" },
+    { 0x249C, CAM_ZERO, 0xffffffff, "status, never written; getter 0x639beb5a" },
+    { 0x24C4, CAM_ZERO, 0xffffffff, "not RMW (no read->write); 0 at 0x639be90a" },
+    { 0x24DC, CAM_ZERO, 0xffffffff, "not RMW (no read->write); 0 at 0x639be95e" },
+    { 0x3300, CAM_ZERO, 0x00000001, "status, never written; getter 0x63cd1098" },
+    { 0x3418, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cda7be" },
+    { 0x3500, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cd9baa" },
+    { 0x3504, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cd9bfe" },
+    { 0x350C, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cd9c4c" },
+    { 0x3510, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cd9c68" },
+    { 0x3518, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cd9c8c" },
+    { 0x351C, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cd9c9a" },
+    { 0x3538, CAM_ZERO, 0x00003fff, "status, never written; getter 0x63cd9cf4" },
+    { 0x353C, CAM_ZERO, 0x00003fff, "status, never written; getter 0x63cd9d00" },
+    { 0x3540, CAM_ZERO, 0x00003fff, "status, never written; getter 0x63cd9d0c" },
+    { 0x3544, CAM_ZERO, 0x000001ff, "status, never written; getter 0x63cd9d18" },
+    { 0x3548, CAM_ZERO, 0x000001ff, "status, never written; getter 0x63cd9d30" },
+    { 0x354C, CAM_ZERO, 0x000001ff, "status, never written; getter 0x63cd9d48" },
+    { 0x3550, CAM_ZERO, 0x000001ff, "status, never written; getter 0x63cd9d60" },
+    { 0x3554, CAM_ZERO, 0x000001ff, "status, never written; getter 0x63cd9d78" },
+    { 0x3558, CAM_ZERO, 0x000001ff, "status, never written; getter 0x63cd9d90" },
+    { 0x3C00, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cdad66" },
+    { 0x3C04, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cdad74" },
+    { 0x3C08, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cdadba" },
+    { 0x3C0C, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cdadd6" },
+    { 0x3C10, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cdadf2" },
+    { 0x3C14, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cdae0e" },
+    { 0x3C18, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cdae2a" },
+    { 0x3C1C, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cdae46" },
+    { 0x3C20, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cdae62" },
+    { 0x3C24, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cdae7e" },
+    { 0x3C28, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cdae9a" },
+    { 0x3C2C, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cdafb2" },
+};
+
+/*
+ * 0xF3120000: one entry per observed read offset (13): 5 RF offsets (every
+ * read followed by a write) and 8 Z0.  The SGC1 words at +0x48, +0x50,
+ * +0x210, +0x220, +0x224 stay owned by sony_sgc1_create (map priority -500
+ * above this block's -600), so they are not listed here.
+ */
+static const CamCoreRule camcore_rules_f312[] = {
+    { 0x0038, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cd5556" },
+    { 0x003C, CAM_ZERO, 0x00000003, "status, never written; getter 0x6376a756" },
+    { 0x004C, CAM_ZERO, 0xffffffff, "status, never written; getter 0x63cd4bd2" },
+    { 0x0054, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cd4bf2" },
+    { 0x0208, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cd46da" },
+    { 0x0230, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cd563a" },
+    { 0x032C, CAM_ZERO, 0x0003ffff, "not RMW (no read->write); 0 at 0x63cd475e" },
+    { 0x0410, CAM_ZERO, 0xffffffff, "RMW but read-back=1 enables extra channels and stalls YUV; 0 is the baseline path (0x63cd482c)" },
+    { 0x042C, CAM_ZERO, 0xffffffff, "not RMW (no read->write); 0 at 0x63cd4868" },
+    { 0x0438, CAM_ZERO, 0x3fff3fff, "not RMW (no read->write); 0 at 0x63cd48a2" },
+    { 0x043C, CAM_ZERO, 0x3fff3fff, "not RMW (no read->write); 0 at 0x63cd48ce" },
+    { 0x047C, CAM_ZERO, 0xffffffff, "status, never written; getter 0x63cd4902" },
+    { 0x2160, CAM_RF,   0xffffffff, "RMW, every read -> write; 0x63cef180" },
+};
+
 struct CamCoreState {
     SysBusDevice parent_obj;
     MemoryRegion mr;
     GHashTable *regs;
     uint64_t size;
-    uint64_t base;      /* for the mapping comment only */
+    uint64_t base;      /* selects the per-block rule table */
     char *name;
     bool trace;
+    const CamCoreRule *rules;
+    size_t nrules;
 };
 
-static const CamCoreRule *camcore_rule(uint32_t off)
+static const CamCoreRule *camcore_rule(const CamCoreState *s, uint32_t off)
 {
     size_t i;
 
-    for (i = 0; i < ARRAY_SIZE(camcore_rules); i++) {
-        if (camcore_rules[i].off == off) {
-            return &camcore_rules[i];
+    for (i = 0; i < s->nrules; i++) {
+        if (s->rules[i].off == off) {
+            return &s->rules[i];
         }
     }
     return NULL;
@@ -114,7 +226,7 @@ static uint64_t camcore_read(void *opaque, hwaddr off, unsigned size)
 {
     CamCoreState *s = opaque;
     hwaddr w = off & ~3ULL;
-    const CamCoreRule *r = camcore_rule(w);
+    const CamCoreRule *r = camcore_rule(s, w);
     uint32_t v = 0;
 
     if (!r) {
@@ -174,6 +286,23 @@ static void camcore_reset(DeviceState *dev)
 static void camcore_realize(DeviceState *dev, Error **errp)
 {
     CamCoreState *s = CXD90045_CAMCORE(dev);
+
+    switch (s->base) {
+    case 0xF3000000ULL:
+        s->rules = camcore_rules_f300;
+        s->nrules = ARRAY_SIZE(camcore_rules_f300);
+        break;
+    case 0xF3120000ULL:
+        s->rules = camcore_rules_f312;
+        s->nrules = ARRAY_SIZE(camcore_rules_f312);
+        break;
+    default:
+        /* 0xF3010000 (the original L0027 instance) and any other base. */
+        s->rules = camcore_rules_f301;
+        s->nrules = ARRAY_SIZE(camcore_rules_f301);
+        break;
+    }
+
     s->regs = g_hash_table_new(g_direct_hash, g_direct_equal);
     memory_region_init_io(&s->mr, OBJECT(dev), &camcore_ops, s,
                           s->name ? s->name : "cxd90045-camcore", s->size);
