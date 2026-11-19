@@ -301,6 +301,13 @@ captured inputs using the workflow above. The E0579 boot set already contains
   of the 112 staging words at `0xF3C00340–0xF3C004FC`. The staging words can
   retain bytes from previous transfers. Use the trace to compare guest
   programming with the IMX284 tables in [E0578](../docs/evidence/0578-a6400-open-gate-3-2-recording-feasibility.md).
+- `tools/handover_guard.c` (E0638) checks the ARMv7 cache/MMU teardown before a
+  kexec-style jump. Build it like the DWC3 observer below, using
+  `-I "$A6400_QEMU_DIR/include/plugins"`, then add
+  `-plugin /abs/handover_guard.so,entry=0xADDR,exit=1 -d plugin -D guard.log`.
+  `tests/test_qemu_handover_guard.py` builds it with `tools/handover_payload.S`.
+  Add `,dma=/abs/qemu-a6400/tools/handover_dma_contracts.txt` for the DMA
+  quiescence check (E0639).
 - Build the DWC3 observer against the QEMU 10.1 plugin API and append
   `-plugin /absolute/path/dwc3_trace.so` to your `QEMU_EXTRA` options.
   It records guest PC, physical register, access direction, width and

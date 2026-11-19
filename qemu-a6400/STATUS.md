@@ -1,5 +1,67 @@
 # QEMU `sony-a6400`: findings and next steps
 
+## LIRO `ram` section is av-cam data (2026-11-19 / E0644)
+
+The work DMA copy is av-cam's own initialised RW data (1,878 references from av-cam code into
+the run region), not another core's firmware; this supersedes the E0642 inference. No code that
+uses it runs before the current stall, so set `WORK_DMA=1` for runs meant to get further. The guard
+gains `exec_range=START:END`. See
+[E0644](../docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md).
+
+## 0xF30A fill engine and LIRO `ram` section (2026-11-19 / E0642)
+
+LIRO `entry_pre` zeroes its bss (`0x0403A000` + `0x497A26`) with the `0xF30A` memory-fill
+engine and copies its `ram` section with the work DMA (E0644: av-cam RW data). The
+bss is already zero in the preloaded `av-cam.bin`, so the unmodelled fill is harmless for a cold
+boot. No main-CPU access reaches the `ram` run region in 120 s; its consumer is not found. The
+guard's `trace_ram=1` adds RAM tracing. See
+[E0642](../docs/evidence/0642-a6400-f30a-fill-engine-and-liro-ram-section.md).
+
+## Opt-in work DMA copy model (2026-11-19 / E0641)
+
+`-M sony-a6400,work-dma=on` (`WORK_DMA=1`) performs the av-cam work DMA copies at
+`0xF0102000` (channel `+0x1C0`, config `0x1C491000 | words`, 0 = 4096); any other mode is
+refused and logged under `-d unimp`. A stock boot copies 52 chunks (847,460 B, an embedded ARM
+program from `av-cam.bin`) to `0x045ACF00` with the same console output as without the model.
+See [E0641](../docs/evidence/0641-qemu-work-dma-copy-model-opt-in.md).
+
+## Work DMA contract and missing copies (2026-11-19 / E0640)
+
+av-cam `0x635DC8B8` enables the work DMA at `0xF0102000` (`+0x030`), copies 52 × 16 KiB
+through the `+0x1C0` channel (start `+0x1D0`, busy `+0x01C` bit 6) and disables it. The
+handover guard now has a `[C]` contract for it, and a stock boot passes every DMA contract.
+The engine is unmodelled, so av-cam sees immediate completion but **no data is copied**
+(`0x044D3380…` → `0x045ACF00…`). `trace=START:END` on the guard logs MMIO PC/LR. See
+[E0640](../docs/evidence/0640-a6400-work-dma-0xf0102000-contract.md).
+
+## Handover guard DMA quiescence (2026-11-19 / E0639)
+
+`dma=tools/handover_dma_contracts.txt` adds G10: DWC3 must be stopped and halted, PL330 and
+the VPH/sensor AIF channels need an idle status read after their last write, and engines
+without a known stop contract (work DMA `0xF0102000`) count as unverified. A bounded stock
+boot programs only DWC3 (soft reset, never started) and the work DMA. See
+[E0639](../docs/evidence/0639-qemu-handover-guard-dma-quiescence.md).
+
+## Handover guard for cache/MMU teardown (2026-11-19 / E0638)
+
+`tools/handover_guard.c` (TCG plugin, `entry=0xADDR[,exit=1]`) reports, when the entry is
+first executed, whether SCTLR.M/C/I are off, a full DCCISW pass followed C-off, ICIALLU, DSB
+and ISB ordering holds, IRQ/FIQ are masked and the other cores are parked in WFx. The
+mainline-order fixture `tools/handover_payload.S` passes; nine variants that each drop one
+step fail only that item, although all of them still reach the entry in TCG. Outer L2, DMA
+and GIC are not checked. See
+[E0638](../docs/evidence/0638-qemu-handover-guard-cache-mmu-teardown.md).
+
+## Opt-in hardware watchdog (2026-11-19 / E0636)
+
+`-M sony-a6400,watchdog=on` (`WATCHDOG=1`) maps a one-channel CXD4115 watchdog at
+`0xF2402000`, matching the stock kernel's `cxd900x0_wdt_setup/start/stop` and
+`watchdog_touch` writes (CMP `1001 * wdt.timeout` = `0x7A314`). Expiry is logged and follows
+`-action watchdog=` (default reset). Default machine unchanged. qtest 14/14; paired 150 s
+replays with `-action watchdog=none`: 0 expiries, same boot stage. Reset scope and clock rate
+are inferred, not hardware-checked. See
+[E0636](../docs/evidence/0636-qemu-cxd4115-hardware-watchdog-opt-in.md).
+
 ## CamCore block at 0xF3010000 (2026-11-19 / E0637)
 
 `cxd90045-camcore` stores writes in the 64 KiB block and answers the 28
@@ -22,6 +84,16 @@ re-run in this workspace and were not checked on a physical camera. See
 [E0614](../docs/evidence/0614-f280-clock-readback-contributor-boot-score.md)
 through
 [E0618](../docs/evidence/0618-f388-readback-contributor-boot-score.md).
+
+## Native USB release waits for ModelCamera (2026-11-19 / E0619)
+
+Original still-recording release paths execute but their group-1 readiness
+check receives false from `ModelCamera` (`0x0B`), with successful transport.
+`ModelStillRec` (`0x0F`) is ready. Paired none/bars runs match the native load
+of model byte `+0x64`; a separate trace confirms native writes `1,0,1,0`.
+The final clear returns to `libObj+0x4AA0A4`. Its original state dependency
+is next; no hardware response or ready-state bypass was added. See
+[E0619](../docs/evidence/0619-native-usb-release-model-camera-readiness.md).
 
 ## Stock USB input is inhibited by original startup policy (2026-11-19 / E0613)
 
@@ -531,7 +603,7 @@ a6400 binaries, then cross-checked against `Oein/a5000-emulator` `docs/BOOT.md`.
 - Compressed `dnflasha*` mounts fail `ENXIO` (`AL_EMMC_BLK_UZ … Information table is invalid`). init falls back to the uncompressed partitions [C].
 - The eMMC driver prints `execute_tuning … forbiden for non-HS200 mode` on every access (~900 lines per run) [C].
 - `/system` (`nflasha3`) on `emmc.img` is an empty FAT. av-cam and the other boot-set files are only supplied as preloads [C].
-- The watchdog at `0xF2402000` is unmodelled, although the main cmdline sets `wdt.mode=1` [C]. Today it is harmless because unmapped accesses are ignored [I].
+- The watchdog at `0xF2402000` is unmodelled by default, although the main cmdline sets `wdt.mode=1 wdt.timeout=500` [C]. Opt-in `watchdog=on` / `WATCHDOG=1` models it (E0636).
 - `nflasha1: bogus number of reserved sectors`: the updater partition on `emmc.img` is not FAT [C].
 
 ## Next possible steps (suggested order)
@@ -553,8 +625,8 @@ For each step, check `Oein/a5000-emulator` first for the CXD90014 equivalent.
    `upm.ko` and av-cam read there [I: likely the same role].
 4. **ADC / keys and front-end units.** ADC channels must read as "no key pressed". Front-end and
    sensor-interface IRQs are needed once live view runs (a5000 §1.1 IRQ table).
-5. **Watchdog.** Model `0xF2402000` as a CXD4115 watchdog channel (the a5000 model has `watchdog=true`)
-   before long runs, so a real expiry is visible instead of silently ignored.
+5. **Watchdog.** Done as opt-in `watchdog=on` (E0636). Remaining: hardware reset scope, PMIC
+   keepalive, and the `wdt_intr` GPIO pre-expiry path.
 6. **Display.** Sugilite/`dmp_smaph` scan-out to a QEMU console. The a5000 has `dmp_smaph.c`,
    `cxd90014_vph.c` and `a5k_fbview.c`. The OSD format is known from E0298 (640×480 RGBA4444).
 7. **Optional real-camera verification (read-only, standing authorization):** one 4 KiB read of

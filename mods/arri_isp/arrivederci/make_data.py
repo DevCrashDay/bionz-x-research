@@ -76,6 +76,13 @@ if (sabin_dir / "dcv_psf_table_movie_bayer.bin").exists():
         _c_bytes(sym, (sabin_dir / fname).read_bytes()) for sym, fname in sabin_files.items()
     )
 
+refadr_path = root / "artifacts/analysis/arri-v5-3dlut/refadr_arri_v5.bin"
+refadr_hdr = ""
+if refadr_path.exists():
+    refadr_bytes = refadr_path.read_bytes()
+    assert len(refadr_bytes) == 1215
+    refadr_hdr = "#define REFADR_EMBEDDED 1\n" + _c_bytes("REFADR_ARRI", refadr_bytes)
+
 legacy = ("#define GAMMA_HAS_LEGACY 1\n"
           f"static const uint32_t GAMMA_LEGACY[96] = {{{fmt(gamma_legacy, True)}}};\n")
 if color_legacy:
@@ -87,4 +94,4 @@ Path(sys.argv[1]).write_text(
     f"static const uint32_t GAMMA_ARRI[96] = {{{fmt(gamma_arri, True)}}};\n"
     f"static const int16_t COLOR_STOCK[9] = {{{fmt(color_stock, False)}}};\n"
     f"static const int16_t COLOR_ARRI[9] = {{{fmt(color_arri, False)}}};\n"
-    + legacy + sabin_hdr)
+    + legacy + sabin_hdr + refadr_hdr)

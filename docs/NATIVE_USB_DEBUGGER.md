@@ -41,6 +41,11 @@ then reads the official 1.01 `libJiritsu.so`: its dispatcher selects
 USB. `A6400_EPHEMERAL_RAM=1` keeps a
 future daemon log on `/tmp_bt` or `/tmp` and waits longer for
 `/dev/usb/usb_extcmd`; it has not been started on a camera.
+[E0643](evidence/0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md)
+confirms synchronous `dlopen("/tmp/jiritsu/libJit.so", RTLD_LAZY)` at `0x5D08`
+in `adj_cmd_set_file2` and adds the offline `--mode plan-chunk-dump` planner
+(`<= 512 KiB` single reused RAM chunk slot, allowing `/dev/nflashaB0`/`B1`
+while rejecting `/dev/nflasha23`) to avoid `tmpfs` OOM and watchdog resets.
 
 ## Protocol v2 (E0401): warm log readout, recover, and the PC Remote boundary
 

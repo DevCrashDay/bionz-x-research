@@ -43,6 +43,15 @@ claimed, and captured step 26 stays open.
 
 ## USB delivery update (2026-11-18)
 
+2026-11-19 [E0619](evidence/0619-native-usb-release-model-camera-readiness.md)
+reaches the enclosing still-recording USB-release paths. Binding group 1
+receives valid not-ready replies from `ModelCamera` (`0x0B`), while
+`ModelStillRec` (`0x0F`) is ready. Paired none/bars traces match the exact
+native byte load; a separate writer trace records original stores `1,0,1,0`.
+The last clear returns to `libObj+0x4AA0A4`. Next is that caller's original
+state dependency; no missing hardware response or connection to the separate
+step-26 wait is established. No production emulator code changed.
+
 2026-11-19 [E0613](evidence/0613-original-usb-key-inhibit-owner-and-release-boundary.md)
 identifies the original application-delivery gate. Startup code queries alias
 `@M001` parameter `0x100=1` and natively inhibits USB physical key `0x07000001`

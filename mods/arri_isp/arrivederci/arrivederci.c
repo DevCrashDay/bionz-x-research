@@ -17,6 +17,8 @@
 
 #define GAMMA_PA 0x03e5363cu
 #define COLOR_PA 0x0444b1d4u
+#define CC_TUNING_PA 0x0442d8b8u
+#define REFADR0_PA 0x04490025u
 
 static long sc3(long n, long a, long b, long c) {
     register long r0 __asm__("r0") = a, r1 __asm__("r1") = b, r2 __asm__("r2") = c;
@@ -34,11 +36,17 @@ static long sc6(long n, long a, long b, long c, long d, long e, long f) {
 }
 
 static uint32_t get(const volatile void *p, int sz, int i) {
-    return sz == 4 ? ((const volatile uint32_t *)p)[i] : ((const volatile uint16_t *)p)[i];
+    if (sz == 4) return ((const volatile uint32_t *)p)[i];
+    if (sz == 2) return ((const volatile uint16_t *)p)[i];
+    return p ? ((const volatile uint8_t *)p)[i] : 0u;
 }
 
-/* Guarded swap of n elements of size sz (2 or 4 bytes) at physical address pa. The target is
- * written only when it holds `from` (or `alt`, if given); otherwise it is left untouched. */
+static uint32_t get_ref(const void *p, int sz, int i) {
+    return p ? get(p, sz, i) : 0u;
+}
+
+/* Guarded swap of n elements of size sz (1, 2, or 4 bytes) at physical address pa.
+ * Passing from==0 or to==0 represents an all-zero reference buffer. */
 static char swap(uint32_t pa, int sz, int n, const void *from, const void *alt, const void *to) {
     long fd = sc3(5, (long)"/dev/mem", 02 | 04010000 /* O_RDWR | O_SYNC */, 0);
     if (fd < 0) return 'o';
@@ -48,22 +56,24 @@ static char swap(uint32_t pa, int sz, int n, const void *from, const void *alt, 
     int is_to = 1, is_from = 1, is_alt = alt != 0;
     for (int i = 0; i < n; i++) {
         uint32_t v = get(p, sz, i);
-        if (v != get(to, sz, i)) is_to = 0;
-        if (v != get(from, sz, i)) is_from = 0;
-        if (alt && v != get(alt, sz, i)) is_alt = 0;
+        if (v != get_ref(to, sz, i)) is_to = 0;
+        if (v != get_ref(from, sz, i)) is_from = 0;
+        if (alt && v != get_ref(alt, sz, i)) is_alt = 0;
     }
     char code = 'x';
     if (is_to) {
         code = 'a';
     } else if (is_from || is_alt) {
         for (int i = 0; i < n; i++) {
-            if (sz == 4) ((volatile uint32_t *)p)[i] = ((const uint32_t *)to)[i];
-            else ((volatile uint16_t *)p)[i] = ((const uint16_t *)to)[i];
+            uint32_t val = get_ref(to, sz, i);
+            if (sz == 4) ((volatile uint32_t *)p)[i] = val;
+            else if (sz == 2) ((volatile uint16_t *)p)[i] = (uint16_t)val;
+            else ((volatile uint8_t *)p)[i] = (uint8_t)val;
         }
         __asm__ volatile("dsb" ::: "memory");
         code = is_from ? 'w' : 'l';
         for (int i = 0; i < n; i++)
-            if (get(p, sz, i) != get(to, sz, i)) code = 'v';
+            if (get(p, sz, i) != get_ref(to, sz, i)) code = 'v';
     }
     sc3(91 /* munmap */, base, 4096, 0);
     sc3(6, fd, 0, 0);
@@ -183,11 +193,22 @@ void arri_life(int on) {
     char c = on ? swap(COLOR_PA, 2, 9, COLOR_STOCK, legacy, COLOR_ARRI)
                 : swap(COLOR_PA, 2, 9, COLOR_ARRI, legacy, COLOR_STOCK);
     char s = sync_sabin(on);
-    char line[] = "arrivederci on=? gamma=? color=? sabin=?\n";
+#ifdef REFADR_EMBEDDED
+    static const uint16_t cc_bypass = 0xffffu;
+    char l3 = on ? swap(REFADR0_PA, 1, sizeof(REFADR_ARRI), 0, 0, REFADR_ARRI)
+                 : swap(REFADR0_PA, 1, sizeof(REFADR_ARRI), REFADR_ARRI, 0, 0);
+    char lmode = on ? swap(CC_TUNING_PA, 2, 1, &cc_bypass, 0, 0)
+                    : swap(CC_TUNING_PA, 2, 1, 0, 0, &cc_bypass);
+    if (lmode != 'w' && lmode != 'a') l3 = lmode;
+#else
+    char l3 = 'n';
+#endif
+    char line[] = "arrivederci on=? gamma=? color=? sabin=? lut3d=?\n";
     line[15] = (char)('0' + on);
     line[23] = g;
     line[31] = c;
     line[39] = s;
+    line[47] = l3;
     long fd = sc3(5, (long)"/tmp_bt/mods/arrivederci.log", 01 | 0100 | 02000, 0600);
     if (fd >= 0) { sc3(4, fd, (long)line, sizeof(line) - 1); sc3(6, fd, 0, 0); }
 }
