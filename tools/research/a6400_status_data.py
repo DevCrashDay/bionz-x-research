@@ -221,20 +221,20 @@ STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
     as_of="2026-11-19",
     latest=EvidenceRef(
-        evidence_id="E0637",
-        path="docs/evidence/0637-camcore-f301-contributor-boot-score.md",
+        evidence_id="E0644",
+        path="docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md",
         date="2026-11-19",
-        title="Contributor boot score for the CamCore 0xF3010000 register model",
+        title="LIRO ram section is av-cam RW data, not a sub-core image",
         demonstrated=(
-            "The merged CamCore window keeps the posted step-26 state while distinct unmodelled "
-            "addresses fall from 2322 to 1310. Twenty-eight observed reads are named: 16 "
-            "read-modify-write words and 0x5020 return the guest's last write, and 11 status words stay 0."
+            "Static scan of av-cam.bin finds 1,878 references into the LIRO ram run region [0x645ACF00, 0x6467BD64) "
+            "pointing to data rather than function prologues, superseding E0642's sub-core inference; "
+            "handover_guard exec_range traces 499,175 blocks in 120 s before the current stall."
         ),
         boundary=(
-            "Contributor emulator report only. This workspace did not re-run the scorer. The model is "
-            "on by default, captured step 26 stays open, and no physical camera result is claimed."
+            "Offline av-cam.bin static analysis and bounded QEMU traces only; no camera access. "
+            "av-cam never reaches the consumer code inside 120 s."
         ),
-        tier="EMULATOR REPORT",
+        tier="OFFLINE",
     ),
     headline="Native Unicorn ash | guarded USB startup | first QEMU live-view test chart",
     cards=(

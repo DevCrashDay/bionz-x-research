@@ -33,6 +33,14 @@ that scorer, and no physical camera result is claimed.
 [E0637](docs/evidence/0637-camcore-f301-contributor-boot-score.md) records the
 same kind of score for the merged CamCore window at `0xF3010000`: unmodelled
 addresses 2,322 to 1,310, still step 26.
+[E0643](docs/evidence/0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md)
+decodes `DGU5` `MISCREG`/eFuse (`0xF2915000=0x00000500`, `0xF2915010=0x0c01002b`
+on live `ILCE-6400`), confirms no kernel signature verification in `a6400`/`a6400A`,
+documents synchronous `libJiritsu.so` `dlopen` (`0x5D08`), and adds the offline
+`<= 512 KiB` RAM-chunk partition dump planner (`--mode plan-chunk-dump`).
+[E0644](docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md) supersedes
+[E0642](docs/evidence/0642-a6400-f30a-fill-engine-and-liro-ram-section.md)'s
+sub-core inference, confirming the LIRO `ram` section is `av-cam` RW data.
 
 QEMU EP0 milestone: original firmware now completes six host-driven standard
 control transfers to address 1, configuration 1 and UDC `configured` in two
@@ -123,7 +131,7 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 
 Recorded offline suite: **2091 tests**, with 88 skip records and no failures/errors in the integrated checkout ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. Separate QEMU milestones are the [USB mode gate](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md) and [first firmware-driven live-view frame](docs/evidence/0591-qemu-a6400-first-live-view-frame.md). Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=db1b8b37e317)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=5c61f7d4070b)
 
 ![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
 
