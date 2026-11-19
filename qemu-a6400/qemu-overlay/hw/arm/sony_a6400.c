@@ -1657,6 +1657,30 @@ static void sony_a6400_init(MachineState *machine)
     }
 
     /*
+     * CamCore block at 0xF3010000 (64 KiB).  The av-cam core maps it 1:1
+     * (virtual 0xF30x0000 = physical, E0564).  The baseline access log
+     * (loop/runs/L0016/run1/qemu-d.log) has 1012 distinct (kind, offset)
+     * pairs, 219810 accesses, but only 28 read offsets; the other 984
+     * offsets are write-only.  The 28 reads are: 16 read-modify-write words
+     * (0x4b00/04, 0x5a04/14/18/1c/28/2c/30/48/4c, 0x5ac8/cc/d0/d4, 0x5e00)
+     * that read back the last write; 0x5020, which the guest writes
+     * 0x01030001 and reads back (nibble getters at 0x63cd0a1c/0x63cd0a28);
+     * and 11 status words (0x5600/04, 0x5b80/84/8c/90/94/98/9c/a0/a4) that
+     * the guest never writes and whose getters only mask (PCs in
+     * cxd90045_camcore.c), so they stay 0 as in the baseline.  The identity
+     * is CamCore: it is the av-cam block E0564's ydet window reaches.
+     */
+    {
+        DeviceState *cc = qdev_new("cxd90045-camcore");
+
+        qdev_prop_set_string(cc, "name", "cxd90045.camcore-f301");
+        qdev_prop_set_uint64(cc, "size", 0x10000);
+        qdev_prop_set_uint64(cc, "base", 0xF3010000ULL);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(cc), &error_fatal);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(cc), 0, 0xF3010000ULL, -500);
+    }
+
+    /*
      * Imager / ComboPHY window (E0534).  av-cam keeps absolute pointers
      * here (Leo clk 0xFC021000, MIPI D-PHY register blocks, sensor tables
      * under 0xFC0Axxxx).  Reads of unassigned space are 0, so a
