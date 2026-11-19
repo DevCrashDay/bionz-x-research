@@ -1,12 +1,23 @@
-"""Bounded a6400A inquiry/model-info probe over the existing Windows USBSTOR driver.
+"""Bounded inquiry/model-info probe over the existing Windows USBSTOR driver.
+
+Originally built for the a6400A (``--target ilce_6400a``, the default) and
+generalized to any registered BIONZ X body via ``IDENTITIES``/``--target``. The
+Sony GetModelInfo command (opcode ``0x7A``/subcommand 1) is identical across
+bodies whose GetModelInfo command binaries are byte-identical to the a6400A's
+(E0645, which also records that the mass-storage gadget that routes the CDB
+differs, so SCSI-side delivery is a camera question); only the admitted USB
+identity and the expected model string differ per body.
 
 No service mode, updater initialization, driver changes, raw-sector commands or
 arbitrary SCSI requests. Device association is checked before opening any handle.
+A body whose Mass Storage USB PID has not been observed on a host refuses until
+``--pid`` supplies it, so no identity is ever guessed from packaged descriptors.
 """
 from __future__ import annotations
 
 import argparse
 import ctypes as c
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import json
 import os
@@ -25,18 +36,61 @@ IOCTL_SCSI_PASS_THROUGH_DIRECT = 0x4D014
 IOCTL_STORAGE_GET_DEVICE_NUMBER = 0x2D1080
 
 
+@dataclass(frozen=True)
+class CameraIdentity:
+    """A body's mass-storage admission identity for the read-only probe.
+
+    ``usb_pid`` is the PID the camera presents **in Mass Storage**, which is a
+    host-observed runtime fact: it is only known for a body that has been
+    enumerated read-only. A body whose MSC PID has not been observed carries
+    ``usb_pid=None`` and the probe refuses until ``--pid`` supplies the value
+    seen on the host, so no identity is ever invented. The same vendor
+    GetModelInfo command (opcode ``0x7A``/subcommand 1) is used for every body;
+    ``expected_model`` is the ASCII model string that body must return.
+    """
+
+    target_id: str
+    usb_pid: int | None
+    disk_model: str
+    expected_model: str
+
+    @property
+    def usb_pair(self) -> str:
+        if self.usb_pid is None:
+            raise ValueError(
+                f"{self.target_id}: Mass Storage USB PID not observed yet; pass --pid 0xNNNN "
+                "from a read-only host enumeration first")
+        return f"054c:{self.usb_pid:04x}"
+
+    def with_pid(self, pid: int) -> "CameraIdentity":
+        return replace(self, usb_pid=pid)
+
+
+#: Bodies the probe knows how to admit. ``ilce_6400a`` is the original, fully
+#: observed target (E0509). ``ilce_7rm4a`` carries ``usb_pid=None`` because its
+#: Mass Storage PID has not been observed on a host yet; its GetModelInfo command
+#: binaries are byte-identical to the a6400A's (see the E0645 evidence record), so
+#: the command format is proven, while SCSI-side routing and the live identity
+#: still need the owner's camera and an observed ``--pid``.
+IDENTITIES = {
+    "ilce_6400a": CameraIdentity("ilce_6400a", 0x0F0F, "Sony DSC USB Device", "ILCE-6400A"),
+    "ilce_7rm4a": CameraIdentity("ilce_7rm4a", None, "Sony DSC USB Device", "ILCE-7RM4A"),
+}
+A6400A = IDENTITIES["ilce_6400a"]
+
+
 class SonyBusy(RuntimeError):
     """Sony's explicit device-busy sense, not a generic SCSI failure."""
 
 
-DISCOVER = r"""
+_DISCOVER_TEMPLATE = r"""
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)
-$cameras=@(Get-CimInstance -ClassName Win32_PnPEntity -Filter "PNPDeviceID LIKE 'USB%VID_054C&PID_0F0F%'" |
+$cameras=@(Get-CimInstance -ClassName Win32_PnPEntity -Filter "PNPDeviceID LIKE 'USB%VID_054C&PID_%%PID%%%'" |
   Where-Object { $_.Present -ne $false })
 if ($cameras.Count -ne 1 -or $cameras[0].Service -ne 'USBSTOR' -or
     $cameras[0].Status -ne 'OK' -or $cameras[0].ConfigManagerErrorCode -ne 0) {
-  throw 'Expected exactly one healthy a6400A USBSTOR camera.'
+  throw 'Expected exactly one healthy %%LABEL%% USBSTOR camera.'
 }
 $rows=@()
 foreach ($disk in @(Get-CimInstance -ClassName Win32_DiskDrive -Filter "InterfaceType='USB'")) {
@@ -56,18 +110,33 @@ foreach ($disk in @(Get-CimInstance -ClassName Win32_DiskDrive -Filter "Interfac
   }
 }
 [ordered]@{
-  usb_pair='054c:0f0f'; service=$cameras[0].Service; status=$cameras[0].Status
+  usb_pair='%%PAIR%%'; service=$cameras[0].Service; status=$cameras[0].Status
   config_error=[int]$cameras[0].ConfigManagerErrorCode; camera_count=$cameras.Count
   disks=$rows; instance_serials_retained=$false
 } | ConvertTo-Json -Depth 4 -Compress
 """
 
 
-def discover() -> dict:
+def build_discover(identity: CameraIdentity = A6400A) -> str:
+    """The PnP discovery script bound to one body's Mass Storage identity."""
+    pair = identity.usb_pair  # raises a clear ValueError if the MSC PID is unobserved
+    # Keep the historical a6400A discovery script byte-for-byte, including its error text.
+    label = "a6400A" if identity.target_id == "ilce_6400a" else identity.target_id
+    return (_DISCOVER_TEMPLATE
+            .replace("%%PID%%", f"{identity.usb_pid:04X}")
+            .replace("%%PAIR%%", pair)
+            .replace("%%LABEL%%", label))
+
+
+#: Backward-compatible module constant: the a6400A discovery script.
+DISCOVER = build_discover(A6400A)
+
+
+def discover(identity: CameraIdentity = A6400A) -> dict:
     if os.name != "nt":
         raise RuntimeError("The native metadata/transport probe requires Windows")
     result = subprocess.run(
-        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", DISCOVER],
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", build_discover(identity)],
         capture_output=True, timeout=45, check=False,
     )
     if result.returncode:
@@ -75,10 +144,10 @@ def discover() -> dict:
     return json.loads(result.stdout.decode("utf-8-sig"))
 
 
-def select_target(metadata: dict) -> int:
+def select_target(metadata: dict, identity: CameraIdentity = A6400A) -> int:
     if not isinstance(metadata, dict):
         raise ValueError("Malformed camera metadata")
-    if (metadata.get("usb_pair") != "054c:0f0f" or metadata.get("service") != "USBSTOR"
+    if (metadata.get("usb_pair") != identity.usb_pair or metadata.get("service") != "USBSTOR"
             or metadata.get("status") != "OK" or metadata.get("config_error") != 0
             or metadata.get("camera_count") != 1):
         raise ValueError("Camera identity/driver/status admission failed")
@@ -87,7 +156,7 @@ def select_target(metadata: dict) -> int:
         raise ValueError("Malformed camera disk metadata")
     candidates = [row for row in disks
                   if row.get("lun") == 0 and row.get("parent_identity_verified") is True
-                  and row.get("model") == "Sony DSC USB Device"]
+                  and row.get("model") == identity.disk_model]
     if len(candidates) != 1:
         raise ValueError("Expected one parent-verified camera LUN 0, not a guessed disk")
     index = candidates[0]["disk_index"]
@@ -118,7 +187,7 @@ def parse_inquiry(raw: bytes) -> dict:
             "revision": raw[32:36].decode("ascii").rstrip(" \0")}
 
 
-def parse_model_info(raw: bytes) -> dict:
+def parse_model_info(raw: bytes, expected_model: str = "ILCE-6400A") -> dict:
     if len(raw) < 16:
         raise ValueError("Short Sony external-command header")
     size, command, direction = struct.unpack_from("<IHH", raw)
@@ -136,7 +205,7 @@ def parse_model_info(raw: bytes) -> dict:
     if not model_size or offset + model_size + 5 + 4 > len(payload):
         raise ValueError("Truncated model-info identity")
     model = payload[offset:offset + model_size].decode("ascii")
-    if model != "ILCE-6400A":
+    if model != expected_model:
         raise ValueError("Model identity mismatch in model-info response")
     offset += model_size
     return {"model": model, "product_code_wire_hex": payload[offset:offset + 5].hex(),
@@ -145,14 +214,14 @@ def parse_model_info(raw: bytes) -> dict:
             "serial_retained": False, "property_list_retained": False}
 
 
-def read_model_info(transport, *, deadline=None) -> dict:
+def read_model_info(transport, *, deadline=None, expected_model: str = "ILCE-6400A") -> dict:
     if deadline is None:
         deadline = time.monotonic() + 8
     for attempt in range(40):
         if time.monotonic() >= deadline:
             raise TimeoutError("Sony model-info remained busy for the bounded read window")
         try:
-            return parse_model_info(transport.exchange(MODEL_CDB, read_size=8192))
+            return parse_model_info(transport.exchange(MODEL_CDB, read_size=8192), expected_model)
         except SonyBusy as error:
             if attempt == 39:
                 raise TimeoutError("Sony model-info remained busy for 40 read attempts") from error
@@ -160,7 +229,8 @@ def read_model_info(transport, *, deadline=None) -> dict:
     raise AssertionError("Unreachable model-info read state")
 
 
-def probe_identity(transport, *, model_info=False, result=None) -> dict:
+def probe_identity(transport, *, model_info=False, result=None,
+                   expected_model: str = "ILCE-6400A") -> dict:
     if result is None:
         result = {}
     result["inquiry"] = parse_inquiry(transport.exchange(INQUIRY_CDB, read_size=36))
@@ -172,7 +242,8 @@ def probe_identity(transport, *, model_info=False, result=None) -> dict:
         try:
             transport.exchange(MODEL_CDB, data_out=MODEL_REQUEST)
             timing["request_ack_elapsed_seconds"] = round(time.monotonic() - started, 6)
-            result["model_info"] = read_model_info(transport, deadline=started + 8)
+            result["model_info"] = read_model_info(transport, deadline=started + 8,
+                                                    expected_model=expected_model)
             timing["status"] = "model_reply_received"
         finally:
             timing["ended_utc"] = datetime.now(timezone.utc).isoformat()
@@ -289,12 +360,25 @@ def main(argv=None) -> int:
     parser.add_argument("--model-info", action="store_true", help="Also request Sony model info (feature 1/subcommand 1)")
     parser.add_argument("--finish-model-info", type=Path,
                         help=argparse.SUPPRESS)
+    parser.add_argument("--target", choices=sorted(IDENTITIES), default="ilce_6400a",
+                        help="Which registered body to admit (default: ilce_6400a)")
+    parser.add_argument("--pid", type=lambda s: int(s, 0),
+                        help="Mass Storage USB PID observed on the host (e.g. 0x0F0F); "
+                             "required for a body whose MSC PID is not yet recorded")
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args(argv)
     if args.finish_model_info:
         parser.error("Delayed continuation is refused: replies expire; no device discovery or I/O attempted")
     if args.model_info and not args.inquiry:
         parser.error("--model-info requires --inquiry")
+    identity = IDENTITIES[args.target]
+    if args.pid is not None:
+        if not 0 <= args.pid <= 0xFFFF:
+            parser.error("--pid must be a 16-bit USB product id")
+        identity = identity.with_pid(args.pid)
+    if identity.usb_pid is None:
+        parser.error(f"{args.target}: Mass Storage USB PID not observed yet; pass --pid 0xNNNN "
+                     "from a read-only host enumeration before probing (no identity is guessed)")
     out = args.output_dir.resolve()
     if not out.is_relative_to(ROOT / "artifacts"):
         parser.error("Receipts must remain under artifacts")
@@ -302,16 +386,19 @@ def main(argv=None) -> int:
     report = {"scope": "Native Windows inquiry/model info only; not filesystem or root access",
               "status": "in_progress", "operations": [], "mode_switches": False,
               "updater_initialization": False, "driver_changes": False,
-              "sector_io": False, "camera_file_writes": False, "serials_retained": False}
+              "sector_io": False, "camera_file_writes": False, "serials_retained": False,
+              "target": identity.target_id, "usb_pair": identity.usb_pair,
+              "expected_model": identity.expected_model}
     try:
         with host_lock():
-            report["metadata"] = discover()
-            index = select_target(report["metadata"])
+            report["metadata"] = discover(identity)
+            index = select_target(report["metadata"], identity)
             report["selected_disk_index"] = index
             if args.inquiry:
                 with NativeTransport(index, report["operations"]) as transport:
                     report["result"] = {}
-                    probe_identity(transport, model_info=args.model_info, result=report["result"])
+                    probe_identity(transport, model_info=args.model_info, result=report["result"],
+                                   expected_model=identity.expected_model)
             report["status"] = "passed" if args.inquiry else "metadata_only"
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
         report.update(status="blocked", error_type=type(error).__name__, error=str(error),
