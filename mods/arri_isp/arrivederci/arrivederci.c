@@ -70,21 +70,124 @@ static char swap(uint32_t pa, int sz, int n, const void *from, const void *alt, 
     return code;
 }
 
+static long sc5(long n, long a, long b, long c, long d, long e) {
+    register long r0 __asm__("r0") = a, r1 __asm__("r1") = b, r2 __asm__("r2") = c,
+                  r3 __asm__("r3") = d, r4 __asm__("r4") = e;
+    register long r7 __asm__("r7") = n;
+    __asm__ volatile("svc #0" : "+r"(r0) : "r"(r1), "r"(r2), "r"(r3), "r"(r4), "r"(r7) : "memory");
+    return r0;
+}
+
+static const char *sabin_src(int i) {
+    switch (i) {
+        case 0: return "/tmp_bt/mods/sabin/dcv_psf_table_movie_bayer.bin";
+        case 1: return "/tmp_bt/mods/sabin/dcv_psf_table_movie_4k.bin";
+        case 2:
+        case 3: return "/tmp_bt/mods/sabin/spica_c_zero.bin";
+        case 4: return "/tmp_bt/mods/sabin/spica_musashi_mov_4k_y_tap_step1.bin";
+        default: return "/tmp_bt/mods/sabin/spica_musashi_mov_4k_y_tap_step2.bin";
+    }
+}
+
+static const char *sabin_dst(int i) {
+    switch (i) {
+        case 0: return "/usr/sabin/dcv_psf_table_movie_bayer.bin";
+        case 1: return "/usr/sabin/dcv_psf_table_movie_4k.bin";
+        case 2: return "/usr/sabin/spica_musashi_mov_4k_c_tap_step1.bin";
+        case 3: return "/usr/sabin/spica_musashi_mov_4k_c_tap_step2.bin";
+        case 4: return "/usr/sabin/spica_musashi_mov_4k_y_tap_step1.bin";
+        default: return "/usr/sabin/spica_musashi_mov_4k_y_tap_step2.bin";
+    }
+}
+
+#ifdef SABIN_EMBEDDED
+static int write_all(long fd, const uint8_t *buf, uint32_t len) {
+    uint32_t pos = 0;
+    while (pos < len) {
+        long w = sc3(4 /* write */, fd, (long)(buf + pos), (long)(len - pos));
+        if (w <= 0) return -1;
+        pos += (uint32_t)w;
+    }
+    return 0;
+}
+
+static int ensure_file(const char *path, const uint8_t *data, uint32_t len) {
+    long fd = sc3(5 /* open */, (long)path, 0 /* O_RDONLY */, 0);
+    if (fd >= 0) {
+        sc3(6 /* close */, fd, 0, 0);
+        return 0;
+    }
+    fd = sc3(5 /* open */, (long)path, 01 | 0100 | 01000 /* O_WRONLY|O_CREAT|O_TRUNC */, 0644);
+    if (fd < 0) return -1;
+    int rc = 0;
+    if (data) {
+        rc = write_all(fd, data, len);
+    } else {
+        uint8_t zeros[256];
+        for (uint32_t i = 0; i < sizeof(zeros); i++) zeros[i] = 0;
+        uint32_t left = len;
+        while (left > 0) {
+            uint32_t chunk = left > sizeof(zeros) ? sizeof(zeros) : left;
+            if (write_all(fd, zeros, chunk) < 0) { rc = -1; break; }
+            left -= chunk;
+        }
+    }
+    sc3(6 /* close */, fd, 0, 0);
+    return rc;
+}
+#endif
+
+static char sync_sabin(int on) {
+#ifdef SABIN_EMBEDDED
+    if (on) {
+        sc3(39 /* mkdir */, (long)"/tmp_bt/mods/sabin", 0755, 0);
+        if (ensure_file(sabin_src(0), SABIN_DCV_BAYER, sizeof(SABIN_DCV_BAYER)) < 0 ||
+            ensure_file(sabin_src(1), SABIN_DCV_4K, sizeof(SABIN_DCV_4K)) < 0 ||
+            ensure_file(sabin_src(2), 0, 40000u) < 0 ||
+            ensure_file(sabin_src(4), SABIN_Y_TAP_1, sizeof(SABIN_Y_TAP_1)) < 0 ||
+            ensure_file(sabin_src(5), SABIN_Y_TAP_2, sizeof(SABIN_Y_TAP_2)) < 0) {
+            return 'e';
+        }
+    }
+#else
+    long probe = sc3(5 /* open */, (long)sabin_src(0), 0 /* O_RDONLY */, 0);
+    if (probe < 0) return 'n';
+    sc3(6 /* close */, probe, 0, 0);
+#endif
+    char res = on ? 'm' : 'u';
+    for (int i = 0; i < 6; i++) {
+        if (on) {
+            long r = sc5(21 /* mount */, (long)sabin_src(i), (long)sabin_dst(i), 0, 4096 /* MS_BIND */, 0);
+            if (r < 0) res = 'e';
+        } else {
+            sc3(52 /* umount2 */, (long)sabin_dst(i), 2 /* MNT_DETACH */, 0);
+        }
+    }
+    return res;
+}
+
 __attribute__((section(".text.arri_life"), used))
 void arri_life(int on) {
+#ifdef GAMMA_HAS_LEGACY
+    const uint32_t *g_legacy = GAMMA_LEGACY;
+#else
+    const uint32_t *g_legacy = 0;
+#endif
 #ifdef COLOR_HAS_LEGACY
     const int16_t *legacy = COLOR_LEGACY;
 #else
     const int16_t *legacy = 0;
 #endif
-    char g = on ? swap(GAMMA_PA, 4, 96, GAMMA_STOCK, 0, GAMMA_ARRI)
-                : swap(GAMMA_PA, 4, 96, GAMMA_ARRI, 0, GAMMA_STOCK);
+    char g = on ? swap(GAMMA_PA, 4, 96, GAMMA_STOCK, g_legacy, GAMMA_ARRI)
+                : swap(GAMMA_PA, 4, 96, GAMMA_ARRI, g_legacy, GAMMA_STOCK);
     char c = on ? swap(COLOR_PA, 2, 9, COLOR_STOCK, legacy, COLOR_ARRI)
                 : swap(COLOR_PA, 2, 9, COLOR_ARRI, legacy, COLOR_STOCK);
-    char line[] = "arrivederci on=? gamma=? color=?\n";
+    char s = sync_sabin(on);
+    char line[] = "arrivederci on=? gamma=? color=? sabin=?\n";
     line[15] = (char)('0' + on);
     line[23] = g;
     line[31] = c;
+    line[39] = s;
     long fd = sc3(5, (long)"/tmp_bt/mods/arrivederci.log", 01 | 0100 | 02000, 0600);
     if (fd >= 0) { sc3(4, fd, (long)line, sizeof(line) - 1); sc3(6, fd, 0, 0); }
 }

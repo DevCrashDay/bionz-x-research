@@ -32,6 +32,90 @@ import zlib
 import moddev
 
 
+def start_uvc_host(usbhost_sock: Path, state: dict, stop_event: threading.Event, plug_wait=None):
+    """Connect to the DWC3 usbhost unix socket and service UVC enumeration + Bulk IN frames."""
+    import socket
+    import sys
+    repo_root = Path(__file__).resolve().parents[2]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from tools.research.qemu_ep0_host import Ep0Host
+    from tools.research.qemu_uvc_smoke import enumerate_uvc
+
+    state.update({"connected": False, "enumerated": False, "streaming": False,
+                  "frames": 0, "valid_frames": 0, "vid_pid": "", "last_error": "", "jpeg": b""})
+    if plug_wait is not None and not plug_wait():
+        return
+    deadline = time.monotonic() + 120.0
+    while not stop_event.is_set() and not usbhost_sock.exists():
+        if time.monotonic() > deadline:
+            state["last_error"] = "usbhost socket timeout"
+            return
+        time.sleep(0.1)
+    if stop_event.is_set():
+        return
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.connect(str(usbhost_sock))
+        sock.settimeout(0.2)
+    except OSError as exc:
+        state["last_error"] = str(exc)
+        return
+    try:
+        conn_sent = False
+        while not stop_event.is_set():
+            state["connected"] = False
+            state["enumerated"] = False
+            state["streaming"] = False
+            try:
+                if not conn_sent:
+                    sock.sendall(b"CONN\n")
+                    conn_sent = True
+                    time.sleep(1.0)
+                client = Ep0Host(sock)
+                dev = client.control("8006000100001200")
+                vid_pid = f"{int.from_bytes(dev[8:10], 'little'):04x}:{int.from_bytes(dev[10:12], 'little'):04x}" if len(dev) == 18 else ""
+                state["vid_pid"] = vid_pid
+                if vid_pid != "054c:0322":
+                    time.sleep(1.0)
+                    continue
+                info = enumerate_uvc(client)
+                state["connected"] = True
+                state["vid_pid"] = info.get("vid_pid", "")
+                if state["vid_pid"] == "054c:0322" and info.get("configuration_len", 0) >= 200:
+                    state["enumerated"] = True
+                    probe = client.control("a181000101001a00")
+                    client.control("2101000101001a00", data_out=probe)
+                    client.control("2101000201001a00", data_out=probe)
+                    state["streaming"] = True
+                    while not stop_event.is_set():
+                        try:
+                            pkt = client.bulk_in(3)
+                        except (TimeoutError, RuntimeError):
+                            break
+                        if not pkt:
+                            break
+                        hdr_len = pkt[0]
+                        payload = pkt[hdr_len:] if hdr_len >= 2 and len(pkt) > hdr_len else b""
+                        valid_jpeg = len(payload) > 4 and payload[:2] == b"\xff\xd8" and payload[-2:] == b"\xff\xd9"
+                        state["frames"] += 1
+                        if valid_jpeg:
+                            state["valid_frames"] += 1
+                            state["jpeg"] = payload
+                    state["streaming"] = False
+                else:
+                    time.sleep(1.0)
+            except (TimeoutError, RuntimeError, ValueError, OSError, EOFError) as exc:
+                state["last_error"] = str(exc)
+                state["streaming"] = False
+                state["connected"] = False
+                if not state["vid_pid"]:
+                    conn_sent = False
+                time.sleep(1.0)
+    finally:
+        sock.close()
+
+
 KEYS = {
     "flash": "l",
     "menu": "m",
@@ -136,6 +220,22 @@ def serve(args, scratch, server):
             shutil.copy(args.loader / name, scratch / name)
         env["SETTING_FILES"] = moddev.setting_files(scratch / "mlv2_guard_arm", scratch / "mlv2.req")
         env["SERIAL"] = f"unix:{scratch / 'serial'},server=on,wait=off"
+    uvc_state = {}
+    uvc_stop = threading.Event()
+    if args.uvc_test:
+        usbhost_sock = scratch / "usbhost.sock"
+        env["DWC3_GADGET"] = "1"
+        env["PL330_DMA"] = "1"
+        env["USB_VBUS_TEST"] = "1"
+        env["USB_CID_HIGH"] = "1"
+        env["QEMU_EXTRA"] += (
+            f" -chardev socket,id=usbhost,path={usbhost_sock},server=on,wait=off"
+            " -global cxd90045-dwc3.chardev=usbhost"
+            " -global cxd90045-dwc3.captured-hwparams=on"
+            " -global cxd90045-dwc3.captured-start-gate=on"
+            " -global cxd90045-dwc3.strict-ep0=on"
+            " -global cxd90045-dwc3.strict-bulk=on"
+        )
     with args.log.open("xb") as log:
         process = subprocess.Popen(["bash", str(directory.parent / "run.sh")],
                                    stdin=subprocess.DEVNULL, stdout=log,
@@ -152,8 +252,46 @@ def serve(args, scratch, server):
                 def nudge():
                     qmp.command("send-key", keys=[{"type": "qcode", "data": KEYS["menu"]}], **{"hold-time": 180})
 
-                dev = moddev.ModDev(console, args.loader, list(args.mod), nudge=nudge)
+                extra_files = []
+                setup_cmds = []
+                if args.uvc_test:
+                    extra_files = [
+                        ("/tmp_bt/usbg_video_a6400.ko", args.uvc_ko, False),
+                        ("/tmp_bt/uvc_mod_daemon", args.uvc_daemon, True),
+                    ]
+                    setup_cmds = [
+                        "insmod /tmp_bt/usbg_video_a6400.ko",
+                        "mknod /tmp_bt/video c 248 33",
+                        "(/tmp_bt/uvc_mod_daemon </dev/null >/tmp_bt/uvc_daemon.log 2>&1 &)",
+                    ]
+                dev = moddev.ModDev(console, args.loader, list(args.mod), nudge=nudge,
+                                    extra_files=extra_files, setup_cmds=setup_cmds)
                 threading.Thread(target=dev.run, daemon=True).start()
+            if args.uvc_test:
+                plug_wait = None
+                if args.uvc_plug_delay > 0 and dev is not None:
+                    def plug_wait():
+                        while not uvc_stop.is_set() and dev.status.get("state") != "watching for rebuilt mods":
+                            time.sleep(0.5)
+                        if uvc_stop.is_set():
+                            return False
+                        baseline = dev.loader_log().count("uvc_mod_on")
+                        while not uvc_stop.is_set():
+                            if dev.loader_log().count("uvc_mod_on") > baseline:
+                                break
+                            time.sleep(0.5)
+                        if uvc_stop.is_set():
+                            return False
+                        time.sleep(args.uvc_plug_delay)
+                        if uvc_stop.is_set():
+                            return False
+                        qmp.command("qom-set", path="/machine", property="usb-vbus", value=True)
+                        return True
+                else:
+                    qmp.command("qom-set", path="/machine", property="usb-vbus", value=True)
+                threading.Thread(target=start_uvc_host,
+                                 args=(scratch / "usbhost.sock", uvc_state, uvc_stop, plug_wait),
+                                 daemon=True).start()
 
             def get(handler):
                 if handler.path == "/":
@@ -165,6 +303,16 @@ def serve(args, scratch, server):
                         handler.reply("application/json", json.dumps(dev.status).encode())
                 elif handler.path == "/emu":
                     handler.reply("application/json", json.dumps(emu_state()).encode())
+                elif handler.path == "/uvc":
+                    view = {k: v for k, v in uvc_state.items() if k != "jpeg"}
+                    view["jpeg_bytes"] = len(uvc_state.get("jpeg", b""))
+                    handler.reply("application/json", json.dumps(view).encode())
+                elif handler.path == "/uvc/frame.jpg":
+                    jpg = uvc_state.get("jpeg", b"")
+                    if not jpg:
+                        handler.send_error(404)
+                    else:
+                        handler.reply("image/jpeg", jpg)
                 elif handler.path == "/moddev/log" and dev:
                     handler.reply("application/json", json.dumps(dev.report(), indent=1).encode())
                 elif handler.path == "/lcd.png":
@@ -247,6 +395,7 @@ def serve(args, scratch, server):
                 args.mod = list(dev.mods)       # a restart reloads the same mods
             return server.restart
         finally:
+            uvc_stop.set()
             if qmp:
                 qmp.close()
             if process.poll() is None:
@@ -298,9 +447,25 @@ def main():
     parser.add_argument("--inputs", type=Path, help="Prepared camera-captured inputs (qemu_boot_inputs prepare)")
     parser.add_argument("--loader", type=Path, help="Mod Loader v2 build directory to install and watch")
     parser.add_argument("--mod", type=Path, action="append", default=[], help="SMOD file to load and hot-reload")
+    parser.add_argument("--uvc-test", action="store_true",
+                        help="Enable DWC3 gadget, PL330 DMA, UVC host listener, and stage USB Streaming Test")
+    parser.add_argument("--uvc-plug-delay", type=float, default=0.0,
+                        help="Wait for uvc_mod_on and delay N seconds before asserting usb-vbus and connecting host")
+    repo_root = Path(__file__).resolve().parents[2]
+    parser.add_argument("--uvc-ko", type=Path,
+                        default=repo_root / "artifacts/native/qemu-uvc-coherent-15/usbg_video_a6400.ko")
+    parser.add_argument("--uvc-daemon", type=Path,
+                        default=repo_root / "artifacts/mods/usb-streaming-test-4/uvc_mod_daemon")
+    parser.add_argument("--uvc-mod", type=Path,
+                        default=repo_root / "artifacts/mods/usb-streaming-test-4/UsbStreamingTest.mod")
     args = parser.parse_args()
     if args.loader and not args.inputs:
         parser.error("--loader needs --inputs: mods target the camera's own library builds")
+    if args.uvc_test:
+        if not args.loader or not args.inputs:
+            parser.error("--uvc-test needs --loader and --inputs")
+        if args.uvc_mod.name not in {m.name for m in args.mod}:
+            args.mod.append(args.uvc_mod)
     base_log = args.log
     with HTTPServer(("127.0.0.1", args.port), PanelRequest) as server:
         server.timeout = 1

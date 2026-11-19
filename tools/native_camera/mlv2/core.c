@@ -451,7 +451,8 @@ static void rescan(Ctx *c) {
         int known = 0;
         for (uint32_t i = 0; i < c->mod_count; i++)
             if (!ml_strcmp(c->mods[i].path, nm->path)) known = 1;
-        if (!known && nm->kind == KIND_V2 && (nm->flags & SMOD_V2_FLAG_AUTO_ON) && !nm->invalid)
+        if (!known && nm->kind == KIND_V2 && (nm->flags & SMOD_V2_FLAG_AUTO_ON) &&
+            !(nm->flags & SMOD_V2_FLAG_ACTION) && !nm->invalid)
             nm->present = 3;              /* first appearance of an auto-on mod: switched ON below */
         for (uint32_t i = 0; i < c->mod_count; i++) {
             Mod *old = &c->mods[i];
@@ -595,10 +596,34 @@ static uint32_t core_before_set_root(uint32_t menu, uint32_t root_addr) {
     return root_addr;
 }
 
+static int is_action(const Mod *m) { return m->kind == KIND_V2 && (m->flags & SMOD_V2_FLAG_ACTION); }
+
 static const char *state_text(const Mod *m) {
     if (m->invalid || (m->enabled && !m->present)) return "ERR";
+    if (is_action(m)) return m->enabled ? (m->stale ? "Active*" : "Active") : "";
     if (m->enabled) return m->stale ? "ON*" : "ON";
     return "OFF";
+}
+
+/* Post the MENU key to the firmware event manager, as MenuTouchFull does for KEY_MENU (E0520):
+ * operator new(16), event constructor (id, type 4, 1), push. ILCE-6400 reference addresses in
+ * libObj.so, moved by the live libObj.so base. Returns 1 when the event was queued. */
+#define REF_EVMGR_SLOT   0x07089984u
+#define REF_OP_NEW       0x05e15974u
+#define REF_EV_CTOR      0x05e14e20u
+#define REF_EVMGR_PUSH   0x05e18d5du
+#define KEY_MENU_EVENT   0x15010102u
+static int post_menu_key(void) {
+    if (!core_libobj_ok) return 0;
+    uint32_t b = core_libobj_bias;
+    uint32_t slot = *(volatile uint32_t *)(REF_EVMGR_SLOT + b);
+    uint32_t mgr = slot ? *(volatile uint32_t *)slot : 0u;
+    if (!mgr) return 0;
+    void *ev = ((void *(*)(uint32_t))(REF_OP_NEW + b))(16u);
+    if (!ev) return 0;
+    ((void (*)(void *, uint32_t, uint8_t, uint8_t))(REF_EV_CTOR + b))(ev, KEY_MENU_EVENT, 4u, 1u);
+    ((void (*)(uint32_t, void *, uint32_t))(REF_EVMGR_PUSH + b))(mgr, ev, 1u);
+    return 1;
 }
 
 static void core_after_refresh(uint32_t menu) {
@@ -848,7 +873,10 @@ static int core_before_enter(uint32_t menu, uint32_t leaf) {
     while (idx < MAX_MODS && (uint32_t)&c->items[idx] != leaf) idx++;
     if (idx >= c->mod_count) return 0;
     Mod *m = &c->mods[idx];
+    int was_on = m->enabled;
     toggle(m);
+    if (is_action(m) && !was_on && m->enabled)
+        ml_log(post_menu_key() ? "action_close" : "action_close_unavailable", m->addr);
     typedef void (*set_text_t)(void *, const char *);
     uint32_t row = idx >= 6u ? idx - 6u : idx;
     ((set_text_t)VIEW(MLV2_SET_TEXT))((void *)(menu + 0x9350u + row * 0x1118u + 0xb60u), state_text(m));

@@ -406,23 +406,41 @@ struct a6400_list_node {
     struct a6400_list_node *prev;
 };
 
+static struct a6400_list_node g_saved_other_drvs = {
+    &g_saved_other_drvs, &g_saved_other_drvs
+};
+
 static void a6400_promote_uvc_drivers(void *gc)
 {
     struct a6400_list_node *head;
-    struct a6400_list_node *pos;
+    struct a6400_list_node *pos, *next;
     void *shadow0_desc = (void *)&g_uvc_bridge.shadow[0];
     void *shadow1_desc = (void *)&g_uvc_bridge.shadow[1];
     struct a6400_list_node *node0 = (struct a6400_list_node *)0;
     struct a6400_list_node *node1 = (struct a6400_list_node *)0;
+    unsigned int moved = 0;
 
     if (!gc) return;
     head = (struct a6400_list_node *)((char *)gc + 0x78);
 
-    for (pos = head->next; pos != head; pos = pos->next) {
+    for (pos = head->next; pos != head; pos = next) {
         void *entry = (char *)pos - 4;
         void *r = *(void **)entry;
-        if (r == shadow0_desc) node0 = pos;
-        if (r == shadow1_desc) node1 = pos;
+        next = pos->next;
+        if (r == shadow0_desc) {
+            node0 = pos;
+        } else if (r == shadow1_desc) {
+            node1 = pos;
+        } else {
+            /* Park non-UVC drivers (e.g. usbg_buspower) while single-function UVC owns gc->desc_tbl. */
+            pos->prev->next = pos->next;
+            pos->next->prev = pos->prev;
+            pos->next = &g_saved_other_drvs;
+            pos->prev = g_saved_other_drvs.prev;
+            g_saved_other_drvs.prev->next = pos;
+            g_saved_other_drvs.prev = pos;
+            moved++;
+        }
     }
 
     if (node1) {
@@ -444,20 +462,32 @@ static void a6400_promote_uvc_drivers(void *gc)
         head->next = node0;
     }
 
-    printk("[a6400_uvc] promote_uvc_drivers: shadow0/shadow1 at head of gc->drv_list\n");
+    printk("[a6400_uvc] promote_uvc_drivers: shadow0/shadow1 at head of gc->drv_list (parked=%u)\n", moved);
 }
 
 static void a6400_demote_uvc_drivers(void *gc)
 {
     struct a6400_list_node *head;
-    struct a6400_list_node *pos;
+    struct a6400_list_node *pos, *next;
     void *shadow0_desc = (void *)&g_uvc_bridge.shadow[0];
     void *shadow1_desc = (void *)&g_uvc_bridge.shadow[1];
     struct a6400_list_node *node0 = (struct a6400_list_node *)0;
     struct a6400_list_node *node1 = (struct a6400_list_node *)0;
+    unsigned int restored = 0;
 
     if (!gc) return;
     head = (struct a6400_list_node *)((char *)gc + 0x78);
+
+    for (pos = g_saved_other_drvs.next; pos != &g_saved_other_drvs; pos = next) {
+        next = pos->next;
+        pos->prev->next = pos->next;
+        pos->next->prev = pos->prev;
+        pos->next = head->next;
+        pos->prev = head;
+        head->next->prev = pos;
+        head->next = pos;
+        restored++;
+    }
 
     for (pos = head->next; pos != head; pos = pos->next) {
         void *entry = (char *)pos - 4;
@@ -485,7 +515,7 @@ static void a6400_demote_uvc_drivers(void *gc)
         head->prev = node1;
     }
 
-    printk("[a6400_uvc] demote_uvc_drivers: shadow0/shadow1 at tail of gc->drv_list\n");
+    printk("[a6400_uvc] demote_uvc_drivers: shadow0/shadow1 at tail of gc->drv_list (restored=%u)\n", restored);
 }
 
 static inline void *a6400_get_dwc(void *gc)
@@ -999,12 +1029,21 @@ extern void *dma_alloc_coherent(void *device, unsigned int size,
                                 unsigned int *dma_handle, unsigned int flags);
 extern void dma_free_coherent(void *device, unsigned int size,
                               void *cpu_address, unsigned int dma_handle);
+extern unsigned long __get_free_pages(unsigned int gfp_mask, unsigned int order);
+extern void free_pages(unsigned long addr, unsigned int order);
 static void *g_dma_cpu;
 static unsigned int g_dma_phys;
+static unsigned int g_dma_order;
+static unsigned int g_dma_size;
+static void *g_test_src_cpu;
+static unsigned int g_test_src_phys;
 /* Lifecycle probe capacity only. Streaming integration must enforce per-slot
  * frame bounds and query this actual capacity; historical fixed-PA feeders
  * must never be used with this allocator. */
-#define A6400_UVC_DMA_SIZE (256u*1024u)
+#define A6400_UVC_DMA_ORDER_PREF 5u
+#define A6400_UVC_DMA_ORDER_MIN  4u
+#define A6400_UVC_DMA_SIZE (g_dma_size)
+#define A6400_UVC_TEST_SRC_SIZE (64u*1024u)
 
 void *a6400_uvc_owned_noncache(unsigned int phys)
 {
@@ -1025,11 +1064,25 @@ int a6400_usb_sync_alloc_phys_buffer(int task, int unit_type,
     *out_handle=0;*out_phys=0;*out_size=0;
     if (unit_type!=0x50e) return -22;
     if (g_dma_cpu) return -16;
-    g_dma_cpu=dma_alloc_coherent(0,A6400_UVC_DMA_SIZE,&g_dma_phys,0xd0u);
+    for (unsigned int ord = A6400_UVC_DMA_ORDER_PREF; ord >= A6400_UVC_DMA_ORDER_MIN; ord--) {
+        g_dma_cpu = (void *)__get_free_pages(0xd0u, ord);
+        if (g_dma_cpu) {
+            g_dma_order = ord;
+            g_dma_size = 4096u << ord;
+            break;
+        }
+    }
     if (!g_dma_cpu) return -12;
+    g_dma_phys=(unsigned int)g_dma_cpu-0x60000000u;
+    g_test_src_cpu=dma_alloc_coherent(0,A6400_UVC_TEST_SRC_SIZE,&g_test_src_phys,0xd0u);
+    if (g_test_src_cpu) {
+        _Static_assert(sizeof(s_test_jpeg_720p)<=A6400_UVC_TEST_SRC_SIZE,
+                       "test JPEG source fits in coherent source buffer");
+        memcpy(g_test_src_cpu, s_test_jpeg_720p, sizeof(s_test_jpeg_720p));
+    }
     *out_handle=1;*out_phys=g_dma_phys;*out_size=A6400_UVC_DMA_SIZE;
-    printk("[a6400_uvc] owned coherent alloc cpu=%p phys=%08x size=%u\n",
-           g_dma_cpu,g_dma_phys,A6400_UVC_DMA_SIZE);
+    printk("[a6400_uvc] owned coherent alloc cpu=%p phys=%08x size=%u src=%08x\n",
+           g_dma_cpu,g_dma_phys,A6400_UVC_DMA_SIZE,g_test_src_phys);
     return 0;
 #else
     void *noncache;
@@ -1067,15 +1120,20 @@ int a6400_usb_sync_free_phys_buffer(int task, unsigned short handle)
     }
 #ifdef A6400_UVC_COHERENT_ALLOC
     if (!g_dma_cpu || handle!=1) return -22;
-    dma_free_coherent(0,A6400_UVC_DMA_SIZE,g_dma_cpu,g_dma_phys);
-    printk("[a6400_uvc] owned coherent free phys=%08x size=%u\n",g_dma_phys,A6400_UVC_DMA_SIZE);
-    g_dma_cpu=0;g_dma_phys=0;
+    if (g_test_src_cpu) {
+        dma_free_coherent(0,A6400_UVC_TEST_SRC_SIZE,g_test_src_cpu,g_test_src_phys);
+        g_test_src_cpu=0;g_test_src_phys=0;
+    }
+    free_pages((unsigned long)g_dma_cpu, g_dma_order);
+    printk("[a6400_uvc] owned coherent free phys=%08x size=%u\n",g_dma_phys,g_dma_size);
+    g_dma_cpu=0;g_dma_phys=0;g_dma_order=0;g_dma_size=0;
 #endif
     return 0;
 }
 
 /* 5. MOD DMA Query and Slot Capacity Enforcement Bridge */
 #define IOCTL_UVC_MOD_QUERY_DMA 0x8010f020
+#define IOCTL_UVC_MOD_QUERY_TEST_SRC 0x8008f021
 
 #ifdef A6400_UVC_PRODUCER_ADMISSION
 /* Opt-in producer admission state: both slots start free. A successful submit
@@ -1115,6 +1173,21 @@ long a6400_uvc_video_core_ioctl(void *filp, unsigned int cmd, unsigned long arg)
         if (__copy_to_user((void *)arg, &meta, sizeof(meta)) != 0) return -14;
         printk("[a6400_uvc] MOD DMA query: phys=%08x total=%u slot=%u max_payload=%u\n",
                meta.phys_addr, meta.total_size, meta.slot_size, meta.max_frame_payload);
+        return 0;
+    }
+
+    if (cmd == IOCTL_UVC_MOD_QUERY_TEST_SRC) {
+        struct { unsigned int phys_addr; unsigned int frame_size; } src = {0, 0};
+#ifdef A6400_UVC_COHERENT_ALLOC
+        if (!g_test_src_cpu || !g_test_src_phys) return -12;
+        src.phys_addr = g_test_src_phys;
+        src.frame_size = (unsigned int)sizeof(s_test_jpeg_720p);
+#else
+        src.phys_addr = 0x20120000u;
+        src.frame_size = (unsigned int)sizeof(s_test_jpeg_720p);
+#endif
+        if (!arg) return -14;
+        if (__copy_to_user((void *)arg, &src, sizeof(src)) != 0) return -14;
         return 0;
     }
 

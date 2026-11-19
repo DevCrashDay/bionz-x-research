@@ -39,6 +39,10 @@ if [[ "${A6400_MODDEV:-1}" != 0 ]]; then
             echo "Mods tab artwork: $tablook"
             extra+=(--mod "$tablook")
         fi
+        if [[ "${A6400_UVC_TEST:-0}" == 1 ]]; then
+            echo "UVC Streaming Test enabled (--uvc-test)"
+            extra+=(--uvc-test)
+        fi
     else
         echo "Mod development needs prepared inputs ($inputs) and a layout-aware loader build;" \
              "starting the plain panel. See qemu-a6400/MOD_DEVELOPMENT.md."

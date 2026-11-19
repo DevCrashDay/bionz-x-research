@@ -141,6 +141,9 @@ fi
 if [ "${DWC3_GADGET:-0}" = 1 ]; then
     MACHINE="$MACHINE,dwc3-gadget=on"
 fi
+if [ "${PL330_DMA:-0}" = 1 ]; then
+    MACHINE="$MACHINE,pl330-dma=on"
+fi
 LIVEVIEW_ARGS=()
 if [ -n "${LIVEVIEW_SOURCE:-}" ]; then
     LIVEVIEW_ARGS=(-M "liveview-source=${LIVEVIEW_SOURCE//,/,,}")

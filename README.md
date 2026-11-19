@@ -12,6 +12,30 @@ An open, evidence-backed reverse-engineering, emulation (**QEMU** + **Unicorn**)
 
 ## Project Goals
 
+Stock USB attach boundary: original startup code inhibits the physical USB
+key; messages reach Linux input processing but its live subscription is
+suppressed. Paired captured-code traces identify the native owner/store and
+the unobserved initialization release path. No ready flag, application event
+or new hardware response was supplied
+([E0613](docs/evidence/0613-original-usb-key-inhibit-owner-and-release-boundary.md)).
+
+Contributor boot scores for the merged read-back windows and the v11 speed
+patches are filed with the pull-request comments:
+[E0614](docs/evidence/0614-f280-clock-readback-contributor-boot-score.md),
+[E0615](docs/evidence/0615-f350-readback-contributor-boot-score.md),
+[E0616](docs/evidence/0616-tb-jmp-cache-bits-14-contributor-boot-score.md),
+[E0617](docs/evidence/0617-v11-sd-insert-check-contributor-boot-score.md),
+and [E0618](docs/evidence/0618-f388-readback-contributor-boot-score.md).
+They keep captured step 26 (`0x0323`/`0x0320`). This workspace did not re-run
+that scorer, and no physical camera result is claimed.
+
+QEMU EP0 milestone: original firmware now completes six host-driven standard
+control transfers to address 1, configuration 1 and UDC `configured` in two
+fresh runs. The optional mode preserves the older descriptor replay and
+rejects unsupported ownership/DMA cases. The enumerated original function
+is bus-power/HID; UVC remains unverified
+([E0598](docs/evidence/0598-qemu-token-driven-ep0-configuration.md)).
+
 | Goal | What it means | Current milestone |
 | :--- | :--- | :--- |
 | **1 · Emulate Every BIONZ X Model** | Run original bootloaders, Linux kernels (`ARM-CXD900X0`), and `im.elf` UI/ISP stacks offline in **QEMU** and **Unicorn** across the `CXD90045` family | **13 bodies / 9 kernels mapped** ([`PLATFORM_MODEL.md`](docs/PLATFORM_MODEL.md)); **8 registered profiles** (`ILCE-6400` verified execution target + 7 sourced reference profiles, [E0570](docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md)) |
@@ -40,7 +64,7 @@ Legend: `🟢 Verified` · `🟡 Partial / Opt-in` · `⚪ Open Boundary` · `�
 | **Inputs & Touch** | 🟢 Web Rear Panel (`ADC`, `GPIO`, sub-micro, wheel, `MENU`); ⛔ **No touch panel** | 🟢 Isolated harnesses for touch press/release (`MTF2`) & menu vtables | [E0573](docs/evidence/0573-qemu-a6400-rear-panel-controls.md), [E0520](docs/evidence/0520-mtf2-full-menu-touch-verified-on-a6400.md) |
 | **Mod Loader & Mods** | 🟢 `Mod Loader v2` installs in guest `im.elf`, relocates & hot-reloads `.mod` files | 🟢 10-scenario `MLCR` core + `SMOD v2` relocation & trampoline checks | [E0577](docs/evidence/0577-qemu-real-mods-relocation-and-hot-reload.md), [E0576](docs/evidence/0576-mod-loader-v2-reload-request.md) |
 | **Live Sensor / YUV** | 🟡 Opt-in deterministic luma reaches the stock guest's CamPig/Ydet, RC0 DMA and rear LCD via VPH ch51 | ⚪ Sensor feeder unwired; DMM `0x0167046a` JPEG queue contract decoded | [E0591](docs/evidence/0591-qemu-a6400-first-live-view-frame.md), [E0349](docs/evidence/0349-p1-foreign-get-jpeg-succeeds-in-pc-remote.md) |
-| **USB, Wi-Fi/BT, HDMI, Lens** | ⛔ **Not supported** (no DWC3 gadget, `BCM4339`, HDMI out, lens, or audio) | 🟡 Original-process USB startup reaches FSM state 7 and gadget registration, then stops at guarded OTG `SET_MODE`; ⛔ no radio/HDMI/lens | [E0534](docs/evidence/0534-original-process-usb-gadget-registration-and-otg-boundary.md), [E0524](docs/evidence/0524-original-local-osal-setconfig-route.md), [E0476](docs/evidence/0476-status-prearm-fix-build-audit-unicorn.md) |
+| **USB, Wi-Fi/BT, HDMI, Lens** | 🟡 Opt-in DWC3: original bus-power/HID reaches configured through six EP0 controls; no UVC/data endpoints, radio, HDMI, lens or audio qualification | 🟡 Original-process USB startup reaches FSM state 7 and gadget registration, then stops at guarded OTG `SET_MODE`; ⛔ no radio/HDMI/lens | [E0598](docs/evidence/0598-qemu-token-driven-ep0-configuration.md), [E0534](docs/evidence/0534-original-process-usb-gadget-registration-and-otg-boundary.md), [E0476](docs/evidence/0476-status-prearm-fix-build-audit-unicorn.md) |
 
 ### Parallel Offline Contract Follow-Ups
 
@@ -54,7 +78,7 @@ Legend: `🟢 Verified` · `🟡 Partial / Opt-in` · `⚪ Open Boundary` · `�
 
 - **Live camera sensor, shutter & recording (QEMU & Unicorn):** The QEMU frame uses synthetic luma, not a real sensor stream or validated RAW/color ISP. AF/AE, still capture and movie recording to SD are unverified (see [QEMU checkpoint](qemu-a6400/STATUS.md)).
 - **Touch-panel hardware in QEMU:** The `sony-a6400` board has no emulated touch controller, so touch mods (`MTF2`) cannot be exercised via clicks in QEMU ([`MOD_DEVELOPMENT.md`](qemu-a6400/MOD_DEVELOPMENT.md)).
-- **USB Gadget (UVC / PTP / MSC) in QEMU:** With opt-in `USB_VBUS_TEST=1` and `USB_CID_HIGH=1` (bit 1 high at `0xF2920010`), virtual cable attach and detach pass `SetJackStatus(1)`, broadcast `0x0A400A`/`0x0A400B`, and transition `libBusPower.so` (`state 0 → 2 → 0`), while `viewUnified2.so` (`DefRootView::ActionOpenUSB`) awaits `FirstView`/clock readiness before loading USB servers and sending `0x0A2000` (`StartGadget`). Gadget start, enumeration and streaming remain open. [E0579](docs/evidence/0579-qemu-usb-and-sensor-observation.md) · [E0580](docs/evidence/0580-qemu-usb-vbus-interrupt.md) · [E0587](docs/evidence/0587-qemu-usb-cid-high-unlocks-vbus-broadcast.md) · [E0588](docs/evidence/0588-qemu-usb-buspower-and-obj-fsm-dispatch.md) · [E0589](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md)
+- **USB Gadget (UVC / PTP / MSC) in QEMU:** The stock view-driven server-start gate remains unqualified ([E0589](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md)). Explicit diagnostic commands and optional captured-register/host-token policies now enumerate the original bus-power/HID function to UDC configured ([E0598](docs/evidence/0598-qemu-token-driven-ep0-configuration.md)). A genuine UVC function, non-EP0 data endpoints, transfer chains, packetization and video remain unqualified; the USB Streaming Test item still only counts loader lifecycle calls.
 - **Peripherals & Radios (QEMU & Unicorn):** Wi-Fi / Bluetooth (`BCM4339`), HDMI output, E-mount lens communication, audio I/O, and hardware watchdog (`0xF2402000`) are unmodelled.
 - **Full Unicorn L3 GUI & Non-a6400 Boot:** `InterpreterProbe` (Unicorn L3) does not yet produce a GUI frame (`stella` heap & GPES barriers), and only `ILCE-6400` is a verified execution target (other `CXD90045` bodies are reference profiles).
 
@@ -69,6 +93,7 @@ Legend: `🟢 Verified` · `🟡 Partial / Opt-in` · `⚪ Open Boundary` · `�
 | **[MenuTouchFull (`MTF2`)](mods/menu_touch_full/README.md)** | Full-menu touch navigation: tabs, page dots, swipe paging, row select/open, popup scroll & apply | Verified on `ILCE-6400` ([E0520](docs/evidence/0520-mtf2-full-menu-touch-verified-on-a6400.md)); `SMOD v2` usable & hot-reloads in QEMU |
 | **[Arrivederci](mods/arri_isp/arrivederci/README.md)** | ARRI LogC3 Classic tone curve + fitted Q10 color matrix for S-Log3 / S-Gamut3.Cine | Usable in Modset v2 ([E0555](docs/evidence/0555-arrivederci-menu-exit-recompute-and-cc8-refill.md), [E0556](docs/evidence/0556-arrivederci-classic-fitted-matrix.md)); turn OFF before power-off |
 | **ModsTabLook** | Renders the custom `MODS` tab icon artwork (`E0522`) | Auto-enabled in QEMU mod-dev mode ([E0522](docs/evidence/0522-mods-tab-icon-and-uxd-image-container.md)) |
+| **Command items** (`--action`) | A Mods row without ON/OFF: pressing it starts the mod and closes the menu to the shooting screen, like the ZV-E10 "USB Streaming" entry | Loader feature verified in Unicorn and QEMU ([E0592](docs/evidence/0592-mod-loader-command-items-usb-streaming-entry.md)); no UVC streaming mod uses it yet. The QEMU virtual USB host reaches the DWC3 model, but the guest never starts a gadget ([E0593](docs/evidence/0593-qemu-dwc3-virtual-host-and-gadget-start-gap.md)) |
 | **Open Gate (3:2)** | Staged `IMX284` 3:2 (`1620×1080` / `3240×2160`) recording path via `DMM` & `ZIMA DVENC` | Offline feasibility mapped ([E0578](docs/evidence/0578-a6400-open-gate-3-2-recording-feasibility.md)); untested on hardware |
 
 👉 **[Read `mods/README.md` for step-by-step installation (QEMU & physical `ILCE-6400`)](mods/README.md)**
@@ -93,7 +118,7 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 
 Recorded offline suite: **2091 tests**, with 88 skip records and no failures/errors in the integrated checkout ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. Separate QEMU milestones are the [USB mode gate](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md) and [first firmware-driven live-view frame](docs/evidence/0591-qemu-a6400-first-live-view-frame.md). Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=89ea55627db7)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=f4f10d9b6461)
 
 ![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
 

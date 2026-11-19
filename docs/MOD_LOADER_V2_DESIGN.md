@@ -232,6 +232,16 @@ SMOD v2 flag 8 (`SMOD_V2_FLAG_AUTO_ON`): the core switches the mod ON the first 
 file. ModsTabLook ships this way for QEMU (`mods/mods_tab_look/build_mtl_v2_wsl.sh`). When the
 ModsTabLook hook is absent, the core gives the Mods tab the sixth tab's icon.
 
+## Command items (2026-11-18)
+
+`SMOD_V2_FLAG_ACTION` (16) turns a Mods row into a command. The row shows no ON/OFF value:
+it is empty while idle and reads `Active` while running. A press on an idle item runs the
+normal ON path, and only after a successful ON queues the MENU key through libObj
+(MenuTouchFull's E0520 calls, moved by the live libObj base). The menu then closes to the
+shooting screen. A press on a running item switches it OFF and keeps the menu open. Auto-on is
+ignored for these items. Unicorn scenario 15 and a QEMU run pass
+([E0592](evidence/0592-mod-loader-command-items-usb-streaming-entry.md)). Not run on the camera.
+
 ## Reload request (offline, 2026-11-17)
 
 See [E0576](evidence/0576-mod-loader-v2-reload-request.md). Build `artifacts/tests/mlv2-reload-build-1` changes

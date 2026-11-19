@@ -7,6 +7,7 @@
 #define SYS_write      4
 #define SYS_open       5
 #define SYS_close      6
+#define SYS_unlink     10
 #define SYS_ioctl      54
 #define SYS_setsid     66
 #define SYS_fsync      118
@@ -27,6 +28,20 @@
 #define IOCTL_UVC_UPDATE   0x4008f003
 #define IOCTL_UVC_WAIT     0x0000f002
 #define IOCTL_UVC_ENABLE   0x0000f006
+#define IOCTL_UVC_QUERY_DMA 0x8010f020
+#define IOCTL_UVC_QUERY_TEST_SRC 0x8008f021
+
+struct uvc_mod_dma_metadata {
+    unsigned int phys_addr;
+    unsigned int total_size;
+    unsigned int slot_size;
+    unsigned int max_frame_payload;
+};
+
+struct uvc_mod_test_src {
+    unsigned int phys_addr;
+    unsigned int frame_size;
+};
 
 #ifndef UVC_TEST_TICKS
 #define UVC_TEST_TICKS 900
@@ -82,6 +97,22 @@ static inline int sys_open(const char *path, int flags, int mode) {
 static inline int sys_close(int fd) {
     register int r0 __asm__("r0") = fd;
     register int r7 __asm__("r7") = SYS_close;
+    __asm__ __volatile__("svc 0" : "=r"(r0) : "r"(r0), "r"(r7) : "memory");
+    return r0;
+}
+
+static inline int sys_read(int fd, void *buf, int len) {
+    register int r0 __asm__("r0") = fd;
+    register int r1 __asm__("r1") = (int)buf;
+    register int r2 __asm__("r2") = len;
+    register int r7 __asm__("r7") = SYS_read;
+    __asm__ __volatile__("svc 0" : "=r"(r0) : "r"(r0), "r"(r1), "r"(r2), "r"(r7) : "memory");
+    return r0;
+}
+
+static inline int sys_unlink(const char *path) {
+    register int r0 __asm__("r0") = (int)path;
+    register int r7 __asm__("r7") = SYS_unlink;
     __asm__ __volatile__("svc 0" : "=r"(r0) : "r"(r0), "r"(r7) : "memory");
     return r0;
 }
@@ -191,7 +222,7 @@ static int sleep_until(const struct timespec *ts) {
     return r0;
 }
 
-void _start(void) {
+static int run_streaming_session(void) {
     struct usbg_video_buf_info reg_buf;
     struct usbg_video_data_info data_info;
     struct uvc_user_probe_info info;
@@ -202,20 +233,6 @@ void _start(void) {
     int max_ticks = UVC_TEST_TICKS; /* Scheduling bound; an ioctl may block. */
     struct timespec next_frame;
 
-    /* Escape parent process group and close inherited pipes so execute() in a6400_usb_debugd
-     * finishes immediately (EOF) and NEVER sends kill(-child, SIGKILL) after 5 seconds! */
-    sys_setsid();
-    sys_close(0);
-    sys_close(1);
-    sys_close(2);
-
-    /* Wait 800 ms so launching shell & SCSI transaction can cleanly finish */
-    sleep_ms(800);
-
-    /* Open log file in /tmp_bt/feeder.log */
-    int f = sys_open("/tmp_bt/feeder.log", O_RDWR | O_CREAT | O_TRUNC, 0666);
-    if (f >= 0) g_log_fd = f;
-
     print_str(">>> a6400 UVC 720p @ 30 FPS Stream Feeder starting <<<\n");
 
     /* 1. Open UVC character device node */
@@ -224,8 +241,7 @@ void _start(void) {
         print_str("ERROR: Cannot open /tmp_bt/video (fd=");
         print_dec(uvc_fd);
         print_str(")\n");
-        if (g_log_fd > 2) sys_close(g_log_fd);
-        sys_exit(1);
+        return 1;
     }
     print_str("[feeder] /tmp_bt/video opened, fd=");
     print_dec(uvc_fd);
@@ -250,9 +266,24 @@ void _start(void) {
     print_dec(ret);
     print_str("\n");
 
-    /* 3. Register physical DMA video buffer (1325056 bytes at 0x20000000) */
+    /* 3. Register physical DMA video buffer */
+#ifdef UVC_USE_QUERY_DMA
+    struct uvc_mod_dma_metadata dma_meta;
+    ret = sys_ioctl(uvc_fd, IOCTL_UVC_QUERY_DMA, &dma_meta);
+    print_str("[feeder] IOCTL_UVC_QUERY_DMA result=");
+    print_dec(ret);
+    print_str("\n");
+    if (ret != 0) {
+        sys_ioctl(uvc_fd, IOCTL_UVC_STOP, (void *)0);
+        sys_close(uvc_fd);
+        return 1;
+    }
+    reg_buf.size = dma_meta.total_size;
+    reg_buf.phys_addr = dma_meta.phys_addr;
+#else
     reg_buf.size = 1325056;
     reg_buf.phys_addr = 0x20000000;
+#endif
     ret = sys_ioctl(uvc_fd, IOCTL_UVC_REG_BUF, &reg_buf);
     print_str("[feeder] IOCTL_UVC_REG_BUF result=");
     print_dec(ret);
@@ -267,9 +298,29 @@ void _start(void) {
     print_str("[feeder] streaming loop active (720p @ 30 FPS)...\n");
 
     /* 5. Feed frames at 30 FPS */
+#ifdef UVC_USE_QUERY_DMA
+    struct uvc_mod_test_src test_src;
+    ret = sys_ioctl(uvc_fd, IOCTL_UVC_QUERY_TEST_SRC, &test_src);
+    print_str("[feeder] IOCTL_UVC_QUERY_TEST_SRC result=");
+    print_dec(ret);
+    print_str("\n");
+    if (ret != 0) {
+        sys_ioctl(uvc_fd, IOCTL_UVC_UNREG, (void *)0);
+        sys_ioctl(uvc_fd, IOCTL_UVC_STOP, (void *)0);
+        sys_close(uvc_fd);
+        return 1;
+    }
+    data_info.frame_size = test_src.frame_size;
+    data_info.phys_addr = test_src.phys_addr;
+#else
     data_info.frame_size = 29452;
     data_info.phys_addr = 0x20120000; /* Disjoint from both UVC destination slots. */
+#endif
+#ifndef UVC_DAEMON_MODE
     sleep_ms(1000);
+#else
+    sleep_ms(100);
+#endif
     if (monotonic_time(&next_frame) != 0) max_ticks=0;
 
     while (total_ticks < max_ticks) {
@@ -348,6 +399,39 @@ void _start(void) {
     sys_close(uvc_fd);
 
     print_str("[feeder] clean teardown complete! Mass Storage restored.\n");
+    return 0;
+}
+
+void _start(void) {
+    /* Escape parent process group and close inherited pipes so shell / debugd waits don't hang. */
+    sys_setsid();
+    sys_close(0);
+    sys_close(1);
+    sys_close(2);
+
+#ifdef UVC_DAEMON_MODE
+    int f = sys_open("/tmp_bt/feeder.log", O_RDWR | O_CREAT | O_TRUNC, 0666);
+    if (f >= 0) g_log_fd = f;
+    print_str("[daemon] uvc_mod_daemon ready, polling /tmp_bt/uvc_mod.cmd\n");
+    for (;;) {
+        int cmd_fd = sys_open("/tmp_bt/uvc_mod.cmd", O_RDONLY, 0);
+        if (cmd_fd >= 0) {
+            char buf[16];
+            int n = sys_read(cmd_fd, buf, sizeof(buf) - 1);
+            sys_close(cmd_fd);
+            if (n >= 5 && buf[0] == 's' && buf[1] == 't' && buf[2] == 'a' && buf[3] == 'r' && buf[4] == 't') {
+                sys_unlink("/tmp_bt/uvc_mod.cmd");
+                run_streaming_session();
+            }
+        }
+        sleep_ms(50);
+    }
+#else
+    sleep_ms(800);
+    int f = sys_open("/tmp_bt/feeder.log", O_RDWR | O_CREAT | O_TRUNC, 0666);
+    if (f >= 0) g_log_fd = f;
+    int rc = run_streaming_session();
     if (g_log_fd > 2) sys_close(g_log_fd);
-    sys_exit(0);
+    sys_exit(rc);
+#endif
 }

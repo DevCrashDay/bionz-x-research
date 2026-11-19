@@ -68,7 +68,12 @@ static void access(unsigned cpu, qemu_plugin_meminfo_t info, uint64_t va,
             1u << qemu_plugin_mem_size_shift(info), pa, va, data);
 }
 
+/* QEMU 11 (plugin API 7) passes user data instead of the plugin id to these callbacks. */
+#if QEMU_PLUGIN_VERSION >= 7
+static void translate(struct qemu_plugin_tb *tb, void *userdata)
+#else
 static void translate(qemu_plugin_id_t id, struct qemu_plugin_tb *tb)
+#endif
 {
     for (size_t i = 0; i < qemu_plugin_tb_n_insns(tb); i++) {
         struct qemu_plugin_insn *insn = qemu_plugin_tb_get_insn(tb, i);
@@ -82,7 +87,11 @@ static void translate(qemu_plugin_id_t id, struct qemu_plugin_tb *tb)
     }
 }
 
+#if QEMU_PLUGIN_VERSION >= 7
+static void summarize(void *opaque)
+#else
 static void summarize(qemu_plugin_id_t id, void *opaque)
+#endif
 {
     for (unsigned cpu = 0; cpu < MAX_CPUS; cpu++) {
         fprintf(stderr, "[DWC3 trace] cpu=%u samples=%u%s\n", cpu, samples[cpu],
@@ -97,7 +106,11 @@ QEMU_PLUGIN_EXPORT int qemu_plugin_install(qemu_plugin_id_t id,
     if (!info->system_emulation || argc != 0) {
         return -1;
     }
+#if QEMU_PLUGIN_VERSION >= 7
+    qemu_plugin_register_vcpu_tb_trans_cb(id, translate, NULL);
+#else
     qemu_plugin_register_vcpu_tb_trans_cb(id, translate);
+#endif
     qemu_plugin_register_atexit_cb(id, summarize, NULL);
     return 0;
 }

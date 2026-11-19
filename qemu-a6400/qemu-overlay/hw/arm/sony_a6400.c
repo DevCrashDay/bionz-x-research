@@ -1120,6 +1120,7 @@ typedef struct SonyUsbVbus {
 static bool sony_a6400_usb_vbus_test;
 static bool sony_a6400_usb_cid_high;
 static bool sony_a6400_dwc3_gadget;
+static bool sony_a6400_pl330_dma;
 static SonyUsbVbus *sony_a6400_usb_vbus;
 
 static uint64_t sony_usb_vbus_read(void *opaque, hwaddr addr, unsigned size)
@@ -1206,6 +1207,20 @@ static void sony_set_dwc3_gadget(Object *obj, bool enabled, Error **errp)
         return;
     }
     sony_a6400_dwc3_gadget = enabled;
+}
+
+static bool sony_get_pl330_dma(Object *obj, Error **errp)
+{
+    return sony_a6400_pl330_dma;
+}
+
+static void sony_set_pl330_dma(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "pl330-dma is a startup option");
+        return;
+    }
+    sony_a6400_pl330_dma = enabled;
 }
 
 static bool sony_get_usb_vbus(Object *obj, Error **errp)
@@ -1532,6 +1547,21 @@ static void sony_a6400_init(MachineState *machine)
         sysbus_realize_and_unref(SYS_BUS_DEVICE(dwc3), &error_fatal);
         sysbus_mmio_map_overlap(SYS_BUS_DEVICE(dwc3), 0, 0xF020C000ULL, -500);
         sysbus_connect_irq(SYS_BUS_DEVICE(dwc3), 0, pic[229 - 32]);
+    }
+    if (sony_a6400_pl330_dma) {
+        DeviceState *pl330 = qdev_new("pl330");
+        SysBusDevice *pl330_sbd = SYS_BUS_DEVICE(pl330);
+        object_property_set_link(OBJECT(pl330), "memory",
+                                 OBJECT(sysmem), &error_fatal);
+        qdev_prop_set_uint32(pl330, "num_chnls", 4);
+        qdev_prop_set_uint8(pl330, "num_periph_req", 0);
+        qdev_prop_set_uint8(pl330, "num_events", 4);
+        sysbus_realize_and_unref(pl330_sbd, &error_fatal);
+        sysbus_mmio_map_overlap(pl330_sbd, 0, 0xF0030000ULL, 1);
+        sysbus_connect_irq(pl330_sbd, 0, pic[119 - 32]); /* dm330_abort */
+        for (int ev = 0; ev < 4; ev++) {
+            sysbus_connect_irq(pl330_sbd, ev + 1, pic[(115 + ev) - 32]); /* dm330_0..3 */
+        }
     }
 
     /*
@@ -1923,6 +1953,11 @@ static void sony_a6400_machine_init(MachineClass *mc)
                                    sony_set_dwc3_gadget);
     object_class_property_set_description(OBJECT_CLASS(mc), "dwc3-gadget",
         "Enable the experimental CXD90045 DWC3 gadget controller at 0xF020C000 and IRQ 229 (E0590)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "pl330-dma",
+                                   sony_get_pl330_dma,
+                                   sony_set_pl330_dma);
+    object_class_property_set_description(OBJECT_CLASS(mc), "pl330-dma",
+        "Enable the PL330 DMAC controller at 0xF0030000 and IRQs 115..119");
     object_class_property_add_bool(OBJECT_CLASS(mc), "usb-vbus",
                                    sony_get_usb_vbus, sony_set_usb_vbus);
     object_class_property_set_description(OBJECT_CLASS(mc), "usb-vbus",

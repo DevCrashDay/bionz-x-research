@@ -7,6 +7,7 @@ emitted as COLOR_LEGACY, so ON and OFF also recognize a B8 that still holds the 
 """
 import hashlib
 import json
+import math
 import struct
 import sys
 from pathlib import Path
@@ -34,15 +35,56 @@ assert all(sum(color_arri[i:i + 3]) == 1024 for i in (0, 3, 6))
 assert all(-32768 <= v <= 32767 for v in color_arri)
 
 
+def _filmic_highlight_shoulder(base_curve: tuple[int, ...]) -> list[int]:
+    """Extend upper highlights (knots 64..95) with a C1-smooth roll-off to 0xf780."""
+    out = list(base_curve[:64])
+    y63 = out[63]
+    span = 0xF780 - y63
+    k = 2.65
+    denom = 1.0 - math.exp(-k)
+    for i in range(64, 96):
+        t = (i - 63) / 32.0
+        v = y63 + span * (1.0 - math.exp(-k * t)) / denom
+        out.append(int(round(v / 64.0)) * 64)
+    return out
+
+
+gamma_legacy = list(words["record31-arri-classic-rec709.bin"][:96])
+gamma_arri = _filmic_highlight_shoulder(words["record31-arri-classic-rec709.bin"][:96])
+assert len(gamma_arri) == 96 and all(gamma_arri[i] >= gamma_arri[i - 1] for i in range(1, 96))
+
+
 def fmt(values, as_hex):
     return ",".join(hex(v) if as_hex else str(v) for v in values)
 
 
-legacy = ("#define COLOR_HAS_LEGACY 1\n"
-          f"static const int16_t COLOR_LEGACY[9] = {{{fmt(color_legacy, False)}}};\n") if color_legacy else ""
+def _c_bytes(name: str, data: bytes) -> str:
+    hex_bytes = ",".join(f"0x{b:02x}" for b in data)
+    return f"static const uint8_t {name}[{len(data)}] = {{{hex_bytes}}};\n"
+
+
+sabin_dir = root / "artifacts/analysis/arri-v4-sabin"
+sabin_hdr = ""
+sabin_files = {
+    "SABIN_DCV_BAYER": "dcv_psf_table_movie_bayer.bin",
+    "SABIN_DCV_4K": "dcv_psf_table_movie_4k.bin",
+    "SABIN_Y_TAP_1": "spica_musashi_mov_4k_y_tap_step1.bin",
+    "SABIN_Y_TAP_2": "spica_musashi_mov_4k_y_tap_step2.bin",
+}
+if (sabin_dir / "dcv_psf_table_movie_bayer.bin").exists():
+    sabin_hdr = "#define SABIN_EMBEDDED 1\n" + "".join(
+        _c_bytes(sym, (sabin_dir / fname).read_bytes()) for sym, fname in sabin_files.items()
+    )
+
+legacy = ("#define GAMMA_HAS_LEGACY 1\n"
+          f"static const uint32_t GAMMA_LEGACY[96] = {{{fmt(gamma_legacy, True)}}};\n")
+if color_legacy:
+    legacy += ("#define COLOR_HAS_LEGACY 1\n"
+               f"static const int16_t COLOR_LEGACY[9] = {{{fmt(color_legacy, False)}}};\n")
 Path(sys.argv[1]).write_text(
     "#include <stdint.h>\n"
     f"static const uint32_t GAMMA_STOCK[96] = {{{fmt(words['record31-stock.bin'][:96], True)}}};\n"
-    f"static const uint32_t GAMMA_ARRI[96] = {{{fmt(words['record31-arri-classic-rec709.bin'][:96], True)}}};\n"
+    f"static const uint32_t GAMMA_ARRI[96] = {{{fmt(gamma_arri, True)}}};\n"
     f"static const int16_t COLOR_STOCK[9] = {{{fmt(color_stock, False)}}};\n"
-    f"static const int16_t COLOR_ARRI[9] = {{{fmt(color_arri, False)}}};\n" + legacy)
+    f"static const int16_t COLOR_ARRI[9] = {{{fmt(color_arri, False)}}};\n"
+    + legacy + sabin_hdr)

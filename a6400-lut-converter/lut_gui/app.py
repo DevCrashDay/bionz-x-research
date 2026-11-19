@@ -1,5 +1,6 @@
 """Windows-first Tkinter front-end. Only calls lut_core; contains no colour math."""
 from dataclasses import replace
+import math
 import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -17,7 +18,7 @@ from lut_core.image_source import load_image
 from lut_core.preview import apply_overlay, compose_preview
 from lut_profiles import PROFILES
 
-MAX_PREVIEW = 900
+MAX_PREVIEW = 6000
 
 
 class App(tk.Tk):
@@ -43,9 +44,16 @@ class App(tk.Tk):
         self.split_mode = tk.StringVar(value="Ideal .cube vs. ISP Sim")
         self.overlay_on = tk.BooleanVar(value=False)
         self.overlay_kind = tk.StringVar(value="Off")
+        self.spatial_mode = tk.StringVar(value="Off (Color Only)")
+        self.zoom_mode = tk.StringVar(value="Fit")
         self.cube_path = tk.StringVar(value="(no .cube loaded)")
         self._photo = None
         self._ref = self._app = None
+        self._zoom_scale = None
+        self._pan_x = 0.5
+        self._pan_y = 0.5
+        self._drag_start = None
+        self._last_view = None
 
         top = ttk.Frame(self, padding=6)
         top.pack(fill="x")
@@ -105,6 +113,22 @@ class App(tk.Tk):
                                     values=("Off", "dE Heatmap", "5x9x9 Clamp Warning"))
         overlay_mode.pack(side="left", padx=4)
         overlay_mode.bind("<<ComboboxSelected>>", lambda e: self.draw())
+        ttk.Label(overlay, text="Spatial / DCV:").pack(side="left", padx=(12, 2))
+        spatial_cb = ttk.Combobox(overlay, textvariable=self.spatial_mode, state="readonly", width=32, values=(
+            "Off (Color Only)",
+            "Sony Stock (DCV 100%)",
+            "ARRI Fix (DCV 25% + Chroma Smooth)",
+            "ARRI Fix (DCV 0% Flat + Chroma Smooth)",
+            "ARRI Full (AFA09T + Chroma Smooth)",
+        ))
+        spatial_cb.pack(side="left", padx=4)
+        spatial_cb.bind("<<ComboboxSelected>>", lambda e: self.refresh())
+        ttk.Label(overlay, text="Zoom:").pack(side="left", padx=(12, 2))
+        zoom_cb = ttk.Combobox(overlay, textvariable=self.zoom_mode, state="readonly", width=7,
+                               values=("Fit", "50%", "100%", "200%", "400%", "800%"))
+        zoom_cb.pack(side="left", padx=4)
+        zoom_cb.bind("<<ComboboxSelected>>", lambda _e: self._on_zoom_select())
+        ttk.Button(overlay, text="Reset View", command=self.reset_view).pack(side="left", padx=4)
 
         self.view_note = tk.StringVar(value="Left: reference. Right: simulated 8-bit 4:2:0.")
         self.view_label = tk.Label(self, textvariable=self.view_note, justify="left", anchor="w",
@@ -116,6 +140,13 @@ class App(tk.Tk):
         self.canvas.pack(fill="both", expand=True, padx=6, pady=6)
         self._canvas_size = (0, 0)
         self.canvas.bind("<Configure>", self._on_canvas_resize)
+        self.canvas.bind("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind("<Button-4>", lambda e: self._zoom_step(1.25, e.x, e.y))
+        self.canvas.bind("<Button-5>", lambda e: self._zoom_step(0.8, e.x, e.y))
+        self.canvas.bind("<ButtonPress-1>", self._on_pan_start)
+        self.canvas.bind("<B1-Motion>", self._on_pan_move)
+        self.canvas.bind("<ButtonRelease-1>", self._on_pan_end)
+        self.canvas.bind("<Double-Button-1>", lambda _e: self.reset_view())
 
         self.stats = tk.Label(self, text="", justify="left", anchor="w", font=("Segoe UI", 9), wraplength=760)
         self.stats.pack(fill="x", padx=8)
@@ -161,6 +192,15 @@ class App(tk.Tk):
         self.ev_readout.set("+0.0 EV")
         self._ev_applied = 0.0
         self.refresh()
+
+    def _spatial_key(self):
+        return {
+            "Off (Color Only)": "off",
+            "Sony Stock (DCV 100%)": "sony_stock",
+            "ARRI Fix (DCV 25% + Chroma Smooth)": "arri_25pct",
+            "ARRI Fix (DCV 0% Flat + Chroma Smooth)": "arri_00pct",
+            "ARRI Full (AFA09T + Chroma Smooth)": "arri_full",
+        }.get(self.spatial_mode.get(), "off")
 
     def _split_key(self):
         label = self.split_mode.get()
@@ -316,6 +356,7 @@ class App(tk.Tk):
         self.image_note = loaded.note
         self.image = loaded.rgb
         self.note.config(text=loaded.note)
+        self.reset_view(redraw=False)
         self.refresh()
 
     def use_colorchecker(self):
@@ -382,7 +423,7 @@ class App(tk.Tk):
                 self._split_key(), cube, preset, profile, source_name, self.image,
                 encoding=self._encoding(), video_range=video_range, interpolation=interpolation,
                 ev=self._ev_value(), exposure_scale=self.base_exposure_scale,
-                rec709=rec709, wide=wide)
+                rec709=rec709, wide=wide, spatial_mode=self._spatial_key())
             self._ref = self._views["left"]
             self._app = self._views["right"]
             self.cube_report = self._views["cube_report"]
@@ -405,21 +446,120 @@ class App(tk.Tk):
         if self._ref is not None or self.image is not None:
             self.draw()
 
-    def _show(self, rgb):
-        im = Image.fromarray(np.clip(np.rint(np.clip(rgb, 0, 1) * 255), 0, 255).astype(np.uint8))
+    def reset_view(self, redraw=True):
+        """Reset zoom to Fit and center pan."""
+        self._zoom_scale = None
+        self._pan_x = 0.5
+        self._pan_y = 0.5
+        self.zoom_mode.set("Fit")
+        if redraw:
+            self.draw()
+
+    def _on_zoom_select(self):
+        label = self.zoom_mode.get()
+        if label == "Fit":
+            self._zoom_scale = None
+            self._pan_x = 0.5
+            self._pan_y = 0.5
+        else:
+            self._zoom_scale = float(label.rstrip("%")) / 100.0
+        self.draw()
+
+    def _on_mousewheel(self, event):
+        if event.delta == 0:
+            return
+        factor = 1.25 if event.delta > 0 else 0.8
+        self._zoom_step(factor, event.x, event.y)
+
+    def _zoom_step(self, factor, cx, cy):
+        if self._last_view is None:
+            return
+        img_w, img_h, old_scale, src_x0, src_y0, canvas_x, canvas_y, cw, ch = self._last_view
+        # Image coordinate currently under cursor (cx, cy).
+        img_x = src_x0 + (cx - canvas_x) / old_scale
+        img_y = src_y0 + (cy - canvas_y) / old_scale
+        new_scale = max(0.05, min(16.0, old_scale * factor))
+        self._zoom_scale = new_scale
+        self.zoom_mode.set(f"{int(round(new_scale * 100))}%")
+        if 0 <= img_x <= img_w and 0 <= img_y <= img_h:
+            new_cx = img_x - (cx - cw / 2.0) / new_scale
+            new_cy = img_y - (cy - ch / 2.0) / new_scale
+            self._pan_x = max(0.0, min(1.0, new_cx / img_w))
+            self._pan_y = max(0.0, min(1.0, new_cy / img_h))
+        self.draw()
+
+    def _on_pan_start(self, event):
+        self._drag_start = (event.x, event.y, self._pan_x, self._pan_y)
+
+    def _on_pan_move(self, event):
+        if self._drag_start is None or self._last_view is None:
+            return
+        sx, sy, px0, py0 = self._drag_start
+        img_w, img_h, scale, *_ = self._last_view
+        dx = (event.x - sx) / (scale * img_w)
+        dy = (event.y - sy) / (scale * img_h)
+        self._pan_x = max(0.0, min(1.0, px0 - dx))
+        self._pan_y = max(0.0, min(1.0, py0 - dy))
+        self.draw()
+
+    def _on_pan_end(self, _event):
+        self._drag_start = None
+
+    def _show(self, rgb, split_x_frac=None):
+        h, w = rgb.shape[:2]
         cw = max(self.canvas.winfo_width(), 1)
         ch = max(self.canvas.winfo_height(), 1)
-        if cw > 20 and ch > 20:
-            scale = min(cw / im.width, ch / im.height)
-            size = (max(1, int(im.width * scale)), max(1, int(im.height * scale)))
-            if size != im.size:
-                im = im.resize(size, Image.Resampling.BILINEAR)
+        fit_scale = min(cw / w, ch / h) if (cw > 20 and ch > 20) else min(640.0 / w, 420.0 / h)
+        scale = fit_scale if self._zoom_scale is None else self._zoom_scale
+
+        vis_w = cw / scale
+        vis_h = ch / scale
+        if vis_w >= w:
+            src_x0 = 0.0
+            ix0, ix1 = 0, w
+            self._pan_x = 0.5
+            disp_w = max(1, int(round(w * scale)))
+            canvas_x = max(0, (cw - disp_w) // 2)
+        else:
+            src_x0 = max(0.0, min(w - vis_w, self._pan_x * w - vis_w / 2.0))
+            ix0 = int(math.floor(src_x0))
+            ix1 = min(w, int(math.ceil(src_x0 + vis_w)))
+            self._pan_x = (src_x0 + vis_w / 2.0) / w
+            disp_w = max(1, int(round((ix1 - ix0) * scale)))
+            canvas_x = int(round((ix0 - src_x0) * scale))
+
+        if vis_h >= h:
+            src_y0 = 0.0
+            iy0, iy1 = 0, h
+            self._pan_y = 0.5
+            disp_h = max(1, int(round(h * scale)))
+            canvas_y = max(0, (ch - disp_h) // 2)
+        else:
+            src_y0 = max(0.0, min(h - vis_h, self._pan_y * h - vis_h / 2.0))
+            iy0 = int(math.floor(src_y0))
+            iy1 = min(h, int(math.ceil(src_y0 + vis_h)))
+            self._pan_y = (src_y0 + vis_h / 2.0) / h
+            disp_h = max(1, int(round((iy1 - iy0) * scale)))
+            canvas_y = int(round((iy0 - src_y0) * scale))
+
+        crop = rgb[iy0:iy1, ix0:ix1]
+        im = Image.fromarray(np.clip(np.rint(np.clip(crop, 0, 1) * 255), 0, 255).astype(np.uint8))
+        if (disp_w, disp_h) != im.size:
+            resample = Image.Resampling.NEAREST if scale >= 1.5 else Image.Resampling.BILINEAR
+            im = im.resize((disp_w, disp_h), resample)
         self._photo = ImageTk.PhotoImage(im)
         self.canvas.delete("all")
-        x = max(0, (cw - im.width) // 2)
-        y = max(0, (ch - im.height) // 2)
-        self.canvas.create_image(x, y, anchor="nw", image=self._photo)
-        return im, x, y
+        self.canvas.create_image(canvas_x, canvas_y, anchor="nw", image=self._photo)
+        self._last_view = (w, h, scale, float(ix0), float(iy0), canvas_x, canvas_y, cw, ch)
+
+        if split_x_frac is not None:
+            k = int(w * split_x_frac)
+            split_canvas_x = canvas_x + (k - ix0) * scale
+            if 0 <= split_canvas_x <= cw:
+                y0 = max(0, canvas_y)
+                y1 = min(ch, canvas_y + disp_h)
+                self.canvas.create_line(split_canvas_x, y0, split_canvas_x, y1, fill="white")
+        return im, canvas_x, canvas_y
 
     def draw(self):
         if self._ref is None:
@@ -429,6 +569,7 @@ class App(tk.Tk):
                                         text="Choose ARRI Wide Gamut, ARRI Rec.709, or a .cube")
             else:
                 self.canvas.delete("all")
+                self._last_view = None
             return
         h, w, _ = self._ref.shape
         k = int(w * self.split.get())
@@ -437,9 +578,7 @@ class App(tk.Tk):
         if self._views is not None:
             out = apply_overlay(out, self._overlay_key(), self._views["cube_delta"],
                                 self._views["clamp"], self.split.get())
-        im, x, y = self._show(out)
-        split = x + int(im.width * self.split.get())
-        self.canvas.create_line(split, y, split, y + im.height, fill="white")
+        self._show(out, split_x_frac=self.split.get())
 
     def export(self):
         if self.result is None:

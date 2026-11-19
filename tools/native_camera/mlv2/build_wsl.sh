@@ -55,3 +55,4 @@ python3 -m tools.research.package_mlv2_sd --build "$OUT"
 "$CC" "${common[@]}" -fpie -fvisibility=hidden -c "$D/test_mod.c" -o "$OUT/test_mod.o"
 arm-linux-gnueabi-ld --build-id=none -T "$D/mod_v2.ld" "$OUT/test_mod.o" -o "$OUT/test_mod.elf"
 python3 -m tools.research.pack_mod_v2 --elf "$OUT/test_mod.elf" --name "Test Mod" --on t_life --off t_life     --hook 0x33000100:2de9f04788b04ff014080122:t_hook --out "$OUT/TestMod.mod" > /dev/null
+python3 -m tools.research.pack_mod_v2 --elf "$OUT/test_mod.elf" --name "USB Streaming Test" --on t_life --off t_life     --action --out "$OUT/ActionTest.mod" > /dev/null
