@@ -20,6 +20,18 @@ later `0x3373` loop. Its unasserted IRQs and dormant Task 65 remain bounded
 observations; they do not replace the later QEMU device-model and rear-panel
 results above.
 
+## CXD90045 MISCREG/eFuse & A6400A Jiritsu Chunk Planner (2026-11-19 / E0643)
+
+[E0643](evidence/0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md)
+confirms neither `DGU5` (`nflashaB0`) nor the `ILCE-6400` (`8.2.6.0`) /
+`ILCE-6400A` (`8.2.7.6`) kernels verify kernel signatures, verifies live
+`ILCE-6400` `MISCREG`/`eFuse` MMIO (`0xF2915000=0x00000500`,
+`0xF2915010=0x0c01002b`) via a bounded single-page `/dev/mem` read, documents
+synchronous `dlopen("/tmp/jiritsu/libJit.so", RTLD_LAZY)` at `0x5D08` in
+`ILCE-6400A` 1.01 `libJiritsu.so`, and adds `--mode plan-chunk-dump` to
+`tools/research/a6400a_jiritsu_bootstrap.py` for single-slot `<= 512 KiB` RAM
+partition dumps (allowing `/dev/nflashaB0`/`B1` while rejecting `/dev/nflasha23`).
+
 ## CamCore register model (2026-11-19 / E0637)
 
 Merged pull request #42 maps `cxd90045-camcore` over `0xF3010000` (64 KiB,
