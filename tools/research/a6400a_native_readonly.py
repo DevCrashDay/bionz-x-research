@@ -67,14 +67,14 @@ class CameraIdentity:
 
 
 #: Bodies the probe knows how to admit. ``ilce_6400a`` is the original, fully
-#: observed target (E0509). ``ilce_7rm4a`` carries ``usb_pid=None`` because its
-#: Mass Storage PID has not been observed on a host yet; its GetModelInfo command
-#: binaries are byte-identical to the a6400A's (see the E0645 evidence record), so
-#: the command format is proven, while SCSI-side routing and the live identity
-#: still need the owner's camera and an observed ``--pid``.
+#: observed target (E0509). ``ilce_7rm4a``'s GetModelInfo command binaries are
+#: byte-identical to the a6400A's (E0645); its Mass Storage PID ``0x0D9D`` was
+#: observed read-only on the owner's body running firmware 1.13, where the same
+#: probe received one Sony BUSY and then a clean ``ILCE-7RM4A`` reply (E0646).
+#: A body whose PID has not been observed must be registered with ``usb_pid=None``.
 IDENTITIES = {
     "ilce_6400a": CameraIdentity("ilce_6400a", 0x0F0F, "Sony DSC USB Device", "ILCE-6400A"),
-    "ilce_7rm4a": CameraIdentity("ilce_7rm4a", None, "Sony DSC USB Device", "ILCE-7RM4A"),
+    "ilce_7rm4a": CameraIdentity("ilce_7rm4a", 0x0D9D, "Sony DSC USB Device", "ILCE-7RM4A"),
 }
 A6400A = IDENTITIES["ilce_6400a"]
 
