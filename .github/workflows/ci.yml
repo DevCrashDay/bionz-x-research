@@ -67,7 +67,7 @@ jobs:
       - name: Install ARMv7 cross-compiler and Python test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi
+          sudo apt-get install -y --no-install-recommends gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi libc6-dev-armel-cross
           python -m pip install --disable-pip-version-check -r requirements.txt
 
       - name: Run host-check probe harness
