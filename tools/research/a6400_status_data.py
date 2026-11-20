@@ -221,28 +221,147 @@ STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
     as_of="2026-11-20",
     latest=EvidenceRef(
-        evidence_id="E0649",
-        path="docs/evidence/0649-ilce6400-live-lens-info-linux-side-negative.md",
+        evidence_id="E0657",
+        path="docs/evidence/0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md",
         date="2026-11-20",
-        title="/dev/mem abort policy, BL lens focus decode, and live lens check",
+        title="Unicorn L3 allocator ownership, GLES shared init, Sugilite GPU and viewRootPowerSw OSD",
         demonstrated=(
-            "Persisted /proc/klog traces a single-page /dev/mem camera reboot to PA 0x000F8000 "
-            "(FSR 0x008 external abort -> exception monitor warm reboot); tools/devmem_policy.py "
-            "defines physical access tiers, QEMU lowmem-abort=on models the abort, and SIGBUS-catching "
-            "ro_page v2 survives PA 0x000F8000 on hardware (E0647). Static av-cam.bin decode maps BL "
-            "focus commands 0x41-0x4A and 0x1C-0x3C behind the capability bitmap gate (E0648); a live "
-            "read-only check with a Sigma 18-50 F2.8 DC DN confirms ORIL lens capability data is not "
-            "retained in Linux im.elf memory (E0649)."
+            "Unmodified im.elf runs to 1.50B insns (120 threads, 0 ownership errors without 0x50 padding); "
+            "sugilite_open 4B + rm_rqueue_init 128 KiB init, 24 Sugilite GPU/IRQ 76 jobs and OSD A/B verified."
         ),
         boundary=(
-            "Catching SIGBUS covers precise aborts only, not imprecise aborts or kernel reads; "
-            "DRAM /dev/mem remains forbidden. Second-generation BL focus field units and the Sigma "
-            "mount-bus capability bitmap require a passive mount-bus capture."
+            "viewRootPowerSw.uxc presents transparent 640x480 RGBA4444 OSD A/B frames because DefRootView "
+            "CheckerBootState/CheckerBootType await external av-cam.bin/UPM producers; E0530 stop preserved."
         ),
-        tier="READ-ONLY + STATIC",
+        tier="OFFLINE ORIGINAL L3 PROCESS + SUGILITE GPU",
     ),
-    headline="Native Unicorn ash | guarded USB startup | first QEMU live-view test chart",
+    headline="Unicorn L3 Sugilite GPU & 1.5B-insn heap trace | Unicorn nflasha3 main boot | QEMU live-view",
     cards=(
+        EvidenceRef(
+            evidence_id="E0656",
+            path="docs/evidence/0656-unicorn-main-firmware-boot.md",
+            date="2026-11-20",
+            title="Unicorn boots captured nflasha3 main firmware through init, LIRO and im.elf",
+            demonstrated=(
+                "Captured nflasha3 boots on UnicornMachine (--mmio stop, read-only emmc.img) through stock "
+                "/sbin/init, 9 mounts, 39 .ko modules, LIRO entry_main, im.elf DMP_2D_Initialize : 0, and ash."
+            ),
+            boundary=(
+                "Single-core Cortex-A9 execution leaves av-cam CPUs 1-3 offline; preloaded Backup.bin/av-cam.bin "
+                "model bootloader handoff. No Unicorn rear-LCD/GUI frame or physical camera result is claimed."
+            ),
+            tier="OFFLINE ORIGINAL MAIN KERNEL + INIT + LIRO + IM.ELF",
+        ),
+        EvidenceRef(
+            evidence_id="E0649",
+            path="docs/evidence/0649-ilce6400-live-lens-info-linux-side-negative.md",
+            date="2026-11-20",
+            title="/dev/mem abort policy, BL lens focus decode, and live lens check",
+            demonstrated=(
+                "Persisted /proc/klog traces a single-page /dev/mem camera reboot to PA 0x000F8000 "
+                "(FSR 0x008 external abort -> exception monitor warm reboot); tools/devmem_policy.py "
+                "defines physical access tiers, QEMU lowmem-abort=on models the abort, and SIGBUS-catching "
+                "ro_page v2 survives PA 0x000F8000 on hardware (E0647). Static av-cam.bin decode maps BL "
+                "focus commands 0x41-0x4A and 0x1C-0x3C behind the capability bitmap gate (E0648); a live "
+                "read-only check with a Sigma 18-50 F2.8 DC DN confirms ORIL lens capability data is not "
+                "retained in Linux im.elf memory (E0649)."
+            ),
+            boundary=(
+                "Catching SIGBUS covers precise aborts only, not imprecise aborts or kernel reads; "
+                "DRAM /dev/mem remains forbidden. Second-generation BL focus field units and the Sigma "
+                "mount-bus capability bitmap require a passive mount-bus capture."
+            ),
+            tier="READ-ONLY + STATIC",
+        ),
+        EvidenceRef(
+            evidence_id="E0655",
+            path="docs/evidence/0655-qemu-first-view-ptp-and-native-dwc3-reset.md",
+            date="2026-11-19",
+            title="Original FirstView USB checks, bulk OUT and DWC3 reset entry",
+            demonstrated=(
+                "Early stock cable passes sampled FirstView checks. Play produces native Neutral-Off. "
+                "Bulk OUT passes qtest, and original Unicorn DWC3 reset enters the PL310 sync path."
+            ),
+            boundary=(
+                "No stock Sony descriptor or data transfer; no original-process SETCONFIG or teardown. "
+                "Fixture inputs do not supply a DWC3 kernel object or a streaming capability."
+            ),
+            tier="OFFLINE QEMU + ORIGINAL ARM GUARD",
+        ),
+        EvidenceRef(
+            evidence_id="E0654",
+            path="docs/evidence/0654-usb-stock-attach-and-fusb-start-guard.md",
+            date="2026-11-19",
+            title="Original stock USB attach and FUSB startup boundaries",
+            demonstrated=(
+                "Stock QEMU observes the native ModelCamera NeutrOn store and original jack events. "
+                "In Unicorn, opt-in original FUSB SET_MODE advances to the bound DWC3 callback."
+            ),
+            boundary="No stock Sony descriptor or data transfer; no original-process SETCONFIG or teardown.",
+            tier="OFFLINE QEMU + ORIGINAL ARM GUARD",
+        ),
+        EvidenceRef(
+            evidence_id="E0653",
+            path="docs/evidence/0653-unicorn-updater-child-cow-and-hwcap.md",
+            date="2026-11-19",
+            title="Unicorn updater child/COW replay and D16 capability comparison",
+            demonstrated=(
+                "The original updater returns past uname, runs a BusyBox child and preserves parent "
+                "state across a subshell. Separately, opt-in D16 matches QEMU's guest AT_HWCAP."
+            ),
+            boundary=(
+                "Updater only. Unicorn still executes on Cortex-A9; main-firmware application or GUI "
+                "boot is unverified on this path."
+            ),
+            tier="OFFLINE ORIGINAL KERNEL + QEMU CAPABILITY REFERENCE",
+        ),
+        EvidenceRef(
+            evidence_id="E0652",
+            path="docs/evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md",
+            date="2026-11-19",
+            title="QEMU a6400 late black-screen scanout and buffer capture",
+            demonstrated=(
+                "The captured guest's Auto Power Save zeroes the active ch53 OSD buffer and "
+                "deactivates modelCamera while the emulated VPH/SYSV scanout keeps ticking."
+            ),
+            boundary=(
+                "A later offline replay verified stock S1 wake and persistence after an explicit native save. "
+                "Automatic shutdown save remains unverified; no physical camera result is claimed."
+            ),
+            tier="OFFLINE QEMU",
+        ),
+        EvidenceRef(
+            evidence_id="E0644",
+            path="docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md",
+            date="2026-11-19",
+            title="LIRO ram section is av-cam RW data, not a sub-core image",
+            demonstrated=(
+                "Static scan of av-cam.bin finds 1,878 references into the LIRO ram run region [0x645ACF00, 0x6467BD64) "
+                "pointing to data rather than function prologues, superseding E0642's sub-core inference; "
+                "handover_guard exec_range traces 499,175 blocks in 120 s before the current stall."
+            ),
+            boundary=(
+                "Offline av-cam.bin static analysis and bounded QEMU traces only; no camera access. "
+                "av-cam never reaches the consumer code inside 120 s."
+            ),
+            tier="OFFLINE",
+        ),
+        EvidenceRef(
+            evidence_id="E0637",
+            path="docs/evidence/0637-camcore-f301-contributor-boot-score.md",
+            date="2026-11-19",
+            title="Contributor boot score for the CamCore 0xF3010000 register model",
+            demonstrated=(
+                "The merged CamCore window keeps the posted step-26 state while distinct unmodelled "
+                "addresses fall from 2322 to 1310. Twenty-eight observed reads are named: 16 "
+                "read-modify-write words and 0x5020 return the guest's last write, and 11 status words stay 0."
+            ),
+            boundary=(
+                "Contributor emulator report only. This workspace did not re-run the scorer. The model is "
+                "on by default but does not release captured step 26 on its own. No physical camera result is claimed."
+            ),
+            tier="EMULATOR REPORT",
+        ),
         EvidenceRef(
             evidence_id="E0570",
             path="docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md",
