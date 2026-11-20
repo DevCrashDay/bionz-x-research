@@ -262,7 +262,8 @@ boot();
 class Camera:
     """The panel's one connection to a body, or a recorded session standing in for one."""
 
-    def __init__(self, host: str, port: int, offline: Path | None) -> None:
+    def __init__(self, host: str, port: int, offline: Path | None,
+                 transcript: Path | None = None) -> None:
         self.offline = offline
         self.recorded: dict[str, Any] = {}
         #: Shown only inside the served page; a POST without it did not come from that page.
@@ -276,7 +277,7 @@ class Camera:
             self.api_client: ScalarWebApi | None = None
         else:
             self.host = host
-            self.api_client = ScalarWebApi(host=host, port=port)
+            self.api_client = ScalarWebApi(host=host, port=port, transcript=transcript)
             self.api = []
             self.refresh_api()
 
@@ -628,9 +629,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--listen", type=int, default=8765, help="local port for the panel")
     parser.add_argument("--offline", type=Path, default=None,
                         help="replay a recorded session instead of contacting a camera")
+    parser.add_argument("--transcript", type=Path, default=None,
+                        help="append every call and the camera's raw answer to this JSONL file")
     args = parser.parse_args(argv)
 
-    camera = Camera(args.host, args.port, args.offline)
+    camera = Camera(args.host, args.port, args.offline, args.transcript)
     server = ThreadingHTTPServer(("127.0.0.1", args.listen), build_handler(camera))
     server.daemon_threads = True
     source = f"recorded {args.offline}" if args.offline else f"camera {args.host}:{args.port}"

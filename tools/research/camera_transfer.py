@@ -192,8 +192,9 @@ def server_type(host: str, port: int = 64321, timeout: float = 8.0) -> str | Non
     return match.group(1).strip() if match else None
 
 
-def run_live(host: str, port: int, scheme: str | None, limit: int, out: Path | None) -> int:
-    api = ScalarWebApi(host=host, port=port)
+def run_live(host: str, port: int, scheme: str | None, limit: int, out: Path | None,
+             transcript: Path | None = None) -> int:
+    api = ScalarWebApi(host=host, port=port, transcript=transcript)
     transfer = Transfer(api)
 
     mode = server_type(host)
@@ -289,11 +290,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--limit", type=int, default=MAX_PAGE,
                         help="how many files to list (paged 24 at a time)")
     parser.add_argument("--out", type=Path, default=None, help="directory to copy into")
+    parser.add_argument("--transcript", type=Path, default=None,
+                        help="append every call and the camera's raw answer to this JSONL file")
     args = parser.parse_args(argv)
     if args.limit < 1:
         parser.error("--limit must be at least 1")
 
-    return run_live(args.host, args.port, args.scheme, args.limit, args.out)
+    return run_live(args.host, args.port, args.scheme, args.limit, args.out, args.transcript)
 
 
 if __name__ == "__main__":

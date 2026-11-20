@@ -1,5 +1,5 @@
 {
-  "_note": "Recorded from the owner's ILCE-6400 (firmware 2.00) over its own AP on 2026-11-14; E0659. Counts are the camera's answers, not a curated list.",
+  "_note": "Recorded from the owner's ILCE-6400 (firmware 2.00) over its own AP on 2026-11-14; E0659. Counts are the camera's answers, not a curated list. Stored as one summarized answer per method; the raw exchange was not kept, and four answers disagree with the types orb-server declares (E0659 section 8), so the answer shapes here are not measurements.",
   "host": "192.168.122.1",
   "port": 10000,
   "ssid": "DIRECT-mRE1:ILCE-6400",

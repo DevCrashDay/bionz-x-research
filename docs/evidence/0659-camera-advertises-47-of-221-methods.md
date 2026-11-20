@@ -129,3 +129,43 @@ Insert a memory card and re-ask `actTakePicture` once, then `getStorageInformati
 shutter still answers error `1` with storage present, the application registration is the whole
 answer; if it starts working, this record's third claim is wrong and the storage check is the real
 gate. Either outcome is decisive, and it needs one camera and one card.
+
+## 8. Provenance of the recorded session (added 2026-11-20)
+
+The committed session file is a per-method summary written after the session: one answer per
+method, without request bodies, request ids, timestamps or HTTP framing. The raw exchange was not
+kept, in the repository or outside it. That matters because four of its 31 answers disagree with
+the return types `orb-server` itself declares in its method-type table, the strings
+`getMethodTypes` serves:
+
+| method | declared by `orb-server` (version 1.0) | recorded |
+| --- | --- | --- |
+| `getExposureCompensation` | `["int"]` | `["0"]`, a string |
+| `getSupportedExposureCompensation` | `["int*","int*","int*"]` | one list of EV strings, `"-5.0"` … `"5.0"` |
+| `startContShooting`, `stopContShooting` | `["string*"]` | `[]` |
+| `getEvent` | an array of typed slots, one per event kind | one object, the `availableApiList` slot |
+
+Reproduce the declarations with
+`strings -n 8 bin/orb-server | grep -F '["getSupportedExposureCompensation",'` (and the same for
+each method). Sony's own client 7.6.0 also reads `getSupportedExposureCompensation` as three
+integer arrays (E0660). Section 1 writes `200 {}` for half-press and continuous shooting, while
+the file holds `{"result": []}`; the file is the more specific of the two.
+
+Two explanations fit, and nothing that was kept separates them: the running application
+(`Smart Remote Control __SAK__` 2.1.7, absent from the packaged image) serves shapes other than
+the ones `orb-server` declares, or the summary was normalized when it was written. Until a raw
+capture exists:
+
+- **The answer shapes in the file are not measurements.** The remote and the panel accept both
+  the declared and the recorded exposure shape, so neither depends on which one is right.
+- **The 47-method list and the error codes rest on the same summary.** The `availableApiList`
+  slot of the recorded `getEvent` names the same 47 methods, but it is in the same file, so it
+  is consistency, not independent confirmation.
+
+The transport now keeps the raw exchange: `--transcript FILE` on `camera_remote.py`,
+`camera_transfer.py` and `camera_panel.py` appends every call as one JSON line with the request
+body as sent and the answer byte for byte (base64). The next hardware session (section 7) should
+run with it and should include `getSupportedExposureCompensation`, `getExposureCompensation` and
+one full `getEvent`, so the served shapes are recorded rather than summarized. `getMethodTypes`
+is not among the 47; asking it directly through the transport is still worth one call, since
+either its table or its refusal is data.

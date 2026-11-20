@@ -156,5 +156,58 @@ class LiveviewUrlTests(unittest.TestCase):
             api.liveview_url()
 
 
+class TranscriptTests(unittest.TestCase):
+    """A live session keeps the camera's bytes, so a recorded answer can be checked later.
+
+    E0659's session survived only as a per-method summary, and four of its answers then
+    disagreed with the types orb-server declares for them, with nothing left to settle which
+    was right. These tests protect the record that would have settled it.
+    """
+
+    def setUp(self) -> None:
+        import tempfile
+        self.dir = Path(tempfile.mkdtemp())
+        self.path = self.dir / "session.jsonl"
+
+    def _api(self, raw: bytes) -> "_StubApi":
+        api = _StubApi(raw)
+        api.transcript = self.path
+        return api
+
+    def _lines(self) -> list[dict]:
+        return [json.loads(line) for line in self.path.read_text(encoding="utf-8").splitlines()]
+
+    def test_the_answer_is_kept_byte_for_byte(self) -> None:
+        import base64
+        raw = http(b'{"result":[[-15],[15],[1]],"id":1}')
+        self._api(raw).call("getSupportedExposureCompensation", [], version="1.0")
+        (entry,) = self._lines()
+        self.assertEqual(base64.b64decode(entry["response_b64"]), raw)
+        self.assertEqual((entry["service"], entry["method"], entry["params"], entry["version"]),
+                         ("camera", "getSupportedExposureCompensation", [], "1.0"))
+
+    def test_a_refused_call_is_recorded_before_it_raises(self) -> None:
+        with self.assertRaises(ApiError):
+            self._api(http(b'{"error":[1,"Any"],"id":1}')).call("actTakePicture")
+        self.assertEqual(self._lines()[0]["method"], "actTakePicture")
+
+    def test_an_undecodable_answer_is_still_recorded(self) -> None:
+        with self.assertRaises(TransportError):
+            self._api(http(b"not json")).call("getEvent", [False])
+        self.assertEqual(len(self._lines()), 1)
+
+    def test_a_transport_failure_is_recorded_without_a_response(self) -> None:
+        api = ScalarWebApi(host="127.0.0.1", port=9, timeout=0.5, transcript=self.path)
+        with self.assertRaises(TransportError):
+            api.call("getEvent", [False])
+        (entry,) = self._lines()
+        self.assertIn("transport_error", entry)
+        self.assertNotIn("response_b64", entry)
+
+    def test_without_a_transcript_nothing_is_written(self) -> None:
+        _StubApi(http(b'{"result":[0],"id":1}')).call("stopLiveview")
+        self.assertFalse(self.path.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

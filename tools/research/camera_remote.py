@@ -191,8 +191,9 @@ def run_offline(path: Path, command: str) -> int:
     return 0
 
 
-def run_live(host: str, port: int, command: str, argument: str | None) -> int:
-    api = ScalarWebApi(host=host, port=port)
+def run_live(host: str, port: int, command: str, argument: str | None,
+             transcript: Path | None = None) -> int:
+    api = ScalarWebApi(host=host, port=port, transcript=transcript)
     try:
         api_list = api.available_api_list()
     except (TransportError, ApiError) as exc:
@@ -275,11 +276,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--offline", type=Path, default=None,
                         help="format a recorded session instead of contacting a camera")
+    parser.add_argument("--transcript", type=Path, default=None,
+                        help="append every call and the camera's raw answer to this JSONL file")
     args = parser.parse_args(argv)
 
     if args.offline:
         return run_offline(args.offline, args.command)
-    return run_live(args.host, args.port, args.command, args.argument)
+    return run_live(args.host, args.port, args.command, args.argument, args.transcript)
 
 
 if __name__ == "__main__":

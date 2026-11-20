@@ -23,8 +23,11 @@ Measured against the owner's ILCE-6400 (firmware 2.00, E0659): 47 methods expose
 """
 from __future__ import annotations
 
+import base64
 import json
 import socket
+import time
+from pathlib import Path
 from typing import Any
 
 DEFAULT_PORT = 10000
@@ -139,10 +142,13 @@ class ScalarWebApi:
     """A minimal HTTP/1.1 client for one camera, one call per connection."""
 
     def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
-                 timeout: float = DEFAULT_TIMEOUT) -> None:
+                 timeout: float = DEFAULT_TIMEOUT, transcript: Path | str | None = None) -> None:
         self.host = host
         self.port = port
         self.timeout = timeout
+        #: When set, every call is appended here as one JSON line with the camera's answer
+        #: kept byte for byte, so a recorded session can be checked against the camera later.
+        self.transcript = Path(transcript) if transcript is not None else None
 
     def _post(self, service: str, method: str, params: list[Any] | None,
               version: str) -> bytes:
@@ -174,9 +180,35 @@ class ScalarWebApi:
     def call(self, method: str, params: list[Any] | None = None, *,
              service: str = "camera", version: str = "1.0") -> Any:
         """Call one method and return its result, or raise :class:`ApiError`."""
-        raw = self._post(service, method, params, version)
+        try:
+            raw = self._post(service, method, params, version)
+        except TransportError as exc:
+            self._record(service, method, params, version, None, str(exc))
+            raise
+        # Recorded before decoding, so a refusal or a malformed answer is kept too.
+        self._record(service, method, params, version, raw, None)
         decoded = parse_response(raw, method)
         return decoded["result"] if "result" in decoded else decoded["results"]
+
+    def _record(self, service: str, method: str, params: list[Any] | None, version: str,
+                raw: bytes | None, failure: str | None) -> None:
+        """Append one exchange to the transcript: the request as sent and the raw answer."""
+        if self.transcript is None:
+            return
+        entry: dict[str, Any] = {
+            "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "host": self.host, "port": self.port, "service": service,
+            "method": method, "params": params if params is not None else [],
+            "version": version,
+            "request": build_request(method, params, version=version).decode("utf-8"),
+        }
+        if raw is not None:
+            entry["response_b64"] = base64.b64encode(raw).decode("ascii")
+            entry["response_text"] = raw.decode("utf-8", errors="replace")
+        if failure is not None:
+            entry["transport_error"] = failure
+        with self.transcript.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
     def available_api_list(self, service: str = "camera") -> list[str]:
         """The methods this camera exposes for a service, as the camera reports them."""
