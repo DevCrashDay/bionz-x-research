@@ -2,6 +2,7 @@
 
 Date: 2026-11-14. **Offline.** Two committed artifacts and no camera: the method list from the
 shipped client (E0660) and the body's own `getAvailableApiList` answer (E0659).
+Rebased onto upstream `main` on 2026-11-20 and numbered after the records published there; the measurements are unchanged.
 
 "Port the whole app" cannot be answered with a yes, and this record answers it with a number
 instead. Imaging Edge Mobile is **2,664 source files**; of the 311 web-API names it enumerates,

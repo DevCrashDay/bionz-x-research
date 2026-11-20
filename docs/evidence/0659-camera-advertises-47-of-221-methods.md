@@ -3,6 +3,7 @@
 Date: 2026-11-14. **Physical, read-only** on the owner's ILCE-6400 (firmware 2.00) over its own
 access point, plus offline analysis of the packaged `orb-server`. No settings were written, no
 mode changed, no photograph was taken by this record's commands.
+Rebased onto upstream `main` on 2026-11-20 and numbered after the records published there; the measurements are unchanged.
 
 Supersedes nothing. E0658 measured which methods this camera exposes; this record measures *why*
 that list is short, and separates three things E0658 left together: what the firmware can do, what

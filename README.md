@@ -53,6 +53,20 @@ bitmap gate in `av-cam.bin`, and
 read-only check on live `ILCE-6400` with a Sigma 18-50 F2.8 DC DN that ORIL lens capability
 records are not retained in Linux `im.elf` memory.
 
+Camera Wi-Fi on a physical `ILCE-6400` 2.00 (read-only, over its own AP): the running
+application advertises 47 ScalarWebAPI methods of the 221 the packaged `orb-server` carries,
+and the single-shot shutter is among the unadvertised ones even though its handler exists
+([E0658](docs/evidence/0658-wifi-scalarwebapi-and-its-missing-settings.md),
+[E0659](docs/evidence/0659-camera-advertises-47-of-221-methods.md)). Sony's decompiled Android
+client grades what is portable: 46 of 311 camera methods are callable here, and the camera
+serves 16 `getSupported*` lists but only 5 setters
+([E0660](docs/evidence/0660-imaging-edge-mobile-control-sequence.md),
+[E0661](docs/evidence/0661-what-could-be-ported-from-imaging-edge-mobile.md)). File transfer is
+a different camera mode that no network call switches
+([E0662](docs/evidence/0662-file-access-is-a-camera-mode.md)). Tools:
+`tools/research/camera_remote.py`, `camera_panel.py` (browser panel with live view) and
+`camera_transfer.py`.
+
 QEMU EP0 milestone: original firmware now completes six host-driven standard
 control transfers to address 1, configuration 1 and UDC `configured` in two
 fresh runs. The optional mode preserves the older descriptor replay and
@@ -156,7 +170,7 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 
 Recorded integration baseline: **2091 tests**, with 88 skip records and no failures/errors ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. The [late black-screen capture](docs/evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md), [LIRO RAM section analysis](docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md), [CamCore contributor score](docs/evidence/0637-camcore-f301-contributor-boot-score.md), [USB mode gate](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md), and [first firmware-driven live-view frame](docs/evidence/0591-qemu-a6400-first-live-view-frame.md) are separate findings. Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=fb6cf9df8a56)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=7bc168674f1b)
 
 ![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
 

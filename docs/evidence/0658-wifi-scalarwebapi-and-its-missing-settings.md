@@ -2,6 +2,7 @@
 
 Date: 2026-11-13. **Physical, read-only**: the owner's own a6400 over its own Wi-Fi access point.
 No settings were written, no mode changed by this record's commands.
+Rebased onto upstream `main` on 2026-11-20 and numbered after the records published there; the measurements are unchanged.
 
 This settles two open questions at once. Wi-Fi on this camera works, contrary to what this project
 had recorded from a single failing unit; and the network path, while real and well documented by

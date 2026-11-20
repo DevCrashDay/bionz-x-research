@@ -221,22 +221,46 @@ STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
     as_of="2026-11-20",
     latest=EvidenceRef(
-        evidence_id="E0657",
-        path="docs/evidence/0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md",
+        evidence_id="E0662",
+        path="docs/evidence/0662-file-access-is-a-camera-mode.md",
         date="2026-11-20",
-        title="Unicorn L3 allocator ownership, GLES shared init, Sugilite GPU and viewRootPowerSw OSD",
+        title="Camera Wi-Fi: 47 of 221 methods advertised, and file access is a camera mode",
         demonstrated=(
-            "Unmodified im.elf runs to 1.50B insns (120 threads, 0 ownership errors without 0x50 padding); "
-            "sugilite_open 4B + rm_rqueue_init 128 KiB init, 24 Sugilite GPU/IRQ 76 jobs and OSD A/B verified."
+            "On the owner's ILCE-6400 2.00 the camera AP serves Sony ScalarWebAPI with 47 methods "
+            "while the packaged orb-server carries 221; Creative Style is not among them (E0658). "
+            "actTakePicture is unadvertised and answers error 1 while its handler exists in "
+            "libInfraWebApi.so and only forwards, so the short list is the running application's "
+            "registration (E0659). Sony's Android client 7.6.0, decompiled and not run, drives the "
+            "shutter by an ordering-sensitive sequence (E0660); of its 311 camera methods 46 are "
+            "callable on this body, and the camera serves 16 getSupported* lists but 5 setters "
+            "(E0661). avContent answers error 12 to every method in 'Control with Smartphone' "
+            "mode and no network call switches the mode (E0662)."
         ),
         boundary=(
-            "viewRootPowerSw.uxc presents transparent 640x480 RGBA4444 OSD A/B frames because DefRootView "
-            "CheckerBootState/CheckerBootType await external av-cam.bin/UPM producers; E0530 stop preserved."
+            "Error 1 on the shutter is not separated from the missing memory card, and other shoot "
+            "modes or registered applications were not tried. 'Send to Smartphone' mode was not "
+            "observed. The Android client was decompiled, not installed or run. The 221-method "
+            "count belongs to the packaged orb-server, a different point release than the unit."
         ),
-        tier="OFFLINE ORIGINAL L3 PROCESS + SUGILITE GPU",
+        tier="PHYSICAL READ-ONLY + OFFLINE APK",
     ),
     headline="Unicorn L3 Sugilite GPU & 1.5B-insn heap trace | Unicorn nflasha3 main boot | QEMU live-view",
     cards=(
+        EvidenceRef(
+            evidence_id="E0657",
+            path="docs/evidence/0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md",
+            date="2026-11-20",
+            title="Unicorn L3 allocator ownership, GLES shared init, Sugilite GPU and viewRootPowerSw OSD",
+            demonstrated=(
+                "Unmodified im.elf runs to 1.50B insns (120 threads, 0 ownership errors without 0x50 padding); "
+                "sugilite_open 4B + rm_rqueue_init 128 KiB init, 24 Sugilite GPU/IRQ 76 jobs and OSD A/B verified."
+            ),
+            boundary=(
+                "viewRootPowerSw.uxc presents transparent 640x480 RGBA4444 OSD A/B frames because DefRootView "
+                "CheckerBootState/CheckerBootType await external av-cam.bin/UPM producers; E0530 stop preserved."
+            ),
+            tier="OFFLINE ORIGINAL L3 PROCESS + SUGILITE GPU",
+        ),
         EvidenceRef(
             evidence_id="E0656",
             path="docs/evidence/0656-unicorn-main-firmware-boot.md",

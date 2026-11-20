@@ -2,6 +2,7 @@
 
 Date: 2026-11-14. **Physical, read-only** on the owner's ILCE-6400 (firmware 2.00) over its own
 access point, plus offline reading of the shipped client.
+Rebased onto upstream `main` on 2026-11-20 and numbered after the records published there; the measurements are unchanged.
 
 Answers the question E0661 left open: whether copying photographs off the camera over Wi-Fi is
 merely unported, or unavailable. It is unavailable **in the mode the camera was in**, and the

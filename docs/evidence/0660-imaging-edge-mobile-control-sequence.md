@@ -2,6 +2,7 @@
 
 Date: 2026-11-14. **Offline.** No camera was contacted for this record. The input is the shipped
 Android package, decompiled locally.
+Rebased onto upstream `main` on 2026-11-20 and numbered after the records published there; the measurements are unchanged.
 
 This record answers a question E0659 raises but cannot answer from the camera: the body advertises
 47 methods while the firmware knows 221, so *how does Sony's own application get a shutter to work
