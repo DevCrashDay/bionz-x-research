@@ -219,24 +219,84 @@ class StatusSnapshot:
 
 STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
-    as_of="2026-11-20",
+    as_of="2026-11-21",
     latest=EvidenceRef(
-        evidence_id="E0657",
-        path="docs/evidence/0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md",
-        date="2026-11-20",
-        title="Unicorn L3 allocator ownership, GLES shared init, Sugilite GPU and viewRootPowerSw OSD",
+        evidence_id="E0665",
+        path="docs/evidence/0665-qemu-boots-from-the-public-updater.md",
+        date="2026-11-21",
+        title="QEMU reaches the a6400 shooting screen and the step-32 wait without a camera capture",
         demonstrated=(
-            "Unmodified im.elf runs to 1.50B insns (120 threads, 0 ownership errors without 0x50 padding); "
-            "sugilite_open 4B + rm_rqueue_init 128 KiB init, 24 Sugilite GPU/IRQ 76 jobs and OSD A/B verified."
+            "qemu_packaged_inputs builds a byte-identical emmc.img and powered sub-micro frames from "
+            "Sony's public a6400 updater; stock firmware draws its P-mode OSD and stops at the packaged "
+            "step-32 wait (module 3 0x0326, request 0x032E, Ydet counter 0), read by QMP xp alone."
         ),
         boundary=(
-            "viewRootPowerSw.uxc presents transparent 640x480 RGBA4444 OSD A/B frames because DefRootView "
-            "CheckerBootState/CheckerBootType await external av-cam.bin/UPM producers; E0530 stop preserved."
+            "ulogio.bin still comes from the ZV-E10 updater; bars leads to an x02 request set, not E0591's "
+            "step 42; no bars picture on console; zero-filled partitions are not camera content."
         ),
-        tier="OFFLINE ORIGINAL L3 PROCESS + SUGILITE GPU",
+        tier="OFFLINE PUBLIC UPDATERS + QEMU",
     ),
     headline="Unicorn L3 Sugilite GPU & 1.5B-insn heap trace | Unicorn nflasha3 main boot | QEMU live-view",
     cards=(
+        EvidenceRef(
+            evidence_id="E0664",
+            path="docs/evidence/0664-shutter-works-drive-mode-decides.md",
+            date="2026-11-21",
+            title="Camera Wi-Fi: the shutter works, and the drive mode decides whether it is offered",
+            demonstrated=(
+                "On the owner's ILCE-6400 2.00 the camera AP serves Sony ScalarWebAPI; the packaged "
+                "orb-server carries 221 camera methods and Creative Style is not served (E0658). At "
+                "drive mode Continuous the camera advertises 47 methods with startContShooting and "
+                "without actTakePicture (E0659); at Single it advertises 50 with the shutter, and one "
+                "photograph was taken over Wi-Fi after a half-press (E0664). Sony's Android client "
+                "7.6.0, decompiled and not run, guards the shutter on that list (E0660). avContent "
+                "answers error 12 in 'Control with Smartphone' mode and no network call switches the "
+                "mode (E0662)."
+            ),
+            boundary=(
+                "Only drive mode and lens were shown to change the list; whether the exposure mode "
+                "gates setShutterSpeed and setExposureMode is untested, and startContShooting was not "
+                "re-called with a transcript. 'Send to Smartphone' mode was not observed. The 221-method "
+                "count belongs to the packaged orb-server, a different point release than the unit."
+            ),
+            tier="PHYSICAL + OFFLINE APK",
+        ),
+        EvidenceRef(
+            evidence_id="E0663",
+            path="docs/evidence/0663-callgraph-plt-correction-and-real-ipc-table.md",
+            date="2026-11-20",
+            title="Correction: the IPC table of E0483 was calls to other imports",
+            demonstrated=(
+                "objdump shows that none of E0483's 29 'IPC call sites' is an IPC call: a fixed "
+                "12-byte PLT stride gave each import its neighbour's name once Thumb-prefixed 16-byte "
+                "entries appear. With the PLT decoded from each entry's GOT slot (2,547 of 2,547 "
+                "agreeing with objdump), bl targets computed from the unaligned PC, Thumb bits "
+                "honoured and the section walked by instruction length, the a6400 libObj.so holds "
+                "763 IPC call sites, 544 with a constant; six queue ids match ids observed at runtime "
+                "in the emulator. E0484's zero direct ObjDisplay_* callers holds on thirteen bodies."
+            ),
+            boundary=(
+                "Constant tracking is straight-line over 64 bytes and does not see a branch into the "
+                "window; each constant is a lead to confirm by disassembly. Wrappers, indirect calls "
+                "and other libraries are outside the table, and no queue's runtime consumer is claimed."
+            ),
+            tier="OFFLINE PACKAGED FIRMWARE",
+        ),
+        EvidenceRef(
+            evidence_id="E0657",
+            path="docs/evidence/0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md",
+            date="2026-11-20",
+            title="Unicorn L3 allocator ownership, GLES shared init, Sugilite GPU and viewRootPowerSw OSD",
+            demonstrated=(
+                "Unmodified im.elf runs to 1.50B insns (120 threads, 0 ownership errors without 0x50 padding); "
+                "sugilite_open 4B + rm_rqueue_init 128 KiB init, 24 Sugilite GPU/IRQ 76 jobs and OSD A/B verified."
+            ),
+            boundary=(
+                "viewRootPowerSw.uxc presents transparent 640x480 RGBA4444 OSD A/B frames because DefRootView "
+                "CheckerBootState/CheckerBootType await external av-cam.bin/UPM producers; E0530 stop preserved."
+            ),
+            tier="OFFLINE ORIGINAL L3 PROCESS + SUGILITE GPU",
+        ),
         EvidenceRef(
             evidence_id="E0656",
             path="docs/evidence/0656-unicorn-main-firmware-boot.md",

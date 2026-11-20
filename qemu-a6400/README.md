@@ -322,6 +322,26 @@ or semaphore is signalled by the observer.
 See [E0524](../docs/evidence/0524-reproducible-captured-qemu-boot-and-liro-waits.md)
 for the verified wait and the remaining producer boundary.
 
+### Inputs from the public updaters (E0665)
+
+No capture and no historical disk are needed. From the unpacked a6400 updater, plus
+`ulogio.bin` from the unpacked ZV-E10 updater:
+
+```bash
+python3 -m tools.research.qemu_packaged_inputs <a6400>/firmware.tar_unpacked qemu-a6400/data
+cd qemu-a6400
+ULOGIO=<zve10>/firmware.tar_unpacked/0800_appli/setting/ulogio.bin \
+SUBMICRO_FRAMES=data/submicro-frames-powered.bin \
+SUBMICRO_FRAMES_SHA=$(sha256sum data/submicro-frames-powered.bin | cut -d' ' -f1) \
+EVSEL_LATE_US=500 CAMPIG_ENABLE_READBACK=1 SGC1_EVENT_A=1 AVCAM=data/av-cam.bin bash run.sh
+```
+
+The builder needs `mkfs.fat` and `mcopy`. It records in `data/manifest.json` which bytes are
+packaged and which are constructed. Partitions the updater does not carry are zero-filled.
+Without `ulogio.bin`, `osal_ulogio` fails and the rear LCD stays black. To get a serial-only
+boot, set `SUBMICRO_PAGE=` instead of the two `SUBMICRO_*` variables. The step-32 wait can be
+read with QMP: `xp /1hx 0x04353570` (module 3 report) and `xp /1hx 0x04350f06` (its request).
+
 ### Historical input layout
 
 Without `A6400_QEMU_DATA_DIR`, the legacy launcher expects the locally prepared

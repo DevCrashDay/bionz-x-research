@@ -3,13 +3,24 @@
 One record per hardware or software claim. Records are dated and are **not** rewritten
 when a later result supersedes them: the newer record says what changed.
 
-Current consolidated state: [README research status](../../README.md) and
-[UVC/PTP status and next steps](../UVC_PTP_STATUS.md) (through **E0494**, 2026-11-13).
+Current consolidated state: [README research status](../../README.md) (through **E0663**,
+2026-11-20) and [UVC/PTP status and next steps](../UVC_PTP_STATUS.md) (through **E0494**,
+Current consolidated state: [README research status](../../README.md) (through **E0664**,
+2026-11-21) and [UVC/PTP status and next steps](../UVC_PTP_STATUS.md) (through **E0494**,
+2026-11-13).
 
 ## Latest records
 
 | ID | Date | Claim |
 | --- | --- | --- |
+| [E0665](0665-qemu-boots-from-the-public-updater.md) | 2026-11-21 | QEMU without a camera capture: `qemu_packaged_inputs` builds a byte-identical `emmc.img` and powered sub-micro frames from Sony's public a6400 updater (`backup.ko` requires `/setting/Backup.bin`; `ulogio.bin` still comes from the ZV-E10 updater). Stock firmware draws its P-mode OSD and stops at the packaged step-32 wait (module 3 `0x0326`, request `0x032E`, Ydet counter 0), read by QMP `xp` alone; bars leads to an `x02` request set instead of E0591's step 42 |
+| [E0664](0664-shutter-works-drive-mode-decides.md) | 2026-11-21 | The shutter works over Wi-Fi: the camera offers `actTakePicture` at drive mode `Single` (50 methods) and `startContShooting` instead at `Continuous` (the 47 of E0659), and one photograph was taken; `getStorageInformation` answers `[[]]` with a card inserted, and the served exposure-compensation shapes are the integer types `orb-server` declares |
+| [E0663](0663-callgraph-plt-correction-and-real-ipc-table.md) | 2026-11-20 | Correction: E0483's 29 "IPC call sites" call other imports (objdump: 25 are `MWF::RsrcAcsr::Acquire`); a fixed 12-byte PLT stride, word-aligned `bl` targets, ignored Thumb bits and byte-offset scanning are fixed. The real a6400 table is 763 IPC sites, 544 with a constant, six of them matching queue ids observed at runtime; E0484's zero direct `ObjDisplay_*` callers holds on thirteen bodies |
+| [E0662](0662-file-access-is-a-camera-mode.md) | 2026-11-14 | Wi-Fi file access is gated by camera mode, not by a missing method: `avContent` names four versions and serves none (error 12) while `X_ServerType` reports `Control with Smartphone`; Sony's own client branches on that string and no network call switches it |
+| [E0661](0661-what-could-be-ported-from-imaging-edge-mobile.md) | 2026-11-14 | Of the 311 camera methods Imaging Edge Mobile enumerates, 46 are callable on this body: 8 feature groups portable now, 2 partly (getter served, setter not), 19 blocked; the camera serves 16 `getSupported*` lists and only 5 setters, so the blocking is its own grant, not a gap in the port |
+| [E0660](0660-imaging-edge-mobile-control-sequence.md) | 2026-11-14 | Sony's shipped Android client 7.6.0 enumerates the same 221 camera methods and drives the shutter by an ordering-sensitive sequence: startRecMode first when offered, a guard that refuses unless the camera advertised actTakePicture, and StillCaturingNotFinished treated as a signal to await; the package was decompiled, not run |
+| [E0659](0659-camera-advertises-47-of-221-methods.md) | 2026-11-14 | The packaged firmware knows 221 camera methods and the running application advertises 47; the shutter is among the 174 missing, its handler exists and only forwards, so the short list is the application's registration, with a missing memory card recorded as the one confound not eliminated |
+| [E0658](0658-wifi-scalarwebapi-and-its-missing-settings.md) | 2026-11-13 | Camera Wi-Fi works on the owner's unit and exposes Sony ScalarWebAPI on port 10000 with 47 methods; Creative Style, contrast and Picture Effect are refused with error 12, so the network cannot replace `Backup_write` |
 | [E0657](0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md) | 2026-11-20 | Unmodified `im.elf` runs to `1.50B` instructions (`120` threads, `0` heap ownership errors without `0x4C->0x50` padding) after fixing Unicorn 2.1.4 Thumb-2 stale-`ITSTATE` skips; recovers `sugilite_open` 4-byte + `rm_rqueue_init` 128 KiB shared init; verifies `62` `/dev/ldec` LZ77 DMA jobs, `24` Sugilite GPU jobs + `24` IRQ 76 completions, and double-buffered `640×480` RGBA4444 `viewRootPowerSw.uxc` OSD A/B presentation (`DefRootView` `CheckerBootState`/`CheckerBootType` await RTOS `av-cam.bin` producers; `E0530` stop preserved). |
 | [E0656](0656-unicorn-main-firmware-boot.md) | 2026-11-20 | Captured `nflasha3` main firmware boots offline on `UnicornMachine` (`--mmio stop`, `emmc.img` read-only) through stock `/sbin/init`, 9 partition mounts, 39 `.ko` modules, `LIRO` `entry_pre`/`entry_main`, `im.elf` `DMP_2D_Initialize : 0`, and `/bin/ash` (`uname -a`, `/proc/cpuinfo` `vfpv3d16`, `mount`, `/proc/modules`); single-core only (`cpu 1..3 offline`), no Unicorn GUI frame claimed. |
 | [E0655](0655-qemu-first-view-ptp-and-native-dwc3-reset.md) | 2026-11-19 | Early stock cable reaches passing FirstView checks; Play separately produces the original Neutral-Off transition. Neither starts stock USB. Native bulk OUT checks pass; no Sony PTP response. Unicorn enters original DWC3 reset and stops before PL310 synchronization. |
