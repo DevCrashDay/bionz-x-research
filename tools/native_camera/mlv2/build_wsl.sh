@@ -42,14 +42,16 @@ python3 tools/native_camera/mlv2/package.py "$OUT"
 
 # The joint debugger package invokes this separate worker in the background.
 # Only the matching archive can supply executable code to it.
-mkdir "$OUT/companion" "$OUT/card"
-"$CC" -static -O2 -Wall -Wextra -Werror -march=armv7-a -mfloat-abi=softfp \
-    "$D/card_read.c" -o "$OUT/companion/mlv2_card_read.elf"
-"$CC" -O2 -Wall -Wextra -Werror -march=armv7-a -mfloat-abi=softfp -nostdlib \
-    -fPIC -shared -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -U_TIME_BITS -D_TIME_BITS=32 \
-    -Wl,-soname,mlv2_sd_boot_hook.so,-z,defs,-z,max-page-size=4096 \
-    "$D/sd_boot_hook.c" tools/sony_sysroot/lib/libc.so -o "$OUT/companion/mlv2_sd_boot_hook.so"
-python3 -m tools.research.package_mlv2_sd --build "$OUT"
+if [[ "${CI_SKIP_SYSROOT:-0}" != "1" ]]; then
+    mkdir "$OUT/companion" "$OUT/card"
+    "$CC" -static -O2 -Wall -Wextra -Werror -march=armv7-a -mfloat-abi=softfp \
+        "$D/card_read.c" -o "$OUT/companion/mlv2_card_read.elf"
+    "$CC" -O2 -Wall -Wextra -Werror -march=armv7-a -mfloat-abi=softfp -nostdlib \
+        -fPIC -shared -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -U_TIME_BITS -D_TIME_BITS=32 \
+        -Wl,-soname,mlv2_sd_boot_hook.so,-z,defs,-z,max-page-size=4096 \
+        "$D/sd_boot_hook.c" tools/sony_sysroot/lib/libc.so -o "$OUT/companion/mlv2_sd_boot_hook.so"
+    python3 -m tools.research.package_mlv2_sd --build "$OUT"
+fi
 
 # SMOD v2 test mod for the Unicorn harness (hook target lives only in the harness).
 "$CC" "${common[@]}" -fpie -fvisibility=hidden -c "$D/test_mod.c" -o "$OUT/test_mod.o"
