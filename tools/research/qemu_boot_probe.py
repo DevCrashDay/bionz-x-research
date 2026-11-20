@@ -1,6 +1,7 @@
 """Bounded WSL/Linux QEMU boot observation with serial receipts and QMP snapshots.
 
-Only the emulator is contacted. No host USB/device access or guest memory writes.
+Only the emulator is contacted. The optional preboot SD action attaches a
+launcher-qualified virtual image. No host USB/device access or debugger writes.
 """
 from __future__ import annotations
 
@@ -19,6 +20,7 @@ import uuid
 from project_paths import PROJECT_ROOT
 from tools.research.inventory import digest
 from tools.research.liro_task_snapshot import decode_gic_trace, snapshot_interrupts, snapshot_tasks, task_table_address
+from tools.research.qemu_media import sd_event
 
 DEFAULT_COMMANDS = ('cat /proc/version', 'cat /proc/interrupts', 'ps', 'ls /proc/udm')
 
@@ -137,7 +139,7 @@ class Qmp:
 def run(inputs: Path, output: Path, seconds: int, commands: tuple[str, ...],
         reads: tuple[tuple[int, int], ...], *, trace_emmc: bool = False,
         wait_for: str | None = None, liro_tasks: tuple[int, ...] = (),
-        liro_irqs: tuple[int, ...] = ()) -> dict:
+        liro_irqs: tuple[int, ...] = (), sd_at_boot: bool = False) -> dict:
     if os.name != 'posix':
         raise ValueError('Run this module with python3 inside WSL/Linux')
     if liro_tasks or liro_irqs:
@@ -150,6 +152,8 @@ def run(inputs: Path, output: Path, seconds: int, commands: tuple[str, ...],
         raise ValueError('Guest commands must be nonempty bounded single lines')
     if wait_for is not None and (not wait_for or len(wait_for) > 160 or '\0' in wait_for):
         raise ValueError('Serial gate must be a nonempty marker of at most 160 characters')
+    if sd_at_boot and not (os.environ.get('SD_IMAGE') and os.environ.get('SD_SHA256')):
+        raise ValueError('--sd-at-boot requires both SD_IMAGE and SD_SHA256')
     output = output.resolve()
     if not output.is_relative_to((PROJECT_ROOT / 'artifacts').resolve()):
         raise ValueError('Probe reports must remain under artifacts')
@@ -162,6 +166,8 @@ def run(inputs: Path, output: Path, seconds: int, commands: tuple[str, ...],
                        RUN_DIR=str(run_dir), TIMEOUT='0',
                        QEMU_EXTRA=f'-icount shift=0,sleep=on -net none -no-reboot '
                                   f'-qmp unix:{qmp_path},server=on,wait=off')
+    if sd_at_boot:
+        environment['QEMU_EXTRA'] += ' -S'
     trace_path = session_dir / ('device.trace' if liro_irqs else 'emmc.trace')
     if trace_emmc or liro_irqs:
         environment['QEMU_EXTRA'] += f' -D {trace_path}'
@@ -219,6 +225,11 @@ def run(inputs: Path, output: Path, seconds: int, commands: tuple[str, ...],
                     report['qemu_source_inputs'] = source_reference_hashes(qmp.greeting)
                     report['qemu_source_inputs_kind'] = (
                         'repository references, not identities of the native compilation inputs')
+                    if sd_at_boot:
+                        sd_event(qmp, 'insert')
+                        report['sd_inserted_before_boot'] = True
+                        report['sd_initial_sha256'] = environment['SD_SHA256']
+                        qmp.request('cont')
                     process.stdin.write(b'\n')
                     process.stdin.flush()
                 if log_path.stat().st_size > 32 * 1024 * 1024:
@@ -369,6 +380,8 @@ def main():
     parser.add_argument('--guest-command', action='append')
     parser.add_argument('--read-physical', type=physical_range, action='append', default=[])
     parser.add_argument('--trace-emmc', action='store_true')
+    parser.add_argument('--sd-at-boot', action='store_true',
+                        help='Insert the hash-checked SD_IMAGE through QMP before releasing the CPUs')
     parser.add_argument('--wait-for', help='Do not send commands before this original serial marker')
     parser.add_argument('--liro-task', type=int, action='append', default=[],
                         help='Read one task from the hash-qualified captured LIRO layout (at most eight)')
@@ -378,7 +391,7 @@ def main():
     report = run(args.inputs, args.report_dir, args.seconds,
                  tuple(args.guest_command or DEFAULT_COMMANDS), tuple(args.read_physical),
                  trace_emmc=args.trace_emmc, wait_for=args.wait_for, liro_tasks=tuple(args.liro_task),
-                 liro_irqs=tuple(args.liro_irq))
+                 liro_irqs=tuple(args.liro_irq), sd_at_boot=args.sd_at_boot)
     print(json.dumps({key: report[key] for key in
                       ('status', 'stop_reason', 'guest_statuses', 'owned_process_exited', 'elapsed_seconds')},
                      indent=2))

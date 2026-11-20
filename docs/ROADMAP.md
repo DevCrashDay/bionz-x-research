@@ -75,14 +75,40 @@ injecting an event. No emulator GUI frame or complete camera boot was claimed
 by that receipt. The later no-peripheral E0527 decoder distinguishes the first
 mask-3 wait from the `0x3373` main loop; current QEMU display and mode-sequencer
 progress is recorded separately in [QEMU status](../qemu-a6400/STATUS.md).
+An opt-in sub-micro lens rail reply releases captured step 26, separately
+from the packaged step-32 Ydet gate ([E0591](evidence/0591-qemu-a6400-first-live-view-frame.md)).
+The original file service now mounts virtual SD
+([E0645](evidence/0645-qemu-virtual-media-gates.md)). The opt-in original
+IDT sidecar releases the captured final step-42 predicate. Opt-in DDR-B
+control lets the original UPM and allocator return, restoring the EE
+reply and stock playback-browser initialization. The opt-in DFS switch
+handshake lets codec-idle return and the still view find the seeded JPEG.
+An opt-in ZMA1 startup interrupt and neutral buffer fill let the
+native DGI fill return; the stock LCD still reports `Unable to display`.
+Verify the decoded pixels. Separately, an opt-in body shutter GIC policy avoids dropped
+edges; the mounted JPEG self-timer path issues its native start command,
+but completion and a separate firmware-created JPEG after restart remain
+unverified.
+Stock XAVC S 4K `24p 100M` rejects the virtual card speed class. With a
+mounted card and the lens-rail reply enabled, stock AVCHD MOVIE events
+construct Sony's original movie view, but activation and recorder
+start are not observed. Establish native recorder admission and encoder output before
+claiming a [playable 3:2 Open Gate file](evidence/mods/2026-11-19-firmware-qualification.md#stock-recording-and-open-gate).
+Stock S1 wake, wheel navigation, AF/MF and AEL actions, and explicit
+settings save/restart are verified. Power OFF reaches native teardown,
+but automatic shutdown save is still open
+([E0573](evidence/0573-qemu-a6400-rear-panel-controls.md),
+[E0647](evidence/0647-qemu-a6400-late-black-screen-scanout-capture.md)).
 
-Unicorn userspace continuation (2026-11-17, [E0533](evidence/0533-unicorn-native-thumb-userspace-continuation.md)):
-native CP15/TLB access removes re-entrant helper execution and banked-register
-corruption; no Thumb warm-up or forced-mode instruction stepping is used.
-Two original updater replays reach BusyBox and ash echo/pwd roundtrips on
-`ttyAM0`, stopping at the declared limit with no unmapped access. This is not
-the QEMU shell. Next: qualify the separate post-`uname` child/COW exception;
-no full camera application or GUI boot is claimed.
+Unicorn updater and main-firmware boot (2026-11-19..20, [E0648](evidence/0648-unicorn-updater-child-cow-and-hwcap.md), [E0651](evidence/0651-unicorn-main-firmware-boot.md)):
+building on [E0533](evidence/0533-unicorn-native-thumb-userspace-continuation.md),
+`nflasha1` completes post-`uname` child/COW roundtrips and reconciles D16
+`AT_HWCAP` (`0x0000E0D7`). Separately, captured `nflasha3` main firmware boots
+under `UnicornMachine` (`--mmio stop`, read-only `emmc.img`) through stock
+`/sbin/init`, 9 partition mounts, 39 `.ko` modules, `LIRO` `entry_pre`/`entry_main`,
+`im.elf` `DMP_2D_Initialize : 0`, and interactive `/bin/ash` (`uname -a`,
+`/proc/cpuinfo`, `mount`, `/proc/modules`) past 2.8B instructions. Next: single-core
+execution leaves `av-cam` CPUs 1–3 offline and no Unicorn GUI frame is claimed.
 
 Earlier no-peripheral QEMU startup (2026-11-17, [E0527](evidence/0527-qemu-task43-initialization-flag-wait.md)):
 two captured-profile boots identify Task 43's first display-initialization wait

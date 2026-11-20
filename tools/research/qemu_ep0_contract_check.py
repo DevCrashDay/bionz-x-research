@@ -14,6 +14,8 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--qemu-dir',type=Path,required=True)
     p.add_argument('--report-dir',type=Path,required=True)
+    p.add_argument('--strict-bulk-out',action='store_true',
+                   help='also validate bounded bulk OUT with a separate native qtest fixture')
     args=p.parse_args();out=args.report_dir.resolve()
     if not out.is_relative_to(ROOT/'artifacts'):raise ValueError('Output must stay under artifacts')
     out.mkdir(parents=True,exist_ok=False)
@@ -25,6 +27,8 @@ def main():
                  '-qtest',f'unix:{qp},server=on,wait=off',
                  '-chardev',f'socket,id=host,path={hp},server=on,wait=off',
                  '-global','cxd90045-dwc3.chardev=host','-global','cxd90045-dwc3.strict-ep0=on']
+        if args.strict_bulk_out:
+            command += ['-global', 'cxd90045-dwc3.strict-bulk=on']
         with (out/'qemu.log').open('wb') as log:
             proc=subprocess.Popen(command,stdout=log,stderr=log)
             try:
@@ -51,7 +55,11 @@ def main():
                     def token(line,expected):
                         host.sendall((line+'\n').encode())
                         reply=b''
-                        while b'\n' not in reply:reply+=host.recv(4096)
+                        while b'\n' not in reply:
+                            chunk=host.recv(4096)
+                            if not chunk:
+                                raise EOFError(f'No host reply for {line[:60]}')
+                            reply+=chunk
                         check(line[:60],reply.decode()==expected+'\n')
                     def arm(ep,kind,length,extra=0,address=0x13000):
                         trb=0x12000+ep*0x100
@@ -114,6 +122,48 @@ def main():
                     data=arm(1,5,4,address=0xf020c100)
                     token('IN 1','ERROR payload-dma-read')
                     check('MMIO payload not fabricated as RAM',read(data+12)&1==1)
+                    if args.strict_bulk_out:
+                        # Independent ring state from the EP0 assertions above.
+                        write(0xf020c704,0x40000000)
+                        write(0xf020c400,0x10000);write(0xf020c408,4096)
+                        reg=0xf020c800+6*16
+                        write(reg+4,(4<<25)|0x500);write(reg+8,(512<<3)|(2<<1))
+                        write(reg+12,0x401)
+                        write(0xf020c720,1<<6);write(0xf020c704,0x80000000)
+                        command_out='OUT 4 0c0000000100011000000000'
+                        token(command_out,'NAK 4')
+                        check('bulk NRDY is routed to enabled physical EP6',read(0x10000)==0xcc)
+                        token(command_out,'NAK 4')
+                        check('bulk NRDY is not duplicated',read(0xf020c40c)==4)
+                        ack_events()
+                        data=arm(6,1,512)
+                        write(0x13000,0xaaaaaaaa);write(0x1300c,0xaabbccdd)
+                        check('NAK does not queue the command for a future TRB',
+                              bool(read(data+12)&1) and read(0x13000)==0xaaaaaaaa)
+                        token('OUT 4 0czz','ERROR out-encoding')
+                        token('OUT 5 0c00','ERROR unsupported-host-command')
+                        token(command_out,'ACK 4 12')
+                        check('bulk OUT bytes are written without copying beyond the token',
+                              (read(0x13000),read(0x13004),read(0x13008),read(0x1300c))==
+                              (12,0x10010001,0,0xaabbccdd))
+                        check('short bulk OUT preserves residual and transfers ownership',
+                              read(data+8)==500 and read(data+12)&1==0)
+                        check('complete event includes physical EP6, LST and short',
+                              read(0x10004)==0xa04c and read(0xf020c40c)==4)
+                        ack_events()
+                        data=arm(6,1,8)
+                        token(command_out,'ERROR unsupported-bulk-out-length')
+                        check('oversized token leaves HWO and residual alone',
+                              read(data+8)==8 and bool(read(data+12)&1))
+                        data=arm(6,1,512,extra=4)
+                        token(command_out,'ERROR unsupported-bulk-out-trb')
+                        check('chained bulk OUT is untouched',bool(read(data+12)&1))
+                        data=arm(6,1,512,address=0xf020c100)
+                        token(command_out,'ERROR payload-dma-write')
+                        check('non-RAM payload does not retire the bulk descriptor',
+                              bool(read(data+12)&1) and read(0xf020c40c)==0)
+                        host.sendall(b'DISC\n')
+                        token(command_out,'NAK 4')
                     stream.close()
             finally:
                 proc.terminate();proc.wait(10)
@@ -121,6 +171,6 @@ def main():
             'binary_sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),
             'source_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'checks':checks}
     (out/'report.json').write_text(json.dumps(report,indent=2)+'\n')
-    print(f'PASS: {len(checks)} native EP0 contract checks')
+    print(f'PASS: {len(checks)} native USB token contract checks')
 
 if __name__=='__main__':main()

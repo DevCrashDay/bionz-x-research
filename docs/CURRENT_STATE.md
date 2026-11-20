@@ -2,14 +2,14 @@
 
 For the full documentation index see [docs/INDEX.md](INDEX.md). For the verified test count and latest evidence snapshot, see [README.md](../README.md) and [UVC/PTP Status](UVC_PTP_STATUS.md).
 
-## Active Track Summary (as of 2026-11-18 / E0598)
+## Active Track Summary (as of 2026-11-20 / E0652)
 
 | Track | Current Frontier | Latest Evidence | Next Step |
 | --- | --- | --- | --- |
-| **L2 Full-System Kernel Boot** (`UnicornMachine`) | Native CP15/TLB maintenance preserves banked ARM/Thumb state. Two original updater replays reach BusyBox and ash echo/pwd roundtrips without manual Thumb execution. Separate opt-in CPSR.A and SCR.AW/FW controls match QEMU's entry and 16 comparable return rows; the initial stack still advertises VFPD32 versus QEMU VFPv3D16 | [E0533](evidence/0533-unicorn-native-thumb-userspace-continuation.md), [E0558](evidence/0558-unicorn-qemu-kernel-entry-async-abort-mask.md), [E0559](evidence/0559-unicorn-qemu-irq-async-abort-mask.md), [E0560](evidence/0560-unicorn-nonsecure-af-exception-return.md), [E0562](evidence/0562-thumb-loader-stack-vfp-capability.md) | Qualify the separate post-`uname` child/COW exception at `0x60116E9C` and continue the independent AT_HWCAP comparison. Main-firmware application/GUI boot is not established by Unicorn |
-| **L3 User-Space (`im.elf`)** (`InterpreterProbe`) | `--thread-timeslice` reaches 88+ threads and a historical allocator abort; isolated original code shows request/chunk/usable `0x4C/0x50/0x4C` and constructor writes only through `+0x48`, qualifying the earlier confirmed-overrun interpretation | [E0526](evidence/0526-stella-allocator-size-isolation-and-padding-trial.md), [l3-userspace-and-ipc.md](architecture/l3-userspace-and-ipc.md) | Recover identity-matched allocation/free ownership traces; keep padding opt-in and do not subtract four from returned pointers. No full Appframework replay or GUI correction verified |
+| **L2 Full-System Kernel Boot** (`UnicornMachine`) | Both `nflasha1` updater (`E0648`) and captured `nflasha3` main firmware (`E0651`) boot natively: `nflasha3` runs stock `/sbin/init`, mounts 9 eMMC partitions (read-only backing + RAM COW), loads 39 `.ko` modules, runs `LIRO` `entry_pre`/`entry_main`, reaches `im.elf` `DMP_2D_Initialize : 0`, and answers `/bin/ash` commands (`vfpv3d16` `/proc/cpuinfo`) past 2.8B instructions under `--mmio stop` | [E0651](evidence/0651-unicorn-main-firmware-boot.md), [E0648](evidence/0648-unicorn-updater-child-cow-and-hwcap.md), [E0533](evidence/0533-unicorn-native-thumb-userspace-continuation.md) | Model multi-core SMP / VPH display wake if Unicorn rear-LCD progression beyond `DMP_2D_Initialize : 0` (`cpu 1..3 offline`) is needed; wire `TargetProfile` into `UnicornMachine` |
+| **L3 User-Space (`im.elf`)** (`InterpreterProbe`) | Unmodified `im.elf` runs to `1.50B` instructions (`120` threads, `0` heap ownership errors, no `0x4C->0x50` padding) after fixing Unicorn 2.1.4 Thumb-2 stale-`ITSTATE` bugs; `/dev/dmpgles2` 128 KiB init (`sugilite_open` 4-byte zero + `rm_rqueue_init` 128 KiB `memset`), `62` `/dev/ldec` LZ77 DMA jobs, `24` Sugilite GPU jobs + `24` IRQ 76 completions, and double-buffered `640×480` RGBA4444 `viewRootPowerSw.uxc` OSD A/B presentation verified (`THREAD_INFRA1` complete) | [E0652](evidence/0652-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md), [E0530](evidence/0530-gles-tgid-completion-and-shared-memory-boundary.md), [E0526](evidence/0526-stella-allocator-size-isolation-and-padding-trial.md), [l3-userspace-and-ipc.md](architecture/l3-userspace-and-ipc.md) | Qualify external `av-cam.bin` / sub-micro `UPM` (`0x920572`/`0x920021`) and `ObjPower` (`0x0059000E`) producers to advance `DefRootView` (`CheckerBootState`/`CheckerBootType`) past transparent `viewRootPowerSw.uxc` |
 | **Track B Physical UVC/PTP** (`054C:0322`) | Run B25 (`E0468`) proved `S1` (camera arms EP0 OUT status in ≤16.4 ms; host's single Status OUT was NAK'd in `NRDY→arm` window). `E0476` status pre-arm fix built (`dcc2f64f…`), audited (`117/8/0`), Unicorn-verified (`8/8 PASS`) | [E0476](evidence/0476-status-prearm-fix-build-audit-unicorn.md), [UVC_PTP_STATUS.md](UVC_PTP_STATUS.md) | Awaiting explicit user GO for single supervised Run B26 |
-| **QEMU `sony-a6400` machine** (`qemu-a6400/`) | Captured four-core boot. Opt-in raster/CamPig/RC0 produces deterministic video on ch51/rear LCD. Separate diagnostic USB inputs and optional register/token policies enumerate the original bus-power/HID function to configured; stock view-driven server startup remains unqualified | [E0591](evidence/0591-qemu-a6400-first-live-view-frame.md), [E0598](evidence/0598-qemu-token-driven-ep0-configuration.md), [qemu-a6400/STATUS.md](../qemu-a6400/STATUS.md) | Qualify a genuine UVC function and non-EP0 data/chain contracts. Independently resolve captured live-view step 26 (`0x0323`/`0x0320`); a synthetic chart does not qualify the sensor or recording |
+| **QEMU `sony-a6400` machine** (`qemu-a6400/`) | Synthetic luma reaches the stock LCD and releases the reconstructed packaged boot's step-32 guard. A separate opt-in lens rail reply releases captured step 26. S1 wakes the stock rear OSD after Auto Power Save. Settings survive a fresh process after an explicit native save; the original file service mounts virtual SD. Separately, opt-in USB policies enumerate the original bus-power/HID function | [E0591](evidence/0591-qemu-a6400-first-live-view-frame.md), [E0598](evidence/0598-qemu-token-driven-ep0-configuration.md), [E0645](evidence/0645-qemu-virtual-media-gates.md), [E0646](evidence/0646-qemu-a6400-stock-finder-monitor-rear-lcd.md), [E0647](evidence/0647-qemu-a6400-late-black-screen-scanout-capture.md), [qemu-a6400/STATUS.md](../qemu-a6400/STATUS.md) | Verify remaining application controls, automatic shutdown save, stock JPEG playback, and still capture. Genuine UVC and non-EP0 data/chain contracts are separate |
 | **Multi-Device Platform** (`CXD90045`) | 13 bodies / 9 kernels mapped (`E0477–E0489`); `TargetProfile` registry has `ilce_6400`, `ilce_6400a`, `zv_e10`, `ilce_6100`, `ilce_6600`, `ilce_7c`, `ilce_7m3`, `ilce_7rm4a` | [PLATFORM_MODEL.md](PLATFORM_MODEL.md), [ADDING_A_BIONZX_CAMERA.md](ADDING_A_BIONZX_CAMERA.md) | Wire `TargetProfile` directly into `UnicornMachine` and `InterpreterProbe` for universal target selection |
 
 Historical 2026-10-18 and 2026-11-06 checkpoints are preserved in [docs/archives/](archives/).
@@ -51,9 +51,27 @@ state stays step 26 of 43, step `0x8004`, module bit 2 `0x0323`/`0x0320`.
 Read-back windows `0xF2800000`, `0xF3500000` and `0xF3880000` reduce
 unmodelled pairs. `TB_JMP_CACHE_BITS` 14 and the v11 per-block SD insertion
 check are speed claims on that same state. No physical camera check is
-claimed, and captured step 26 stays open.
+claimed. The later [opt-in lens rail reply](evidence/0591-qemu-a6400-first-live-view-frame.md#captured-step-26-sub-micro-lens-rail-acknowledgement)
+is a different replay, not part of those scores.
 
 ## USB delivery update (2026-11-18)
+
+2026-11-19 [E0650](evidence/0650-qemu-first-view-ptp-and-native-dwc3-reset.md)
+shows that early native cable delivery passes the sampled FirstView checks.
+A stock Play press separately clears the observed `NeutrOn` flag and restores
+`ModelCamera` readiness, but original I-InputMain still suppresses USB with
+reason `0x11`. Native bulk OUT fixtures and a Sony PTP data/response validator
+are separate from stock USB proof.
+The Unicorn E305 replay enters the live-bound DWC3 reset and stops before
+the PL310 sync write; complete startup, SETCONFIG, and teardown remain open.
+
+2026-11-19 [E0649](evidence/0649-usb-stock-attach-and-fusb-start-guard.md)
+observes the original `ModelCamera` `NeutrOn` store followed by a false
+readiness result. With the stock `P` display, VBUS reaches the original jack
+handler but neither starts the DWC3 gadget nor returns a DEVICE descriptor.
+In Unicorn, the opt-in original FUSB `SET_MODE` leaf runs, and E305 stops
+at the bound `dwc3_gadget_otg_probe`. No Sony data transfer, process-owned
+SETCONFIG lifecycle, or streaming is established.
 
 2026-11-19 [E0619](evidence/0619-native-usb-release-model-camera-readiness.md)
 reaches the enclosing still-recording USB-release paths. Binding group 1

@@ -31,6 +31,7 @@ Central navigation map for the Sony BIONZ X (`CXD90045`) universal emulator and 
 | [DEPENDENCY_WORKFLOW.md](DEPENDENCY_WORKFLOW.md) | Dependency and call-chain tracing workflow |
 | [VALIDATION.md](VALIDATION.md) | Differential validation and fidelity rules |
 | [GLES TGID completion and shared-memory boundary](evidence/0530-gles-tgid-completion-and-shared-memory-boundary.md) | Original completion/reset and recovery branches; guarded software-shared versus GPU mappings, repeated real-process stop and no claimed frame |
+| [Unicorn L3 allocator, GLES init & Sugilite GPU](evidence/0652-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md) | Thumb-2 stale-`ITSTATE` root cause (`1.50B` insns, `0` ownership errors without padding), `sugilite_open` 4-byte + `rm_rqueue_init` 128 KiB init, `24` Sugilite GPU/IRQ 76 jobs, and transparent `viewRootPowerSw.uxc` OSD A/B boundary |
 
 ## 3. UVC / PTP & Feature Workstreams
 

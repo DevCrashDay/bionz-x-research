@@ -357,7 +357,12 @@ class DataAbortDeliveryTests(unittest.TestCase):
         machine = self.make_machine()
         self.assertTrue(machine._deliver_data_abort(0x60100000, 0x13, 0, True))
         self.assertEqual(machine.data_abort_trace[0]['fsr'], '0x00000805')
-        # A repeatedly faulting PC is bounded instead of looping forever.
+        # A repeatedly faulting (PC, page) is bounded instead of looping forever,
+        # while sequential demand-paged 4 KiB pages at the same copy_from_user PC advance.
+        for page in range(16):
+            self.assertTrue(
+                machine._deliver_data_abort(0x60256DF0, 0x13, 0x040AA000 + page * 0x1000, False)
+            )
         for _ in range(12):
             machine._deliver_data_abort(0x60100000, 0x13, 0, True)
         self.assertFalse(machine._deliver_data_abort(0x60100000, 0x13, 0, True))
