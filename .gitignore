@@ -94,3 +94,6 @@ camera-daemon/build/
 probes/build/
 android-client-ref/**/build/
 android-client-ref/.gradle/
+
+# Private Custom OS repository (separate nested Git repo)
+/custom_os/

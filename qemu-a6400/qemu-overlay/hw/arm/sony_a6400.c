@@ -640,6 +640,85 @@ static bool sony_get_work_dma(Object *obj, Error **errp)
     return sony_a6400_work_dma;
 }
 
+/*
+ * Opt-in bus error inside the reserved first megabyte (E0647).  On a physical
+ * ILCE-6400 a user-space /dev/mem read of PA 0x000F8000 returned an external
+ * abort ("external abort on non-linefetch (0x008)") and Sony's exception
+ * monitor warm-rebooted the camera; the 0x00000000 page read before it did
+ * not fault.  The camera's FSR had ExT = 0 (Cortex-A5: AXI DECERR, no slave
+ * decodes the address), so the model answers MEMTX_DECODE_ERROR, which QEMU
+ * reports with the same FSR (0x008) rather than 0x1008 (SLVERR).  Without this option the board backs the whole megabyte with RAM,
+ * so the same access silently succeeds in QEMU.  Only the proven page is
+ * modelled; the rest of the megabyte stays RAM [unknown on hardware].
+ *
+ * The machine ignores transaction failures (unassigned space reads 0).  To raise
+ * an abort for this one page without changing any other access, the option
+ * re-enables transaction failures on every CPU and maps a whole-space
+ * unimplemented device at the lowest priority, so every other unassigned
+ * address still reads 0 and drops writes exactly as before.
+ */
+#define CXD90045_LOWMEM_ABORT_BASE 0x000F8000ULL
+#define CXD90045_LOWMEM_ABORT_SIZE 0x1000ULL
+
+static bool sony_a6400_lowmem_abort;
+
+static MemTxResult cxd90045_lowmem_abort_read(void *opaque, hwaddr addr,
+                                              uint64_t *data, unsigned size,
+                                              MemTxAttrs attrs)
+{
+    qemu_log_mask(LOG_GUEST_ERROR, "cxd90045.lowmem-abort: read PA 0x%08"
+                  HWADDR_PRIx " size %u -> decode error (E0647)\n",
+                  (hwaddr)(CXD90045_LOWMEM_ABORT_BASE + addr), size);
+    *data = 0;
+    return MEMTX_DECODE_ERROR;
+}
+
+static MemTxResult cxd90045_lowmem_abort_write(void *opaque, hwaddr addr,
+                                               uint64_t data, unsigned size,
+                                               MemTxAttrs attrs)
+{
+    qemu_log_mask(LOG_GUEST_ERROR, "cxd90045.lowmem-abort: write PA 0x%08"
+                  HWADDR_PRIx " size %u -> decode error (E0647)\n",
+                  (hwaddr)(CXD90045_LOWMEM_ABORT_BASE + addr), size);
+    return MEMTX_DECODE_ERROR;
+}
+
+static const MemoryRegionOps cxd90045_lowmem_abort_ops = {
+    .read_with_attrs = cxd90045_lowmem_abort_read,
+    .write_with_attrs = cxd90045_lowmem_abort_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 8 },
+};
+
+static void sony_a6400_create_lowmem_abort(MemoryRegion *sysmem, ARMCPU **cpus,
+                                           unsigned ncpu)
+{
+    MemoryRegion *mr = g_new(MemoryRegion, 1);
+
+    memory_region_init_io(mr, NULL, &cxd90045_lowmem_abort_ops, NULL,
+                          "cxd90045.lowmem-abort", CXD90045_LOWMEM_ABORT_SIZE);
+    memory_region_add_subregion_overlap(sysmem, CXD90045_LOWMEM_ABORT_BASE,
+                                        mr, 10);
+    create_unimplemented_device("cxd90045.unassigned", 0, 1ULL << 32);
+    for (unsigned c = 0; c < ncpu; c++) {
+        CPU(cpus[c])->ignore_memory_transaction_failures = false;
+    }
+}
+
+static bool sony_get_lowmem_abort(Object *obj, Error **errp)
+{
+    return sony_a6400_lowmem_abort;
+}
+
+static void sony_set_lowmem_abort(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "lowmem-abort is a startup option");
+        return;
+    }
+    sony_a6400_lowmem_abort = enabled;
+}
+
 static void sony_set_work_dma(Object *obj, bool enabled, Error **errp)
 {
     if (phase_check(PHASE_MACHINE_INITIALIZED)) {
@@ -1639,6 +1718,27 @@ static char *sony_a6400_get_sm_file(Object *obj, Error **errp)
     return g_strdup(sony_a6400_sm_file);
 }
 
+/*
+ * "hostwin" (developer option, not a hardware model): a host file mapped as shared RAM at
+ * PA 0x50000000 (16 MiB, between RAM bank 0 and bank 1, unused by the CXD90045 map). The host
+ * writes test files into it and a guest helper copies them out through /dev/mem, so test inputs
+ * reach a running guest without the serial console (qemu-a6400/tools/warm.py, hostwin_get).
+ */
+#define CXD90045_HOSTWIN_PA   0x50000000ULL
+#define CXD90045_HOSTWIN_SIZE 0x01000000ULL
+static char *sony_a6400_hostwin;
+
+static char *sony_a6400_get_hostwin(Object *obj, Error **errp)
+{
+    return g_strdup(sony_a6400_hostwin);
+}
+
+static void sony_a6400_set_hostwin(Object *obj, const char *value, Error **errp)
+{
+    g_free(sony_a6400_hostwin);
+    sony_a6400_hostwin = g_strdup(value);
+}
+
 static void sony_a6400_set_sm_file(Object *obj, const char *value,
                                    Error **errp)
 {
@@ -1731,6 +1831,17 @@ static void sony_a6400_init(MachineState *machine)
     }
     if (sony_a6400_work_dma) {
         cxd90045_create_work_dma(get_system_memory());
+    }
+    if (sony_a6400_lowmem_abort) {
+        sony_a6400_create_lowmem_abort(sysmem, cpus, ncpu);
+    }
+    if (sony_a6400_hostwin && *sony_a6400_hostwin) {
+        MemoryRegion *win = g_new0(MemoryRegion, 1);
+        if (!memory_region_init_ram_from_file(win, NULL, "a6400.hostwin", CXD90045_HOSTWIN_SIZE,
+                                              0, RAM_SHARED, sony_a6400_hostwin, 0, &error_fatal)) {
+            exit(1);
+        }
+        memory_region_add_subregion_overlap(sysmem, CXD90045_HOSTWIN_PA, win, 10);
     }
 
     /*
@@ -2200,6 +2311,11 @@ static void sony_a6400_machine_init(MachineClass *mc)
                                   sony_a6400_set_sm_file);
     object_class_property_set_description(OBJECT_CLASS(mc), "submicro-frames",
         "384-byte file: captured sub-micro RX slots A, C, B (E0527)");
+    object_class_property_add_str(OBJECT_CLASS(mc), "hostwin",
+                                  sony_a6400_get_hostwin, sony_a6400_set_hostwin);
+    object_class_property_set_description(OBJECT_CLASS(mc), "hostwin",
+        "Developer option: host file mapped as shared RAM at PA 0x50000000 (16 MiB) for "
+        "fast test-file transfer into a running guest; not a hardware model");
     object_class_property_add_bool(OBJECT_CLASS(mc), "campig-enable-readback",
                                    sony_a6400_get_campig_enable_readback,
                                    sony_a6400_set_campig_enable_readback);
@@ -2257,6 +2373,11 @@ static void sony_a6400_machine_init(MachineClass *mc)
     object_class_property_set_description(OBJECT_CLASS(mc), "work-dma",
         "Model the work DMA copy channel at 0xF0102000 (+0x1C0, mode "
         "0x1C491000 only; E0641)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "lowmem-abort",
+                                   sony_get_lowmem_abort, sony_set_lowmem_abort);
+    object_class_property_set_description(OBJECT_CLASS(mc), "lowmem-abort",
+        "Bus error (external abort) on PA 0x000F8000-0x000F8FFF in the reserved "
+        "first megabyte, as observed on the ILCE-6400 (E0647)");
     object_class_property_add_bool(OBJECT_CLASS(mc), "usb-vbus",
                                    sony_get_usb_vbus, sony_set_usb_vbus);
     object_class_property_set_description(OBJECT_CLASS(mc), "usb-vbus",
