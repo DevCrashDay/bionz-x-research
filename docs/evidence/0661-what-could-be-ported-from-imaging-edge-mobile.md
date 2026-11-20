@@ -4,6 +4,12 @@ Date: 2026-11-14. **Offline.** Two committed artifacts and no camera: the method
 shipped client (E0660) and the body's own `getAvailableApiList` answer (E0659).
 Rebased onto upstream `main` on 2026-11-20 and numbered after the records published there; the measurements are unchanged.
 
+> Superseded reading: [E0664](0664-shutter-works-drive-mode-decides.md) shows that the advertised
+> list follows body state. Drive mode `Single` adds the shutter and the self-timer methods, and a
+> lens the body does not read removes `setFNumber`. The 47 counted here are one state, drive mode
+> `Continuous` in aperture priority, not the application's whole grant. The counts below stand
+> for that state.
+
 "Port the whole app" cannot be answered with a yes, and this record answers it with a number
 instead. Imaging Edge Mobile is **2,664 source files**; of the 311 web-API names it enumerates,
 **46 are callable on this body**. The rest are not missing work — the camera declines to serve

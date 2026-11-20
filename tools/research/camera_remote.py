@@ -5,10 +5,10 @@ Built on :mod:`scalarwebapi`, which is only the transport. This file is the poli
 remote offers, what it refuses to pretend, and how it reports a method the camera does not
 expose.
 
-The honest part matters more than the feature list. On the owner's ILCE-6400 the running
-application registers 47 methods, and the shutter (``actTakePicture``) is **not** among them,
-although the packaged ``orb-server`` contains 221 camera methods including it (E0659). So this
-remote:
+The honest part matters more than the feature list. What the camera advertises follows its own
+state (E0664): at drive mode ``Continuous`` the owner's ILCE-6400 lists 47 methods with
+``startContShooting`` and without the shutter (``actTakePicture``); at ``Single`` it lists 50,
+with the shutter. So this remote:
 
 * discovers its own verbs from the camera at start-up instead of assuming a fixed set, and
 * refuses a command the camera did not advertise, saying so, rather than sending it and
@@ -59,7 +59,29 @@ SETTINGS: dict[str, tuple[str, str, str]] = {
     "shutter": ("getShutterSpeed", "setShutterSpeed", "shutterspeed"),
     "wb": ("getWhiteBalance", "setWhiteBalance", "whitebalance"),
     "ev": ("getExposureCompensation", "setExposureCompensation", "exposurecompensation"),
+    "drive": ("getContShootingMode", "setContShootingMode", "contShootingMode"),
 }
+
+
+def shutter_hint(api_list: Iterable[str]) -> str | None:
+    """Why the shutter is missing, in the camera's own terms, or ``None`` when it is offered.
+
+    Measured on the owner's body (E0664): the drive mode picks the shutter. At ``Continuous``
+    the camera offers ``startContShooting`` and withholds ``actTakePicture``; setting the drive
+    mode to ``Single`` brings the shutter back within a second. Sending ``actTakePicture``
+    while it is withheld answers error 1, which says nothing about the cause.
+    """
+    advertised = set(api_list)
+    if COMMANDS["shoot"] in advertised:
+        return None
+    if COMMANDS["burst-start"] in advertised:
+        hint = ("the camera is in a continuous drive mode, where it offers burst-start instead "
+                "of the shutter")
+        if "setContShootingMode" in advertised:
+            hint += "; 'drive Single' brings the shutter back"
+        return hint
+    return ("the camera does not offer the shutter in its current state; sending it anyway "
+            "returns error 1 (state refusal), not a success")
 
 
 def setter_params(setter: str, value: str) -> list[Any]:
@@ -137,11 +159,9 @@ def describe_capability(api_list: list[str]) -> str:
     lines.append("available: " + (", ".join(have) if have else "none"))
     if lack:
         lines.append("refused (method not advertised): " + ", ".join(lack))
-    if "shoot" in lack and "half-press" in have:
-        lines.append(
-            "the camera advertises half-press but not the shutter; sending the shutter anyway "
-            "returns error 1 (state refusal), not a success"
-        )
+    hint = shutter_hint(api_list)
+    if hint:
+        lines.append(hint)
     return "\n".join(lines)
 
 
@@ -239,6 +259,8 @@ def run_live(host: str, port: int, command: str, argument: str | None,
             "Sending it anyway returns error 1, which reads like a fault in the remote and is not.",
             file=sys.stderr,
         )
+        if command == "shoot":
+            print(shutter_hint(api_list), file=sys.stderr)
         return 1
 
     try:

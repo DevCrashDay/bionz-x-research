@@ -4,7 +4,7 @@ Offline: no camera is contacted. What these protect is the refusal rule, which i
 point of the tool on this body. The owner's ILCE-6400 advertises 47 methods and half-press but
 not the shutter (E0659). A remote that sent ``actTakePicture`` regardless would return error 1
 and a user would read that as a broken tool, so the remote must refuse *before* sending and
-say why. If that check regressed, the tool would look broken in exactly the case it exists for.
+say why. The why is the drive mode (E0664): the same body offers the shutter at ``Single``. If that check regressed, the tool would look broken in exactly the case it exists for.
 
 Also protected: the MJPEG framer, because the stream has no length prefix and a framer that
 returned a partial frame would write a truncated JPEG that looks like a corrupt photograph.
@@ -21,7 +21,10 @@ sys.path.insert(0, str(ROOT / "tools" / "research"))
 
 from camera_remote import (  # noqa: E402
     COMMANDS,
+    SETTINGS,
     describe_capability,
+    setter_params,
+    shutter_hint,
     jpeg_frames,
     supported_commands,
     unsupported_commands,
@@ -47,11 +50,37 @@ LIVE_47 = [
     "getTemporarilyUnavailableApiList",
 ]
 
+# The same body at drive mode Single (E0664): the shutter and the self-timer appear and the
+# continuous pair goes.
+LIVE_50 = [m for m in LIVE_47 if m not in ("startContShooting", "stopContShooting")] + [
+    "actTakePicture", "awaitTakePicture", "getSelfTimer", "setSelfTimer", "getAvailableSelfTimer",
+]
+
 
 class CapabilityTests(unittest.TestCase):
-    def test_the_shutter_is_reported_as_unsupported_on_this_body(self) -> None:
-        # This is the measured fact: the shutter is absent from the live list.
+    def test_the_shutter_is_reported_as_unsupported_in_continuous_drive(self) -> None:
+        # This is the measured fact: the shutter is absent from the Continuous list.
         self.assertIn("shoot", unsupported_commands(LIVE_47))
+
+    def test_the_shutter_is_offered_in_single_drive(self) -> None:
+        self.assertIn("shoot", supported_commands(LIVE_50))
+        self.assertNotIn("burst-start", supported_commands(LIVE_50))
+        self.assertIsNone(shutter_hint(LIVE_50))
+
+    def test_the_hint_names_the_drive_mode_and_the_way_back(self) -> None:
+        hint = shutter_hint(LIVE_47)
+        self.assertIn("continuous drive mode", hint)
+        self.assertIn("drive Single", hint)
+
+    def test_without_a_burst_the_hint_falls_back_to_the_refusal(self) -> None:
+        bare = [m for m in LIVE_47 if m not in ("startContShooting", "stopContShooting")]
+        self.assertIn("error 1", shutter_hint(bare))
+
+    def test_the_drive_setting_sends_the_shape_the_camera_accepted(self) -> None:
+        # setContShootingMode [{"contShootingMode": "Single"}] answered [] on the body (E0664).
+        getter, setter, _ = SETTINGS["drive"]
+        self.assertEqual((getter, setter), ("getContShootingMode", "setContShootingMode"))
+        self.assertEqual(setter_params(setter, "Single"), [{"contShootingMode": "Single"}])
 
     def test_half_press_is_reported_as_supported(self) -> None:
         self.assertIn("half-press", supported_commands(LIVE_47))
@@ -69,7 +98,7 @@ class CapabilityTests(unittest.TestCase):
         text = describe_capability(LIVE_47)
         self.assertIn("47 methods", text)
         self.assertIn("shoot", text)
-        self.assertIn("error 1", text)
+        self.assertIn("burst-start instead of the shutter", text)
 
     def test_capability_text_does_not_claim_a_shutter_when_one_is_absent(self) -> None:
         text = describe_capability(LIVE_47)

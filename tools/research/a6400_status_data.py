@@ -219,30 +219,29 @@ class StatusSnapshot:
 
 STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
-    as_of="2026-11-20",
+    as_of="2026-11-21",
     latest=EvidenceRef(
-        evidence_id="E0662",
-        path="docs/evidence/0662-file-access-is-a-camera-mode.md",
-        date="2026-11-20",
-        title="Camera Wi-Fi: 47 of 221 methods advertised, and file access is a camera mode",
+        evidence_id="E0664",
+        path="docs/evidence/0664-shutter-works-drive-mode-decides.md",
+        date="2026-11-21",
+        title="Camera Wi-Fi: the shutter works, and the drive mode decides whether it is offered",
         demonstrated=(
-            "On the owner's ILCE-6400 2.00 the camera AP serves Sony ScalarWebAPI with 47 methods "
-            "while the packaged orb-server carries 221; Creative Style is not among them (E0658). "
-            "actTakePicture is unadvertised and answers error 1 while its handler exists in "
-            "libInfraWebApi.so and only forwards, so the short list is the running application's "
-            "registration (E0659). Sony's Android client 7.6.0, decompiled and not run, drives the "
-            "shutter by an ordering-sensitive sequence (E0660); of its 311 camera methods 46 are "
-            "callable on this body, and the camera serves 16 getSupported* lists but 5 setters "
-            "(E0661). avContent answers error 12 to every method in 'Control with Smartphone' "
-            "mode and no network call switches the mode (E0662)."
+            "On the owner's ILCE-6400 2.00 the camera AP serves Sony ScalarWebAPI; the packaged "
+            "orb-server carries 221 camera methods and Creative Style is not served (E0658). At "
+            "drive mode Continuous the camera advertises 47 methods with startContShooting and "
+            "without actTakePicture (E0659); at Single it advertises 50 with the shutter, and one "
+            "photograph was taken over Wi-Fi after a half-press (E0664). Sony's Android client "
+            "7.6.0, decompiled and not run, guards the shutter on that list (E0660). avContent "
+            "answers error 12 in 'Control with Smartphone' mode and no network call switches the "
+            "mode (E0662)."
         ),
         boundary=(
-            "Error 1 on the shutter is not separated from the missing memory card, and other shoot "
-            "modes or registered applications were not tried. 'Send to Smartphone' mode was not "
-            "observed. The Android client was decompiled, not installed or run. The 221-method "
+            "Only drive mode and lens were shown to change the list; whether the exposure mode "
+            "gates setShutterSpeed and setExposureMode is untested, and startContShooting was not "
+            "re-called with a transcript. 'Send to Smartphone' mode was not observed. The 221-method "
             "count belongs to the packaged orb-server, a different point release than the unit."
         ),
-        tier="PHYSICAL READ-ONLY + OFFLINE APK",
+        tier="PHYSICAL + OFFLINE APK",
     ),
     headline="Unicorn L3 Sugilite GPU & 1.5B-insn heap trace | Unicorn nflasha3 main boot | QEMU live-view",
     cards=(

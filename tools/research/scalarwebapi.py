@@ -59,8 +59,11 @@ ERROR_CODES = {
     16: "Transport Error",
     17: "Client Internal Error",
     18: "Response Timeout",
+    40400: "Shooting Fail: the camera failed to photograph (seen without a half-press in the dark)",
     40401: "Camera is not ready",
     40402: "Already running polling API",
+    40403: "Still Capturing Not Finished: call awaitTakePicture for the result",
+    40404: "Camera API is not prepared",
 }
 
 

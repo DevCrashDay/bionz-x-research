@@ -5,6 +5,12 @@ access point, plus offline analysis of the packaged `orb-server`. No settings we
 mode changed, no photograph was taken by this record's commands.
 Rebased onto upstream `main` on 2026-11-20 and numbered after the records published there; the measurements are unchanged.
 
+> Superseded shutter claim: [E0664](0664-shutter-works-drive-mode-decides.md) took a photograph
+> with `actTakePicture` on this body. The 47-method list is the camera at drive mode
+> `Continuous`, where it offers `startContShooting` instead of the shutter; at `Single` it offers
+> `actTakePicture`. §0 items 3 and 5, §3, and §4's "no card" inference are wrong. `[[]]` from
+> `getStorageInformation` is served with a card inserted. The 221-method count stands.
+
 Supersedes nothing. E0658 measured which methods this camera exposes; this record measures *why*
 that list is short, and separates three things E0658 left together: what the firmware can do, what
 the running application advertises, and what therefore answers.
