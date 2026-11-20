@@ -1,6 +1,10 @@
 # Local runtime and caches
 venv/
 .venv/
+.venv-gui/
+.venv-packager/
+.venv-debugger/
+.cache/
 __pycache__/
 *.py[cod]
 /hs_err_pid*.log

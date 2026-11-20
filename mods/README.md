@@ -2,6 +2,9 @@
 
 Runtime mods for Sony **BIONZ X (`CXD90045`)** cameras run **RAM-only** through a guarded loader (`Mods` tab 7 in the Sony menu). Nothing is written to internal camera flash, and a normal reboot restores stock firmware behavior.
 
+> [!TIP]
+> **Windows GUI (1-Click Install & ON/OFF Toggles):** Double-click [`scripts/launch_mod_manager.bat`](../scripts/launch_mod_manager.bat) or see **[BIONZ X Mod Manager GUI](../docs/MOD_MANAGER_GUI.md)** to toggle runtime mods & PMCA tweaks ON/OFF, sync SD cards, or build a standalone `.exe` bundle.
+
 > [!IMPORTANT]
 > **Target boundary:** Current shipped `.mod` binaries and guard addresses are verified for **`ILCE-6400`** (`im.elf`). Do not install them on another camera model or firmware version without building and verifying a matching target layout.
 
