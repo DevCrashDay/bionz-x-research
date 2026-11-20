@@ -221,27 +221,25 @@ STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
     as_of="2026-11-21",
     latest=EvidenceRef(
-        evidence_id="E0664",
-        path="docs/evidence/0664-shutter-works-drive-mode-decides.md",
-        date="2026-11-21",
-        title="Camera Wi-Fi: the shutter works, and the drive mode decides whether it is offered",
+        evidence_id="E0663",
+        path="docs/evidence/0663-callgraph-plt-correction-and-real-ipc-table.md",
+        date="2026-11-20",
+        title="Correction: the IPC table of E0483 was calls to other imports",
         demonstrated=(
-            "On the owner's ILCE-6400 2.00 the camera AP serves Sony ScalarWebAPI; the packaged "
-            "orb-server carries 221 camera methods and Creative Style is not served (E0658). At "
-            "drive mode Continuous the camera advertises 47 methods with startContShooting and "
-            "without actTakePicture (E0659); at Single it advertises 50 with the shutter, and one "
-            "photograph was taken over Wi-Fi after a half-press (E0664). Sony's Android client "
-            "7.6.0, decompiled and not run, guards the shutter on that list (E0660). avContent "
-            "answers error 12 in 'Control with Smartphone' mode and no network call switches the "
-            "mode (E0662)."
+            "objdump shows that none of E0483's 29 'IPC call sites' is an IPC call: a fixed "
+            "12-byte PLT stride gave each import its neighbour's name once Thumb-prefixed 16-byte "
+            "entries appear. With the PLT decoded from each entry's GOT slot (2,547 of 2,547 "
+            "agreeing with objdump), bl targets computed from the unaligned PC, Thumb bits "
+            "honoured and the section walked by instruction length, the a6400 libObj.so holds "
+            "763 IPC call sites, 544 with a constant; six queue ids match ids observed at runtime "
+            "in the emulator. E0484's zero direct ObjDisplay_* callers holds on thirteen bodies."
         ),
         boundary=(
-            "Only drive mode and lens were shown to change the list; whether the exposure mode "
-            "gates setShutterSpeed and setExposureMode is untested, and startContShooting was not "
-            "re-called with a transcript. 'Send to Smartphone' mode was not observed. The 221-method "
-            "count belongs to the packaged orb-server, a different point release than the unit."
+            "Constant tracking is straight-line over 64 bytes and does not see a branch into the "
+            "window; each constant is a lead to confirm by disassembly. Wrappers, indirect calls "
+            "and other libraries are outside the table, and no queue's runtime consumer is claimed."
         ),
-        tier="PHYSICAL + OFFLINE APK",
+        tier="OFFLINE PACKAGED FIRMWARE",
     ),
     headline="Unicorn L3 Sugilite GPU & 1.5B-insn heap trace | Unicorn nflasha3 main boot | QEMU live-view",
     cards=(

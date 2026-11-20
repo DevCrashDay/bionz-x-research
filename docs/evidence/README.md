@@ -3,6 +3,8 @@
 One record per hardware or software claim. Records are dated and are **not** rewritten
 when a later result supersedes them: the newer record says what changed.
 
+Current consolidated state: [README research status](../../README.md) (through **E0663**,
+2026-11-20) and [UVC/PTP status and next steps](../UVC_PTP_STATUS.md) (through **E0494**,
 Current consolidated state: [README research status](../../README.md) (through **E0664**,
 2026-11-21) and [UVC/PTP status and next steps](../UVC_PTP_STATUS.md) (through **E0494**,
 2026-11-13).
@@ -11,6 +13,7 @@ Current consolidated state: [README research status](../../README.md) (through *
 
 | ID | Date | Claim |
 | --- | --- | --- |
+| [E0663](0663-callgraph-plt-correction-and-real-ipc-table.md) | 2026-11-20 | Correction: E0483's 29 "IPC call sites" call other imports (objdump: 25 are `MWF::RsrcAcsr::Acquire`); a fixed 12-byte PLT stride, word-aligned `bl` targets, ignored Thumb bits and byte-offset scanning are fixed. The real a6400 table is 763 IPC sites, 544 with a constant, six of them matching queue ids observed at runtime; E0484's zero direct `ObjDisplay_*` callers holds on thirteen bodies |
 | [E0664](0664-shutter-works-drive-mode-decides.md) | 2026-11-21 | The shutter works over Wi-Fi: the camera offers `actTakePicture` at drive mode `Single` (50 methods) and `startContShooting` instead at `Continuous` (the 47 of E0659), and one photograph was taken; `getStorageInformation` answers `[[]]` with a card inserted, and the served exposure-compensation shapes are the integer types `orb-server` declares |
 | [E0662](0662-file-access-is-a-camera-mode.md) | 2026-11-14 | Wi-Fi file access is gated by camera mode, not by a missing method: `avContent` names four versions and serves none (error 12) while `X_ServerType` reports `Control with Smartphone`; Sony's own client branches on that string and no network call switches it |
 | [E0661](0661-what-could-be-ported-from-imaging-edge-mobile.md) | 2026-11-14 | Of the 311 camera methods Imaging Edge Mobile enumerates, 46 are callable on this body: 8 feature groups portable now, 2 partly (getter served, setter not), 19 blocked; the camera serves 16 `getSupported*` lists and only 5 setters, so the blocking is its own grant, not a gap in the port |

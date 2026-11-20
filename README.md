@@ -68,6 +68,13 @@ a different camera mode that no network call switches
 `tools/research/camera_remote.py`, `camera_panel.py` (browser panel with live view) and
 `camera_transfer.py`.
 
+Correction to the application-layer IPC table: [E0663](docs/evidence/0663-callgraph-plt-correction-and-real-ipc-table.md)
+shows that the 29 call sites of E0483 called other imports (a fixed-stride PLT map gave each
+import its neighbour's name) and fixes four call-graph decoding defects. The a6400 `libObj.so`
+holds 763 IPC call sites, 544 with a constant queue id or command; six ids match ids observed at
+runtime in the emulator, and the input handler sends to queue `0x014A0429`. E0484's finding that
+no `ObjDisplay_*` symbol has a direct caller holds on all thirteen bodies.
+
 QEMU EP0 milestone: original firmware now completes six host-driven standard
 control transfers to address 1, configuration 1 and UDC `configured` in two
 fresh runs. The optional mode preserves the older descriptor replay and
@@ -171,7 +178,7 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 
 Recorded integration baseline: **2091 tests**, with 88 skip records and no failures/errors ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. The [late black-screen capture](docs/evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md), [LIRO RAM section analysis](docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md), [CamCore contributor score](docs/evidence/0637-camcore-f301-contributor-boot-score.md), [USB mode gate](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md), and [first firmware-driven live-view frame](docs/evidence/0591-qemu-a6400-first-live-view-frame.md) are separate findings. Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=fd5ce6bcf897)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=af7e4b21ff64)
 
 ![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
 
