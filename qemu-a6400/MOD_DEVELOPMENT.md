@@ -82,11 +82,82 @@ script into a new directory and copying the `.mod` over the watched file. The wa
 2. publishes it by rename;
 3. writes the reload request.
 
+The push is a raw binary transfer: the guest terminal goes raw (`busybox stty raw -echo`) and
+`busybox dd bs=1 count=N` receives exactly N bytes in 3.5 KiB chunks (about 0.9 KB/s; see "Warm guest";
+ the older `printf` path remains the fallback). The guest BusyBox 1.29.3 has no `head` applet and no
+`dd iflag=fullblock`; `stty`, `dd`, `base64` and `xxd` exist only as `busybox <applet>`.
+
+While a mod swallows keys, the MENU nudge never
+reaches the Sony menu, so a reload request stays pending until key forwarding stops.
+
 On the Sony UI thread the core loads and hash-checks the new copy, then checks its targets.
 It switches the old copy OFF with readback, and only then switches the new copy ON with fresh
 state ([E0576](../docs/evidence/0576-mod-loader-v2-reload-request.md)). If no menu refresh
 happens, the panel presses MENU at most twice. A rebuilt loader `core.bin` is pushed the same
 way and loaded at the next menu root. Edits to `rear_panel.html` show on a browser refresh.
+
+## Warm guest: seconds per test
+
+Boot once and keep the guest running; each test then goes into the running QEMU
+(`qemu-a6400/tools/warm.py`, run from the repository root in WSL; from Git Bash prefix
+`MSYS_NO_PATHCONV=1`):
+
+```bash
+python3 qemu-a6400/tools/warm.py start --mod artifacts/tests/mtf-v2-build/MenuTouchFull.mod   # ~40 s, once
+python3 qemu-a6400/tools/warm.py put /path/to/guest_helper /setting/helper                    # large files in 0.5-1.5 s
+python3 qemu-a6400/tools/warm.py sh '/setting/helper --check'
+python3 qemu-a6400/tools/warm.py press menu center
+python3 qemu-a6400/tools/warm.py lcd /tmp/lcd.png
+python3 qemu-a6400/tools/warm.py stop
+```
+
+Measured 2026-11-20: a complete warm-guest test cycle (put, run command, three keys, LCD) takes
+about 9 s, of which about 6 s are the deliberate pauses between keys.
+
+File transfer into a running guest uses the **host window**, a developer option of the machine
+model and not a hardware model: `run.sh HOSTWIN=FILE` adds `hostwin=FILE`, which maps the host
+file as shared RAM at PA 0x50000000 (16 MiB, between RAM bank 0 and bank 1). `POST /moddev/put`
+writes `{ "HWIN", seq, len, fnv1a }` and the data into that file, and the 1.5 KB freestanding guest
+helper `qemu-a6400/tools/hostwin_get.c` (staged as `/tmp_bt/hostwin_get` with `--hostwin-helper`)
+maps the window through `/dev/mem`, checks length and FNV-1a and writes the file. The window needs
+a QEMU built from the current overlay (`warm.py` defaults to `~/sony-a6400-qemu-11.1.3`); without
+it `/moddev/put` falls back to the serial console.
+
+Why not the serial console: under `-icount` the guest spends about 1 ms per `read()` system call,
+so any scheme that makes the guest handle each byte (the `printf` escapes, or `busybox dd bs=1`
+on a raw terminal) runs at about 0.9 KB/s: 274 KB took 315 s. A raw terminal also has no flow
+control, so a single send larger than the guest's 4 KiB terminal buffer loses bytes; the raw
+fallback therefore sends 3.5 KiB chunks.
+
+## Fast test starts
+
+Measured 2026-11-20 (`artifacts/tests/qemu-speed-1`, `qemu-speed-2`): a start is about 4 s of
+QEMU startup, 33 s of firmware boot (single-threaded `-icount`), and 9 s of menu and core load.
+Startup files no longer cost serial time:
+
+- `--mod` files, the loader `core.bin` and every `--guest-file DST=SRC` are written onto the run's
+  disposable `/setting` overlay before boot (`run.sh SETTING_FILES`, 8.3 names `STGnn.BIN`). In
+  the guest they are copied into place (or symlinked when larger than 64 KiB, because the guest
+  `/tmp_bt` tmpfs already holds the guard and Sony's files) and FNV-checked. A 726 KB binary is
+  ready in 0.4 s instead of about 12 minutes.
+- `--guest-cmd CMD` runs a guest shell command after the files are placed, before the install.
+- `POST /moddev/sh` (same-origin, `X-Camera-Panel: 1`) runs one command in the guest shell and
+  returns its output, for test scripts.
+- `A6400_TIMING` replaces the default `-icount shift=0,sleep=on` for measurements. Without icount
+  the firmware currently crashes (`liro-kliro_66` vector exception), so keep the
+  default for real runs.
+- From Git Bash, start `wsl.exe` with `MSYS_NO_PATHCONV=1`; otherwise guest paths such as
+  `/tmp_bt/...` in `--guest-cmd` are rewritten to Windows paths.
+
+Example (staging a mod and guest helper in one cold start):
+
+```bash
+A6400_QEMU_DIR=$HOME/a6400-qemu-moddev EVSEL_LATE_US=500 python3 -u qemu-a6400/tools/rear_panel.py \
+  --port 8650 --log /tmp/moddev.log --inputs artifacts/qemu-a6400/inputs-moddev-1 \
+  --loader artifacts/tests/mlv2-layout-build-4 --mod artifacts/tests/mtf-v2-build/MenuTouchFull.mod \
+  --guest-file /tmp_bt/probe=/path/to/guest_probe \
+  --guest-cmd "/tmp_bt/probe --status"
+```
 
 ## Writing mods that run on both targets
 
@@ -115,3 +186,12 @@ testing streaming.
 - The guest tmpfs at `/tmp_bt` and the `/setting` staging exist only in the disposable overlay.
 - A QEMU pass covers the tested contract. Camera use still needs an explicit go-ahead and a
   RAM-only verification for physical peripherals and timing.
+
+### Staged boots without Sony's application
+
+`python3 qemu-a6400/tools/warm.py start --dmode 2` writes bootin's mode file (`/setting/mode/dmode`,
+one ASCII digit: 0 kernel only, 1 global infra, 2 LIRO = infrastructure + av-cam, 3 application) to
+the run's overlay and starts the panel in `--bare` mode (shell and helper files only, no Sony UI
+checkpoint, no mod loader). `--setting-file NAME=SRC` adds more files before boot, e.g.
+`env.txt` (lines `/sbin/init` puts into its environment, such as `LD_PRELOAD=/setting/tap.so`).
+In a mode-2 guest, `im.elf i` / `im.elf a` continue the running im.elf with the next phase.

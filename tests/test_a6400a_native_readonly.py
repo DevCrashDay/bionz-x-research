@@ -6,9 +6,9 @@ import unittest
 from unittest import mock
 
 from tools.research.a6400a_native_readonly import (
-    INQUIRY_CDB, MODEL_CDB, MODEL_REQUEST, admit_request, parse_model_info,
-    NativeTransport, ScsiPacket, SonyBusy, main, probe_identity,
-    read_model_info, select_target,
+    INQUIRY_CDB, MODEL_CDB, MODEL_REQUEST, A6400A, IDENTITIES, CameraIdentity,
+    admit_request, build_discover, parse_model_info, NativeTransport, ScsiPacket,
+    SonyBusy, main, probe_identity, read_model_info, select_target,
 )
 
 
@@ -233,3 +233,105 @@ class BusyReadTests(unittest.TestCase):
         transport._ioctl = partial_busy
         with self.assertRaisesRegex(ValueError, "partial data; no retry"):
             transport.exchange(MODEL_CDB, read_size=8192)
+
+
+class MultiBodyIdentityTests(unittest.TestCase):
+    """The probe generalizes to other bodies without inventing an identity (E0645, E0646)."""
+
+    #: A registered body whose Mass Storage PID has not been observed on a host.
+    UNOBSERVED = CameraIdentity("unobserved_fixture", None, "Sony DSC USB Device", "ILCE-0000")
+
+    def a7r4a(self):
+        return IDENTITIES["ilce_7rm4a"]
+
+    def metadata(self, pair, model="Sony DSC USB Device"):
+        return {"usb_pair": pair, "service": "USBSTOR", "status": "OK",
+                "config_error": 0, "camera_count": 1,
+                "disks": [{"disk_index": 3, "lun": 0, "model": model,
+                           "parent_identity_verified": True}]}
+
+    def test_a7r4a_mass_storage_pid_is_the_host_observed_value(self):
+        # E0646: read-only Windows PnP on the owner's body (firmware 1.13) in Mass Storage
+        # showed USB\VID_054C&PID_0D9D&REV_0200 bound to USBSTOR.
+        identity = self.a7r4a()
+        self.assertEqual(identity.usb_pid, 0x0D9D)
+        self.assertEqual(identity.usb_pair, "054c:0d9d")
+        self.assertEqual(identity.expected_model, "ILCE-7RM4A")
+        script = build_discover(identity)
+        self.assertIn("PID_0D9D", script)
+        self.assertIn("usb_pair='054c:0d9d'", script)
+        self.assertIn("Expected exactly one healthy ilce_7rm4a USBSTOR camera.", script)
+        # PC Remote (0x0D9F, libusbK) is a different interface and must never be admitted.
+        self.assertNotIn("PID_0D9F", script)
+
+    def test_unobserved_pid_refuses_pair_and_discovery(self):
+        with self.assertRaisesRegex(ValueError, "not observed yet"):
+            _ = self.UNOBSERVED.usb_pair
+        with self.assertRaisesRegex(ValueError, "not observed yet"):
+            build_discover(self.UNOBSERVED)
+
+    def test_default_target_is_unchanged_a6400a(self):
+        self.assertEqual(A6400A.target_id, "ilce_6400a")
+        self.assertEqual(A6400A.usb_pair, "054c:0f0f")
+        self.assertEqual(A6400A.expected_model, "ILCE-6400A")
+        self.assertIn("PID_0F0F", build_discover())
+        self.assertIn("usb_pair='054c:0f0f'", build_discover())
+        self.assertIn("Expected exactly one healthy a6400A USBSTOR camera.", build_discover())
+
+    def test_select_target_admits_only_the_bodys_own_pid(self):
+        identity = self.a7r4a()
+        self.assertEqual(select_target(self.metadata("054c:0d9d"), identity), 3)
+        # The a6400A pair, the a6400 pair and the body's own PC Remote pair are not admitted.
+        for pair in ("054c:0f0f", "054c:0994", "054c:0d9f"):
+            with self.subTest(pair=pair), self.assertRaisesRegex(ValueError, "admission failed"):
+                select_target(self.metadata(pair), identity)
+
+    def test_model_info_expects_this_bodys_model_string(self):
+        reply = model_info(b"ILCE-7RM4A")
+        self.assertEqual(parse_model_info(reply, "ILCE-7RM4A")["model"], "ILCE-7RM4A")
+        # The default (a6400A) parser must reject the A7R IVA reply, and vice versa.
+        with self.assertRaisesRegex(ValueError, "identity mismatch"):
+            parse_model_info(reply)
+        with self.assertRaisesRegex(ValueError, "identity mismatch"):
+            parse_model_info(model_info(b"ILCE-6400A"), "ILCE-7RM4A")
+
+    def test_one_busy_then_reply_matches_the_recorded_a7r4a_transaction(self):
+        # Constructed fixture shaped like the E0646 receipt: request ack, one Sony BUSY on the
+        # first response read, then a reply. No live bytes are embedded; the product code here
+        # is the fixture's, not the camera's.
+        class Fake:
+            def __init__(self):
+                self.commands = []
+                self.reads = 0
+
+            def exchange(self, command, *, data_out=None, read_size=0):
+                admit_request(command, data_out, read_size)
+                self.commands.append((command, data_out is not None))
+                if command == INQUIRY_CDB:
+                    return inquiry()
+                if data_out is not None:
+                    return b""
+                self.reads += 1
+                if self.reads == 1:
+                    raise SonyBusy("busy")
+                return model_info(b"ILCE-7RM4A")
+
+        fake = Fake()
+        with mock.patch("tools.research.a6400a_native_readonly.time.sleep"):
+            result = probe_identity(fake, model_info=True, expected_model="ILCE-7RM4A")
+        self.assertEqual(result["model_info"]["model"], "ILCE-7RM4A")
+        self.assertEqual(result["model_transaction"]["status"], "model_reply_received")
+        self.assertEqual([command for command, _ in fake.commands],
+                         [INQUIRY_CDB, MODEL_CDB, MODEL_CDB, MODEL_CDB])
+        self.assertEqual(sum(write for _, write in fake.commands), 1)
+        self.assertEqual(fake.reads, 2)
+
+    @mock.patch("tools.research.a6400a_native_readonly.discover")
+    def test_main_refuses_a_body_without_an_observed_pid(self, discover):
+        error = io.StringIO()
+        with mock.patch.dict("tools.research.a6400a_native_readonly.IDENTITIES",
+                             {"unobserved_fixture": self.UNOBSERVED}),                 redirect_stderr(error), self.assertRaises(SystemExit) as caught:
+            main(["--target", "unobserved_fixture", "--inquiry", "--output-dir", "unused"])
+        self.assertEqual(caught.exception.code, 2)
+        self.assertIn("not observed yet", error.getvalue())
+        discover.assert_not_called()

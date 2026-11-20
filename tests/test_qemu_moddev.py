@@ -1,4 +1,5 @@
 """Offline checks for the QEMU mod development tools (no QEMU, guest or camera access)."""
+import os
 import re
 import struct
 import sys
@@ -44,6 +45,13 @@ class PushEncoding(unittest.TestCase):
         self.assertEqual(moddev.setting_files(PurePosixPath("/tmp/g"), PurePosixPath("/tmp/r")), "/tmp/g:MLV2GRD.ELF /tmp/r:MLV2.REQ")
         with self.assertRaises(ValueError):
             moddev.setting_files(PurePosixPath("/a b/g"), PurePosixPath("/tmp/r"))
+        # one existing /setting directory level, e.g. bootin's mode file
+        self.assertEqual(moddev.setting_files(PurePosixPath("/tmp/g"), PurePosixPath("/tmp/r"),
+                                              [(PurePosixPath("/tmp/d"), "mode/dmode")]),
+                         "/tmp/g:MLV2GRD.ELF /tmp/r:MLV2.REQ /tmp/d:mode/dmode")
+        for bad in ("a/b/c", "../dmode", "mode/dm de", "toolongdir/x"):
+            with self.assertRaises(ValueError):
+                moddev.setting_files(PurePosixPath("/tmp/g"), PurePosixPath("/tmp/r"), [(PurePosixPath("/tmp/d"), bad)])
 
 
 class ToolbarActions(unittest.TestCase):
@@ -112,8 +120,11 @@ class RearControls(unittest.TestCase):
             captured_envs.append(kwargs["env"])
             return DummyProc()
 
-        for diagnostic_lcd, expected in ((False, "0"), (True, "1")):
-            with tempfile.TemporaryDirectory() as tmp:
+        for diagnostic_lcd, expected, timing in (
+            (False, "0", None),
+            (True, "1", "-accel tcg,thread=multi"),
+        ):
+            with self.subTest(diagnostic_lcd=diagnostic_lcd), tempfile.TemporaryDirectory() as tmp:
                 scratch = Path(tmp)
                 args = SimpleNamespace(
                     log=scratch / "panel.log",
@@ -125,10 +136,18 @@ class RearControls(unittest.TestCase):
                     mod=[],
                 )
                 server = SimpleNamespace(server_port=8640)
-                with patch.object(rear_panel.subprocess, "Popen", side_effect=fake_popen), \
+                with patch.dict(os.environ), \
+                        patch.object(rear_panel.subprocess, "Popen", side_effect=fake_popen), \
                         patch.object(rear_panel, "Qmp", return_value=SimpleNamespace(close=lambda: None)):
+                    os.environ.pop("A6400_TIMING", None)
+                    if timing is not None:
+                        os.environ["A6400_TIMING"] = timing
                     rear_panel.serve(args, scratch, server)
                 self.assertEqual(captured_envs[-1]["REAR_LCD_DIAGNOSTIC"], expected)
+                self.assertEqual(
+                    captured_envs[-1]["QEMU_EXTRA"].partition(" -qmp ")[0],
+                    timing or "-icount shift=0,sleep=on",
+                )
 
 
 class RelocationTable(unittest.TestCase):

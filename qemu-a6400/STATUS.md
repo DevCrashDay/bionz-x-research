@@ -1,5 +1,22 @@
 # QEMU `sony-a6400`: findings and next steps
 
+**Declared stimulus:** opt-in, default-off `gate-force-probe=on` (`GATE_FORCE_PROBE=1`) one-shot patches the exact av-cam step-26 producer cbz at PA `0x03874fd0` to a NOP (`cond. PROBE gate-force`), not a fix.
+
+## Opt-in bus error in the reserved first MiB (2026-11-19 / E0647)
+
+What the option does:
+- **Turning it on:** use `-M sony-a6400,lowmem-abort=on` (`LOWMEM_ABORT=1`).
+- **Effect:** CPU accesses to PA `0x000F8000-0x000F8FFF` get a decode error, the same AXI
+  DECERR the camera returned (FSR `0x008`, ExT = 0). Each access is logged under
+  `-d guest_errors`.
+- **Rest of the machine:** all other unassigned addresses still read 0, through a
+  lowest-priority whole-space unimplemented device.
+
+The default board backs the whole first MiB with RAM, which is why a `/dev/mem` read that
+warm-rebooted the camera passed in QEMU. With the option, the stock firmware shows the camera's
+exception record for the same read (`external abort on non-linefetch`, exception monitor).
+See [E0647](../docs/evidence/0647-ilce6400-devmem-reboot-root-cause-and-policy.md).
+
 ## LIRO `ram` section is av-cam data (2026-11-19 / E0644)
 
 The work DMA copy is av-cam's own initialised RW data (1,878 references from av-cam code into

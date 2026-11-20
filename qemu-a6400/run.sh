@@ -20,6 +20,8 @@
 # EVSEL_LATE_US (opt-in source-30 delay in us, E0557; unset = off),
 # CAMPIG_ENABLE_READBACK=1 (opt-in CamPig IRQ enable register, E0566),
 # SGC1_EVENT_A=1 (opt-in Sgc1 event A and IRQ 35, E0569).
+# GATE_FORCE_PROBE=1 (declared stimulus cond. PROBE gate-force: one-shot patch
+# of the av-cam step-26 producer cbz at PA 0x03874fd0 to a NOP; not a fix).
 # LIVEVIEW_SOURCE (opt-in bars, ramp, none, or pgm:PATH, E0591).
 # P2S_TRACE=1 (log the first 64 sensor-writer transfers).
 # USB_VBUS_TEST=1 (enable the runtime usb-vbus QMP property).
@@ -32,6 +34,8 @@
 # DFS_CONTROL=1 (opt-in DFS clock-switch completion handshake).
 # ZMA1_STARTUP=1 (opt-in captured ZMA1 startup interrupt, not JPEG decode).
 # ZMA1_JPEG_FILL=1 (opt-in DGI neutral fill; requires ZMA1_STARTUP=1).
+# LOWMEM_ABORT=1 (opt-in bus error on PA 0x000F8000 in the reserved first MiB, as on the
+# camera, E0647; guest log under -d guest_errors).
 # REAR_CONTROLS=1 (route host keys to emulated rear camera controls).
 # SHUTTER_EDGE_IRQ=1 (opt-in latched body shutter edges in the GIC).
 # REAR_LCD_DIAGNOSTIC=1 (E0572 device select on the run's qcow2 overlay).
@@ -209,11 +213,20 @@ fi
 if [ "${SGC1_EVENT_A:-0}" = 1 ]; then
     MACHINE="$MACHINE,sgc1-event-a=on"
 fi
+# GATE_FORCE_PROBE=1 (declared stimulus cond. PROBE gate-force; off by default).
+if [ "${GATE_FORCE_PROBE:-0}" = 1 ]; then
+    MACHINE="$MACHINE,gate-force-probe=on"
+fi
 if [ "${REAR_CONTROLS:-0}" = 1 ]; then
     MACHINE="$MACHINE,rear-controls=on"
 fi
 if [ "${SHUTTER_EDGE_IRQ:-0}" = 1 ]; then
     MACHINE="$MACHINE,shutter-edge-irq=on"
+fi
+# HOSTWIN=FILE: developer option, FILE mapped as shared RAM at PA 0x50000000 (16 MiB) for fast
+# test-file transfer into a running guest (tools/warm.py, tools/hostwin_get.c); not a hardware model.
+if [ -n "${HOSTWIN:-}" ]; then
+    MACHINE="$MACHINE,hostwin=$HOSTWIN"
 fi
 if [ "${USB_VBUS_TEST:-0}" = 1 ]; then
     MACHINE="$MACHINE,usb-vbus-test=on"
@@ -238,6 +251,9 @@ if [ "${DDRB_CONTROL:-0}" = 1 ]; then
 fi
 if [ "${DFS_CONTROL:-0}" = 1 ]; then
     MACHINE="$MACHINE,dfs-control=on"
+fi
+if [ "${LOWMEM_ABORT:-0}" = 1 ]; then
+    MACHINE="$MACHINE,lowmem-abort=on"
 fi
 LIVEVIEW_ARGS=()
 if [ -n "${LIVEVIEW_SOURCE:-}" ]; then

@@ -41,6 +41,17 @@ documents synchronous `libJiritsu.so` `dlopen` (`0x5D08`), and adds the offline
 [E0644](docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md) supersedes
 [E0642](docs/evidence/0642-a6400-f30a-fill-engine-and-liro-ram-section.md)'s
 sub-core inference, confirming the LIRO `ram` section is `av-cam` RW data.
+[E0647](docs/evidence/0647-ilce6400-devmem-reboot-root-cause-and-policy.md) traces a
+single-page `/dev/mem` camera reboot to PA `0x000F8000` (external abort `FSR 0x008` in the
+persisted `/proc/klog`, which Sony's exception monitor turns into a warm reboot), enforces
+`tools/devmem_policy.py`, models the abort opt-in in QEMU (`lowmem-abort=on`), and confirms
+a `SIGBUS`-catching reader (`ro_page` v2) survives the read on the camera.
+[E0648](docs/evidence/0648-ilce6400-bl-lens-focus-command-ids.md) decodes body–lens
+focus command IDs (`0x41`–`0x4A` and first-generation `0x1C`–`0x3C`) and their capability
+bitmap gate in `av-cam.bin`, and
+[E0649](docs/evidence/0649-ilce6400-live-lens-info-linux-side-negative.md) confirms via a
+read-only check on live `ILCE-6400` with a Sigma 18-50 F2.8 DC DN that ORIL lens capability
+records are not retained in Linux `im.elf` memory.
 
 QEMU EP0 milestone: original firmware now completes six host-driven standard
 control transfers to address 1, configuration 1 and UDC `configured` in two
@@ -124,7 +135,7 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 | **`ILCE-6400A`** | `1.01` packaged | **Sourced Reference** | Native `GetModelInfo` (`0032858730`), packaged Jiritsu command map and bounded offline DMM replies ([E0554](docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md), [E0525](docs/evidence/0525-a6400a-jiritsu-senser-offline-packets.md), [E0532](docs/evidence/0532-a6400a-dmm-metadata-bounds-and-lifetime.md)) |
 | **`ILCE-6600`** | `a6400` / `a6600` source | **Sourced Reference** | Identical 14,401 kernel function symbols; `0x413b` command delta |
 | **`ZV-E10`**, **`ILCE-7C`** | Shared build | **Sourced Reference** | Identical 14,460 kernel function symbols; `ZV-E10` UVC stack cataloged ([E0321](docs/evidence/0321-zve10-uvc-enablement-manifest.md)) |
-| **`ILCE-6100`**, **`ILCE-7M3`**, **`ILCE-7RM4A`** | Shared symbol list | **Sourced Reference** | `ILCE-7RM4A` 1.13 gadget-core symbols decoded ([E0570](docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md)) |
+| **`ILCE-6100`**, **`ILCE-7M3`**, **`ILCE-7RM4A`** | Shared symbol list | **Sourced Reference** | `ILCE-7RM4A` 1.13 gadget-core symbols decoded ([E0570](docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md)); `GetModelInfo` command binaries byte-identical to a6400A (opcode `0x7A` confirmed offline; SCSI-side routing still needs the camera), read-only probe generalized ([E0645](docs/evidence/0645-ilce-7rm4a-getmodelinfo-extcmd-chain-identical.md)); physical read-only on 1.13: Mass Storage `054C:0D9D`, PC Remote `054C:0D9F`, native `GetModelInfo` `ILCE-7RM4A` after one BUSY ([E0646](docs/evidence/0646-ilce-7rm4a-physical-usb-identity-and-getmodelinfo.md)) |
 
 ---
 
@@ -132,7 +143,7 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 
 Recorded integration baseline: **2091 tests**, with 88 skip records and no failures/errors ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. The [late black-screen capture](docs/evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md), [LIRO RAM section analysis](docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md), [CamCore contributor score](docs/evidence/0637-camcore-f301-contributor-boot-score.md), [USB mode gate](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md), and [first firmware-driven live-view frame](docs/evidence/0591-qemu-a6400-first-live-view-frame.md) are separate findings. Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=df7012fd3f27)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=fb6cf9df8a56)
 
 ![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
 

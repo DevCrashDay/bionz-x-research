@@ -253,6 +253,27 @@ STATUS_SNAPSHOT = StatusSnapshot(
             tier="OFFLINE ORIGINAL MAIN KERNEL + INIT + LIRO + IM.ELF",
         ),
         EvidenceRef(
+            evidence_id="E0649",
+            path="docs/evidence/0649-ilce6400-live-lens-info-linux-side-negative.md",
+            date="2026-11-20",
+            title="/dev/mem abort policy, BL lens focus decode, and live lens check",
+            demonstrated=(
+                "Persisted /proc/klog traces a single-page /dev/mem camera reboot to PA 0x000F8000 "
+                "(FSR 0x008 external abort -> exception monitor warm reboot); tools/devmem_policy.py "
+                "defines physical access tiers, QEMU lowmem-abort=on models the abort, and SIGBUS-catching "
+                "ro_page v2 survives PA 0x000F8000 on hardware (E0647). Static av-cam.bin decode maps BL "
+                "focus commands 0x41-0x4A and 0x1C-0x3C behind the capability bitmap gate (E0648); a live "
+                "read-only check with a Sigma 18-50 F2.8 DC DN confirms ORIL lens capability data is not "
+                "retained in Linux im.elf memory (E0649)."
+            ),
+            boundary=(
+                "Catching SIGBUS covers precise aborts only, not imprecise aborts or kernel reads; "
+                "DRAM /dev/mem remains forbidden. Second-generation BL focus field units and the Sigma "
+                "mount-bus capability bitmap require a passive mount-bus capture."
+            ),
+            tier="READ-ONLY + STATIC",
+        ),
+        EvidenceRef(
             evidence_id="E0655",
             path="docs/evidence/0655-qemu-first-view-ptp-and-native-dwc3-reset.md",
             date="2026-11-19",
@@ -304,8 +325,8 @@ STATUS_SNAPSHOT = StatusSnapshot(
                 "deactivates modelCamera while the emulated VPH/SYSV scanout keeps ticking."
             ),
             boundary=(
-                "Offline replay captured on 2026-11-18. The off sequence and S1 wake "
-                "have not been qualified; no physical camera result is claimed."
+                "A later offline replay verified stock S1 wake and persistence after an explicit native save. "
+                "Automatic shutdown save remains unverified; no physical camera result is claimed."
             ),
             tier="OFFLINE QEMU",
         ),
@@ -337,7 +358,7 @@ STATUS_SNAPSHOT = StatusSnapshot(
             ),
             boundary=(
                 "Contributor emulator report only. This workspace did not re-run the scorer. The model is "
-                "on by default, captured step 26 stays open, and no physical camera result is claimed."
+                "on by default but does not release captured step 26 on its own. No physical camera result is claimed."
             ),
             tier="EMULATOR REPORT",
         ),

@@ -751,6 +751,85 @@ static bool sony_get_work_dma(Object *obj, Error **errp)
     return sony_a6400_work_dma;
 }
 
+/*
+ * Opt-in bus error inside the reserved first megabyte (E0647).  On a physical
+ * ILCE-6400 a user-space /dev/mem read of PA 0x000F8000 returned an external
+ * abort ("external abort on non-linefetch (0x008)") and Sony's exception
+ * monitor warm-rebooted the camera; the 0x00000000 page read before it did
+ * not fault.  The camera's FSR had ExT = 0 (Cortex-A5: AXI DECERR, no slave
+ * decodes the address), so the model answers MEMTX_DECODE_ERROR, which QEMU
+ * reports with the same FSR (0x008) rather than 0x1008 (SLVERR).  Without this option the board backs the whole megabyte with RAM,
+ * so the same access silently succeeds in QEMU.  Only the proven page is
+ * modelled; the rest of the megabyte stays RAM [unknown on hardware].
+ *
+ * The machine ignores transaction failures (unassigned space reads 0).  To raise
+ * an abort for this one page without changing any other access, the option
+ * re-enables transaction failures on every CPU and maps a whole-space
+ * unimplemented device at the lowest priority, so every other unassigned
+ * address still reads 0 and drops writes exactly as before.
+ */
+#define CXD90045_LOWMEM_ABORT_BASE 0x000F8000ULL
+#define CXD90045_LOWMEM_ABORT_SIZE 0x1000ULL
+
+static bool sony_a6400_lowmem_abort;
+
+static MemTxResult cxd90045_lowmem_abort_read(void *opaque, hwaddr addr,
+                                              uint64_t *data, unsigned size,
+                                              MemTxAttrs attrs)
+{
+    qemu_log_mask(LOG_GUEST_ERROR, "cxd90045.lowmem-abort: read PA 0x%08"
+                  HWADDR_PRIx " size %u -> decode error (E0647)\n",
+                  (hwaddr)(CXD90045_LOWMEM_ABORT_BASE + addr), size);
+    *data = 0;
+    return MEMTX_DECODE_ERROR;
+}
+
+static MemTxResult cxd90045_lowmem_abort_write(void *opaque, hwaddr addr,
+                                               uint64_t data, unsigned size,
+                                               MemTxAttrs attrs)
+{
+    qemu_log_mask(LOG_GUEST_ERROR, "cxd90045.lowmem-abort: write PA 0x%08"
+                  HWADDR_PRIx " size %u -> decode error (E0647)\n",
+                  (hwaddr)(CXD90045_LOWMEM_ABORT_BASE + addr), size);
+    return MEMTX_DECODE_ERROR;
+}
+
+static const MemoryRegionOps cxd90045_lowmem_abort_ops = {
+    .read_with_attrs = cxd90045_lowmem_abort_read,
+    .write_with_attrs = cxd90045_lowmem_abort_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 1, .max_access_size = 8 },
+};
+
+static void sony_a6400_create_lowmem_abort(MemoryRegion *sysmem, ARMCPU **cpus,
+                                           unsigned ncpu)
+{
+    MemoryRegion *mr = g_new(MemoryRegion, 1);
+
+    memory_region_init_io(mr, NULL, &cxd90045_lowmem_abort_ops, NULL,
+                          "cxd90045.lowmem-abort", CXD90045_LOWMEM_ABORT_SIZE);
+    memory_region_add_subregion_overlap(sysmem, CXD90045_LOWMEM_ABORT_BASE,
+                                        mr, 10);
+    create_unimplemented_device("cxd90045.unassigned", 0, 1ULL << 32);
+    for (unsigned c = 0; c < ncpu; c++) {
+        CPU(cpus[c])->ignore_memory_transaction_failures = false;
+    }
+}
+
+static bool sony_get_lowmem_abort(Object *obj, Error **errp)
+{
+    return sony_a6400_lowmem_abort;
+}
+
+static void sony_set_lowmem_abort(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "lowmem-abort is a startup option");
+        return;
+    }
+    sony_a6400_lowmem_abort = enabled;
+}
+
 static void sony_set_work_dma(Object *obj, bool enabled, Error **errp)
 {
     if (phase_check(PHASE_MACHINE_INITIALIZED)) {
@@ -1615,6 +1694,50 @@ static void sony_a6400_set_sgc1_event_a(Object *obj, bool value, Error **errp)
     sony_a6400_sgc1_event_a = value;
 }
 
+/*
+ * Declared stimulus (cond. PROBE gate-force), opt-in and off by default. This
+ * is NOT a model or a fix: when enabled it patches the av-cam step-26 producer
+ * cbz halfword (0xB103 -> Thumb NOP 0xBF00) at guest PA 0x03874fd0, so the
+ * producer always stores 1. That is the same force as F-0047's debugger probe,
+ * applied without a debugger. Only the exact av-cam build whose six producer
+ * bytes are 03 b1 01 23 ab 71 is patched; the check repeats every 100 ms of
+ * virtual time until it has patched once, then the timer stops.
+ */
+#define GATE_FORCE_PA 0x03874FD0ULL
+#define GATE_FORCE_PERIOD_NS (100 * 1000 * 1000LL)
+
+static bool sony_a6400_gate_force_probe;
+static QEMUTimer *sony_a6400_gate_force_timer;
+
+static void sony_a6400_gate_force_tick(void *opaque)
+{
+    static const uint8_t expected[6] = { 0x03, 0xb1, 0x01, 0x23, 0xab, 0x71 };
+    uint8_t bytes[6];
+    uint16_t nop = 0xbf00;
+
+    address_space_read(&address_space_memory, GATE_FORCE_PA,
+                       MEMTXATTRS_UNSPECIFIED, bytes, sizeof(bytes));
+    if (memcmp(bytes, expected, sizeof(expected)) != 0) {
+        timer_mod(sony_a6400_gate_force_timer,
+                  qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + GATE_FORCE_PERIOD_NS);
+        return;
+    }
+    address_space_write(&address_space_memory, GATE_FORCE_PA,
+                        MEMTXATTRS_UNSPECIFIED, &nop, sizeof(nop));
+    fprintf(stderr, "a6400: gate-force-probe patched 0x03874fd0\n");
+}
+
+static bool sony_a6400_get_gate_force_probe(Object *obj, Error **errp)
+{
+    return sony_a6400_gate_force_probe;
+}
+
+static void sony_a6400_set_gate_force_probe(Object *obj, bool value,
+                                            Error **errp)
+{
+    sony_a6400_gate_force_probe = value;
+}
+
 static bool sony_a6400_get_campig_enable_readback(Object *obj, Error **errp)
 {
     return sony_a6400_campig_enable_readback;
@@ -2068,6 +2191,27 @@ static void sony_a6400_set_sm_lens_power(Object *obj, bool enabled, Error **errp
     sony_a6400_sm_lens_power = enabled;
 }
 
+/*
+ * "hostwin" (developer option, not a hardware model): a host file mapped as shared RAM at
+ * PA 0x50000000 (16 MiB, between RAM bank 0 and bank 1, unused by the CXD90045 map). The host
+ * writes test files into it and a guest helper copies them out through /dev/mem, so test inputs
+ * reach a running guest without the serial console (qemu-a6400/tools/warm.py, hostwin_get).
+ */
+#define CXD90045_HOSTWIN_PA   0x50000000ULL
+#define CXD90045_HOSTWIN_SIZE 0x01000000ULL
+static char *sony_a6400_hostwin;
+
+static char *sony_a6400_get_hostwin(Object *obj, Error **errp)
+{
+    return g_strdup(sony_a6400_hostwin);
+}
+
+static void sony_a6400_set_hostwin(Object *obj, const char *value, Error **errp)
+{
+    g_free(sony_a6400_hostwin);
+    sony_a6400_hostwin = g_strdup(value);
+}
+
 static void sony_a6400_set_sm_file(Object *obj, const char *value,
                                    Error **errp)
 {
@@ -2165,6 +2309,17 @@ static void sony_a6400_init(MachineState *machine)
     if (sony_a6400_ddrb_control) {
         cxd90045_create_ddrb(sysmem);
     }
+    if (sony_a6400_lowmem_abort) {
+        sony_a6400_create_lowmem_abort(sysmem, cpus, ncpu);
+    }
+    if (sony_a6400_hostwin && *sony_a6400_hostwin) {
+        MemoryRegion *win = g_new0(MemoryRegion, 1);
+        if (!memory_region_init_ram_from_file(win, NULL, "a6400.hostwin", CXD90045_HOSTWIN_SIZE,
+                                              0, RAM_SHARED, sony_a6400_hostwin, 0, &error_fatal)) {
+            exit(1);
+        }
+        memory_region_add_subregion_overlap(sysmem, CXD90045_HOSTWIN_PA, win, 10);
+    }
 
     /*
      * Catch-all for unmodelled peripherals (E0525): same behaviour as the
@@ -2181,6 +2336,12 @@ static void sony_a6400_init(MachineState *machine)
         sony_a6400_create_liveview_pipeline(machine, sysmem, pic);
     } else if (sony_a6400_sgc1_event_a) {
         sony_sgc1_create(machine, pic[35 - 32]);
+    }
+    if (sony_a6400_gate_force_probe) {
+        sony_a6400_gate_force_timer =
+            timer_new_ns(QEMU_CLOCK_VIRTUAL, sony_a6400_gate_force_tick, NULL);
+        timer_mod(sony_a6400_gate_force_timer,
+                  qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + GATE_FORCE_PERIOD_NS);
     }
     if (sony_a6400_usb_vbus_test) {
         sony_usb_vbus_create(machine, pic[230 - 32]);
@@ -2321,6 +2482,49 @@ static void sony_a6400_init(MachineState *machine)
         qdev_prop_set_uint64(cc, "base", 0xF3010000ULL);
         sysbus_realize_and_unref(SYS_BUS_DEVICE(cc), &error_fatal);
         sysbus_mmio_map_overlap(SYS_BUS_DEVICE(cc), 0, 0xF3010000ULL, -500);
+    }
+
+    /*
+     * CamCore block at 0xF3000000 (64 KiB), the same device with the
+     * per-block rule table selected by "base".  The fresh v11 baseline log
+     * (loop/runs/L0028/base/qemu-d.log) has 789 distinct (kind, offset)
+     * pairs, 57 read offsets and 732 write-only offsets.  23 read offsets
+     * are read-back (every baseline read is followed by a write: ldr/bfi/
+     * str RMW words); the other 34 return 0 (never-written status words,
+     * 0x2008/0x2280/0x2400/0x2480 whose reads are mostly not followed by a
+     * write, and the guest-written one-shot words, all 0 on the baseline
+     * path).  Mapped at -600, below the E0566 CamPig read-back word at
+     * 0xF3000050 (-500), so that opt-in model still wins.
+     */
+    {
+        DeviceState *cc = qdev_new("cxd90045-camcore");
+
+        qdev_prop_set_string(cc, "name", "cxd90045.camcore-f300");
+        qdev_prop_set_uint64(cc, "size", 0x10000);
+        qdev_prop_set_uint64(cc, "base", 0xF3000000ULL);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(cc), &error_fatal);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(cc), 0, 0xF3000000ULL, -600);
+    }
+
+    /*
+     * CamCore block at 0xF3120000 (64 KiB).  The fresh v11 baseline log has
+     * 100 distinct (kind, offset) pairs, 13 read offsets and 87 write-only
+     * offsets.  5 read offsets are read-back (every baseline read is
+     * followed by a write); the other 8 return 0 (never-written status,
+     * guest-written one-shot words, and +0x0410, whose read-back=1 enables
+     * extra channels and stalls YUV, so it keeps the baseline 0).  Mapped at
+     * -600, below the SGC1 words
+     * at +0x48/+0x50/+0x210/+0x220/+0x224 (-500), so sony_sgc1_create still
+     * owns those.
+     */
+    {
+        DeviceState *cc = qdev_new("cxd90045-camcore");
+
+        qdev_prop_set_string(cc, "name", "cxd90045.camcore-f312");
+        qdev_prop_set_uint64(cc, "size", 0x10000);
+        qdev_prop_set_uint64(cc, "base", 0xF3120000ULL);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(cc), &error_fatal);
+        sysbus_mmio_map_overlap(SYS_BUS_DEVICE(cc), 0, 0xF3120000ULL, -600);
     }
 
     /*
@@ -2622,6 +2826,11 @@ static void sony_a6400_machine_init(MachineClass *mc)
                                    sony_a6400_set_sm_lens_power);
     object_class_property_set_description(OBJECT_CLASS(mc), "submicro-lens-power",
         "Model the sub-micro lens power rail status (no lens protocol)");
+    object_class_property_add_str(OBJECT_CLASS(mc), "hostwin",
+                                  sony_a6400_get_hostwin, sony_a6400_set_hostwin);
+    object_class_property_set_description(OBJECT_CLASS(mc), "hostwin",
+        "Developer option: host file mapped as shared RAM at PA 0x50000000 (16 MiB) for "
+        "fast test-file transfer into a running guest; not a hardware model");
     object_class_property_add_bool(OBJECT_CLASS(mc), "campig-enable-readback",
                                    sony_a6400_get_campig_enable_readback,
                                    sony_a6400_set_campig_enable_readback);
@@ -2632,6 +2841,12 @@ static void sony_a6400_machine_init(MachineClass *mc)
                                    sony_a6400_set_sgc1_event_a);
     object_class_property_set_description(OBJECT_CLASS(mc), "sgc1-event-a",
         "Enable experimental Sgc1 input sync event A (E0568)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "gate-force-probe",
+                                   sony_a6400_get_gate_force_probe,
+                                   sony_a6400_set_gate_force_probe);
+    object_class_property_set_description(OBJECT_CLASS(mc),
+        "gate-force-probe", "Declared stimulus (cond. PROBE gate-force): patch "
+        "the av-cam step-26 producer cbz to a NOP once; not a fix");
     object_class_property_add_bool(OBJECT_CLASS(mc), "rear-controls",
                                    sony_a6400_get_rear_controls,
                                    sony_a6400_set_rear_controls);
@@ -2686,6 +2901,11 @@ static void sony_a6400_machine_init(MachineClass *mc)
                                    sony_get_dfs_control, sony_set_dfs_control);
     object_class_property_set_description(OBJECT_CLASS(mc), "dfs-control",
         "Complete the observed DFS clock switch register sequence");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "lowmem-abort",
+                                   sony_get_lowmem_abort, sony_set_lowmem_abort);
+    object_class_property_set_description(OBJECT_CLASS(mc), "lowmem-abort",
+        "Bus error (external abort) on PA 0x000F8000-0x000F8FFF in the reserved "
+        "first megabyte, as observed on the ILCE-6400 (E0647)");
     object_class_property_add_bool(OBJECT_CLASS(mc), "usb-vbus",
                                    sony_get_usb_vbus, sony_set_usb_vbus);
     object_class_property_set_description(OBJECT_CLASS(mc), "usb-vbus",
