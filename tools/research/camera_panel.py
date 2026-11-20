@@ -11,10 +11,14 @@ camera's own reason. On the owner's ILCE-6400 that means the half-press, the bur
 settings work, while the single-shot shutter appears greyed out as **"No Such Method"** — which is
 true, and is not the same thing as a broken panel.
 
-Two design rules that are not obvious:
+Three design rules that are not obvious:
 
 * Proxy everything through this process. The camera serves its API on plain HTTP with no CORS
   headers, so a browser page opened from ``file://`` or another origin cannot call it directly.
+* Accept a state-changing request only from the page this process served. The panel listens on
+  127.0.0.1, but any web site open in the same browser can still send it a POST; every POST must
+  carry the per-process token embedded in the page, and every request must name this panel in
+  its ``Host`` header, which also defeats DNS rebinding.
 * Stream frames as multipart rather than base64 in JSON. A 38 KB frame base64-encoded costs a
   third more bytes and arrives as one unrenderable blob; multipart lets ``<img>`` show it live.
 
@@ -32,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import secrets
 import sys
 import threading
 import time
@@ -43,7 +48,11 @@ from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from camera_remote import jpeg_frames  # noqa: E402
+from camera_remote import (  # noqa: E402
+    jpeg_frames,
+    setter_params,
+    value_from_setter_params,
+)
 from scalarwebapi import (  # noqa: E402
     DEFAULT_HOST,
     DEFAULT_PORT,
@@ -125,6 +134,8 @@ PAGE = """<!doctype html>
 </div>
 <script>
 const state = { api: [], scene: null };
+const TOKEN = '__PANEL_TOKEN__';
+const post = (url) => fetch(url, { method: 'POST', headers: { 'X-Panel-Token': TOKEN } });
 
 function log(msg) {
   const el = document.getElementById('log');
@@ -154,7 +165,7 @@ function buildActions() {
 async function act(key) {
   log('→ ' + key);
   try {
-    const r = await fetch('/api/act?key=' + encodeURIComponent(key), { method: 'POST' });
+    const r = await post('/api/act?key=' + encodeURIComponent(key));
     const j = await r.json();
     log((j.ok ? '✓ ' : '✗ ') + key + ': ' + (j.detail || ''));
   } catch (e) { log('✗ ' + key + ': ' + e); }
@@ -169,7 +180,7 @@ async function buildSettings() {
     const sel = document.createElement('select');
     sel.id = 'set-' + key;
     const info = await (await fetch('/api/setting?key=' + key)).json();
-    if (info.values) {
+    if (info.values && info.settable) {
       for (const v of info.values) {
         const o = document.createElement('option');
         o.value = v; o.textContent = v;
@@ -177,15 +188,15 @@ async function buildSettings() {
         sel.appendChild(o);
       }
       sel.onchange = async () => {
-        const r = await fetch('/api/set?key=' + key + '&value=' + encodeURIComponent(sel.value),
-                              { method: 'POST' });
+        const r = await post('/api/set?key=' + key + '&value=' + encodeURIComponent(sel.value));
         const j = await r.json();
         log((j.ok ? '✓ ' : '✗ ') + s.label + ' → ' + sel.value + ': ' + (j.detail || ''));
       };
     } else {
       const o = document.createElement('option');
-      o.textContent = info.error || 'unavailable';
-      sel.appendChild(o); sel.disabled = true;
+      o.textContent = (info.current ?? '') + (info.error ? '  (' + info.error + ')' : '');
+      if (!o.textContent) o.textContent = 'unavailable';
+      sel.appendChild(o); sel.disabled = true; sel.title = info.error || '';
     }
     label.appendChild(sel);
     holder.appendChild(label);
@@ -193,12 +204,16 @@ async function buildSettings() {
 }
 
 async function pollEvents() {
-  // Long poll: the camera answers when something changes. Re-arm immediately after.
+  // Long poll: the camera answers when something changes. Re-arm after it answers, but never
+  // faster than twice a second, so an answer that comes back at once cannot spin the CPU.
   for (;;) {
+    const started = Date.now();
     try {
       const r = await fetch('/api/events');
       const ev = await r.json();
+      if (ev.final) { log('events: ' + ev.reason); return; }
       if (ev.reason) { log('events unavailable: ' + ev.reason); await sleep(3000); continue; }
+      if (ev.api) { state.api = ev.api; buildActions(); }
       const parts = [];
       for (const [k, v] of Object.entries(ev)) {
         if (k === 'type' || k === 'api_count') continue;
@@ -211,6 +226,8 @@ async function pollEvents() {
     } catch (e) {
       await sleep(2000);
     }
+    const elapsed = Date.now() - started;
+    if (elapsed < 500) await sleep(500 - elapsed);
   }
 }
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -248,6 +265,10 @@ class Camera:
     def __init__(self, host: str, port: int, offline: Path | None) -> None:
         self.offline = offline
         self.recorded: dict[str, Any] = {}
+        #: Shown only inside the served page; a POST without it did not come from that page.
+        self.token = secrets.token_urlsafe(18)
+        self._replayed_event = False
+        self._lock = threading.Lock()
         if offline:
             self.recorded = json.loads(offline.read_text(encoding="utf-8"))
             self.api = list(self.recorded.get("api_list", []))
@@ -256,20 +277,44 @@ class Camera:
         else:
             self.host = host
             self.api_client = ScalarWebApi(host=host, port=port)
-            try:
-                self.api = self.api_client.available_api_list()
-            except (TransportError, ApiError):
-                self.api = []
+            self.api = []
+            self.refresh_api()
+
+    def refresh_api(self) -> None:
+        """Re-read the advertised methods; the list changes with the camera's mode."""
+        if self.api_client is None:
+            return
+        try:
+            self.api = self.api_client.available_api_list()
+        except (TransportError, ApiError):
+            pass
+
+    def next_recorded_event(self) -> Any:
+        """The recorded ``getEvent`` answer once; ``None`` after that, as a recording has no more."""
+        with self._lock:
+            if self._replayed_event:
+                return None
+            self._replayed_event = True
+        return self.call("getEvent")
 
     def call(self, method: str, params: list[Any] | None = None) -> Any:
         if self.api_client is None:
-            # Replay. A setter has no recorded answer, so it is treated as accepted and the
-            # matching getter is updated in the replay, exactly as the camera would. Without
-            # this the panel would report the old value after a successful change, which is
-            # the one thing worse than refusing: a silent lie.
-            if method.startswith("set") and params:
-                self._apply_replayed_set(method, params[0])
-                return []
+            # Replay. A setter has no recorded answer. One sent in the shape Sony's client uses,
+            # with a value the camera listed, is treated as accepted and the matching getter is
+            # updated, exactly as the camera would; any other shape is refused with error 3,
+            # which is what the camera answers, so a wrong shape cannot pass offline and fail
+            # on the body.
+            if method.startswith("set"):
+                try:
+                    value = value_from_setter_params(method, params)
+                except ValueError as exc:
+                    raise ApiError(3, str(exc), method) from exc
+                value = self._replayed_value(method, value)
+                allowed = self.supported_values("getSupported" + method[3:])
+                if allowed is not None and value not in allowed:
+                    raise ApiError(3, f"{value!r} is not among the supported values", method)
+                self._apply_replayed_set(method, value)
+                return [0]
             answer = self.recorded.get("answers", {}).get(method)
             if answer is None:
                 raise ApiError(12, "not recorded", method)
@@ -277,6 +322,14 @@ class Camera:
                 raise ApiError(answer["error"][0], answer["error"][1], method)
             return answer.get("result")
         return self.api_client.call(method, params)
+
+    @staticmethod
+    def _replayed_value(setter: str, value: str) -> str:
+        """The value as the recorded getter spells it; exposure travels as a 1/3 EV index."""
+        if setter != "setExposureCompensation":
+            return value
+        index = int(value)
+        return "0" if index == 0 else f"{index / 3:.1f}"
 
     def _apply_replayed_set(self, setter: str, value: Any) -> None:
         """Record a set in the replay so the paired getter answers the new value."""
@@ -312,6 +365,10 @@ class Camera:
             return None
         field = self._NAME_FIELD.get(method)
         head = raw[0]
+        if (method == "getSupportedExposureCompensation" and len(raw) == 3
+                and all(isinstance(x, list) and x and isinstance(x[0], int) for x in raw)):
+            # The documented shape: [[max], [min], [step]] as integer indices.
+            return [str(i) for i in range(raw[1][0], raw[0][0] + 1)]
         if isinstance(head, dict) and isinstance(head.get("candidate"), list):
             return [str(v) for v in head["candidate"]]
         items = head if isinstance(head, list) else raw
@@ -352,6 +409,20 @@ def build_handler(camera: Camera) -> type[BaseHTTPRequestHandler]:
         def log_message(self, *_args: Any) -> None:  # keep the console quiet
             pass
 
+        def _from_this_panel(self, *, state_changing: bool) -> bool:
+            """Refuse a request another site could have made; answers 403 itself."""
+            port = self.server.server_address[1]
+            allowed = {f"127.0.0.1:{port}", f"localhost:{port}"}
+            origin = self.headers.get("Origin")
+            ok = self.headers.get("Host", "") in allowed
+            if ok and origin is not None and origin not in {f"http://{h}" for h in allowed}:
+                ok = False
+            if ok and state_changing:
+                ok = secrets.compare_digest(self.headers.get("X-Panel-Token", ""), camera.token)
+            if not ok:
+                self._json({"ok": False, "detail": "request did not come from this panel"}, 403)
+            return ok
+
         def _send(self, body: bytes, content_type: str, status: int = 200) -> None:
             self.send_response(status)
             self.send_header("Content-Type", content_type)
@@ -364,11 +435,16 @@ def build_handler(camera: Camera) -> type[BaseHTTPRequestHandler]:
             self._send(json.dumps(payload).encode(), "application/json", status)
 
         def do_GET(self) -> None:  # noqa: N802
+            if not self._from_this_panel(state_changing=False):
+                return
             url = urlparse(self.path)
             if url.path == "/":
-                self._send(PAGE.encode(), "text/html; charset=utf-8")
+                self._send(PAGE.replace("__PANEL_TOKEN__", camera.token).encode(),
+                           "text/html; charset=utf-8")
                 return
             if url.path == "/api/scene":
+                if not camera.api:
+                    camera.refresh_api()
                 self._json({
                     "host": camera.host,
                     "api": camera.api,
@@ -384,10 +460,14 @@ def build_handler(camera: Camera) -> type[BaseHTTPRequestHandler]:
                     return
                 error = None
                 current = camera.current_value(spec["getter"])
+                settable = spec["setter"] in camera.api
                 if current is None and spec["getter"] not in camera.api:
                     error = f"the camera does not advertise {spec['getter']}"
+                elif not settable:
+                    error = f"read-only: the camera does not advertise {spec['setter']}"
                 values = camera.supported_values(spec["choices"])
-                self._json({"current": current, "values": values, "error": error})
+                self._json({"current": current, "values": values, "settable": settable,
+                            "error": error})
                 return
             if url.path == "/api/events":
                 self._events()
@@ -398,6 +478,8 @@ def build_handler(camera: Camera) -> type[BaseHTTPRequestHandler]:
             self._json({"error": "not found"}, 404)
 
         def do_POST(self) -> None:  # noqa: N802
+            if not self._from_this_panel(state_changing=True):
+                return
             url = urlparse(self.path)
             query = parse_qs(url.query)
             if url.path == "/api/act":
@@ -425,8 +507,17 @@ def build_handler(camera: Camera) -> type[BaseHTTPRequestHandler]:
                 if not spec:
                     self._json({"ok": False, "detail": "unknown setting"}, 400)
                     return
+                if spec["setter"] not in camera.api:
+                    self._json({"ok": False,
+                                "detail": f"not advertised by the camera: {spec['setter']}"}, 409)
+                    return
                 try:
-                    camera.call(spec["setter"], [value])
+                    params = setter_params(spec["setter"], value)
+                except ValueError:
+                    self._json({"ok": False, "detail": f"not a valid value: {value!r}"}, 400)
+                    return
+                try:
+                    camera.call(spec["setter"], params)
                 except (ApiError, TransportError) as exc:
                     self._json({"ok": False, "detail": str(exc)}, 409)
                     return
@@ -445,13 +536,29 @@ def build_handler(camera: Camera) -> type[BaseHTTPRequestHandler]:
                 self._json({"type": None, "reason": "no camera"}, 503)
                 return
             try:
-                raw = camera.call("getEvent", [True] if camera.api_client else None)
+                if camera.api_client is None:
+                    raw = camera.next_recorded_event()
+                    if raw is None:
+                        self._json({"type": None, "final": True,
+                                    "reason": "the recorded session holds one event"})
+                        return
+                else:
+                    raw = camera.call("getEvent", [True])
             except (ApiError, TransportError) as exc:
                 self._json({"type": None, "reason": str(exc)}, 503)
                 return
+            # getEvent answers one slot per event kind, many of them null, and a slot can hold a
+            # list of objects. Merge every object; the first slot is the advertised method list.
             event: dict[str, Any] = {}
-            if isinstance(raw, list) and raw and isinstance(raw[0], dict):
-                event = raw[0]
+            slots = raw if isinstance(raw, list) else []
+            for slot in slots:
+                for item in (slot if isinstance(slot, list) else [slot]):
+                    if isinstance(item, dict):
+                        for k, v in item.items():
+                            event.setdefault(k, v)
+            names = event.get("names")
+            if camera.api_client is not None and isinstance(names, list) and names:
+                camera.api = [n for n in names if isinstance(n, str)]
             # Keep only fields the panel renders; the raw answer is large and mostly names.
             keep = ("type", "cameraStatus", "shootMode", "focusStatus", "liveviewStatus",
                     "liveviewOrientation", "zoomPosition", "zoomNumberBox",
@@ -459,8 +566,10 @@ def build_handler(camera: Camera) -> type[BaseHTTPRequestHandler]:
                     "isoSpeedRate", "whiteBalance", "exposureCompensation",
                     "contShootingMode", "selfTimer", "flashMode", "stillSize", "stillQuality")
             trimmed = {k: event[k] for k in keep if k in event}
-            if "names" in event:
-                trimmed["api_count"] = len(event["names"])
+            if isinstance(names, list):
+                trimmed["api_count"] = len(names)
+                if camera.api_client is not None:
+                    trimmed["api"] = camera.api
             self._json(trimmed)
 
         def _stream(self) -> None:
@@ -473,9 +582,13 @@ def build_handler(camera: Camera) -> type[BaseHTTPRequestHandler]:
             except (ApiError, TransportError) as exc:
                 self._json({"error": str(exc)}, 503)
                 return
+            # The stream has no length; the connection ends with it, and a keep-alive client
+            # must not wait for a next response on it.
+            self.close_connection = True
             self.send_response(200)
             self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
             self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close")
             self.end_headers()
             request = urllib.request.Request(url, headers={"User-Agent": "a6400-panel"})
             buffer = b""

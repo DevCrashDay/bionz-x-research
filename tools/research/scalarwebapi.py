@@ -83,6 +83,27 @@ def build_request(method: str, params: list[Any] | None = None, *, request_id: i
     return json.dumps(payload).encode("utf-8")
 
 
+def _dechunk(body: bytes) -> bytes:
+    """The payload of an HTTP/1.1 chunked body; a truncated body is a transport fault."""
+    out = bytearray()
+    position = 0
+    while True:
+        line_end = body.find(b"\r\n", position)
+        if line_end < 0:
+            raise TransportError("chunked body ends inside a chunk header")
+        try:
+            size = int(body[position:line_end].split(b";")[0].strip(), 16)
+        except ValueError as exc:
+            raise TransportError("chunked body has a malformed chunk size") from exc
+        if size == 0:
+            return bytes(out)
+        start = line_end + 2
+        if start + size > len(body):
+            raise TransportError("chunked body is shorter than its chunk sizes")
+        out += body[start:start + size]
+        position = start + size + 2
+
+
 def parse_response(raw: bytes, method: str | None = None) -> dict[str, Any]:
     """Decode one HTTP answer into ``{"result": ...}`` or raise :class:`ApiError`.
 
@@ -92,6 +113,8 @@ def parse_response(raw: bytes, method: str | None = None) -> dict[str, Any]:
     head, separator, body = raw.partition(b"\r\n\r\n")
     if not separator:
         raise TransportError("no header/body separator in the answer")
+    if b"transfer-encoding: chunked" in head.lower():
+        body = _dechunk(body)
     try:
         decoded = json.loads(body)
     except json.JSONDecodeError as exc:
@@ -152,7 +175,8 @@ class ScalarWebApi:
              service: str = "camera", version: str = "1.0") -> Any:
         """Call one method and return its result, or raise :class:`ApiError`."""
         raw = self._post(service, method, params, version)
-        return parse_response(raw, method).get("result")
+        decoded = parse_response(raw, method)
+        return decoded["result"] if "result" in decoded else decoded["results"]
 
     def available_api_list(self, service: str = "camera") -> list[str]:
         """The methods this camera exposes for a service, as the camera reports them."""

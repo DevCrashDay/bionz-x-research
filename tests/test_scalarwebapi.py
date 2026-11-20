@@ -94,6 +94,24 @@ class ParseResponseTests(unittest.TestCase):
             parse_response(http(b'{"id":1}'))
 
 
+class ChunkedAndResultsTests(unittest.TestCase):
+    def test_a_chunked_body_is_reassembled(self) -> None:
+        body = b'{"result":[["still"]],"id":1}'
+        chunked = b"%x\r\n%s\r\n%x\r\n%s\r\n0\r\n\r\n" % (10, body[:10], len(body) - 10, body[10:])
+        raw = (b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n"
+               b"Content-Type: application/json\r\n\r\n" + chunked)
+        self.assertEqual(parse_response(raw)["result"], [["still"]])
+
+    def test_a_truncated_chunked_body_is_a_transport_fault(self) -> None:
+        raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nff\r\n{}"
+        with self.assertRaises(TransportError):
+            parse_response(raw)
+
+    def test_call_returns_results_when_the_camera_answers_results(self) -> None:
+        api = _StubApi(http(b'{"results":[[1],[2]],"id":1}'))
+        self.assertEqual(api.call("getMethodTypes"), [[1], [2]])
+
+
 class _StubApi(ScalarWebApi):
     """Replays recorded answers so the list and stream shapes are tested without a camera."""
 

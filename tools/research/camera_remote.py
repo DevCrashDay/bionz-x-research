@@ -62,6 +62,61 @@ SETTINGS: dict[str, tuple[str, str, str]] = {
 }
 
 
+def setter_params(setter: str, value: str) -> list[Any]:
+    """The ``params`` array a setter takes, built from one value as a person picks it.
+
+    The shapes are Sony's own, read from ``CameraClient`` in the shipped 7.6.0 client (E0660);
+    sending every setter ``[value]`` is wrong for three of them:
+
+    * ``setWhiteBalance`` takes three positional values: the mode, whether a colour
+      temperature follows, and the temperature (``-1`` when it does not).
+    * ``setContShootingMode`` takes one object, ``{"contShootingMode": value}``.
+    * ``setExposureCompensation`` takes an integer *index*, not an EV string. An EV value such
+      as ``"0.7"`` is converted at the 1/3 EV step that the a6400's recorded value list shows;
+      that the body accepts the index form is the client's contract, not yet a hardware
+      measurement.
+
+    Raises ``ValueError`` for an exposure value that is not a number.
+    """
+    if setter == "setWhiteBalance":
+        return [value, False, -1]
+    if setter == "setContShootingMode":
+        return [{"contShootingMode": value}]
+    if setter == "setExposureCompensation":
+        try:
+            return [int(value)]
+        except ValueError:
+            return [round(float(value) * 3)]
+    return [value]
+
+
+def value_from_setter_params(setter: str, params: Any) -> str:
+    """The inverse of :func:`setter_params`: the value a well-formed params array carries.
+
+    Raises ``ValueError`` for any other shape, which is how a replayed camera refuses a call the
+    real one would answer with error 3 (Illegal Argument).
+    """
+    if not isinstance(params, list):
+        raise ValueError("params is not a list")
+    if setter == "setWhiteBalance":
+        if (len(params) == 3 and isinstance(params[0], str) and isinstance(params[1], bool)
+                and isinstance(params[2], int) and not isinstance(params[2], bool)):
+            return params[0]
+        raise ValueError("setWhiteBalance takes [mode, bool, int]")
+    if setter == "setContShootingMode":
+        if (len(params) == 1 and isinstance(params[0], dict)
+                and isinstance(params[0].get("contShootingMode"), str)):
+            return params[0]["contShootingMode"]
+        raise ValueError('setContShootingMode takes [{"contShootingMode": value}]')
+    if setter == "setExposureCompensation":
+        if len(params) == 1 and isinstance(params[0], int) and not isinstance(params[0], bool):
+            return str(params[0])
+        raise ValueError("setExposureCompensation takes [int index]")
+    if len(params) == 1 and isinstance(params[0], str):
+        return params[0]
+    raise ValueError(f"{setter} takes [value]")
+
+
 def supported_commands(api_list: Iterable[str]) -> list[str]:
     """The commands whose method the camera actually advertises."""
     advertised = set(api_list)
@@ -150,15 +205,23 @@ def run_live(host: str, port: int, command: str, argument: str | None) -> int:
         return 0
 
     if command in SETTINGS:
-        getter, setter, param = SETTINGS[command]
+        getter, setter, _param = SETTINGS[command]
+        needed = getter if argument is None else setter
+        if needed not in set(api_list):
+            print(f"{command}: refused before sending. The camera does not advertise {needed}.",
+                  file=sys.stderr)
+            return 1
         try:
             if argument is None:
                 print(f"{command}: {json.dumps(api.call(getter))}")
                 return 0
-            api.call(setter, [argument])
+            api.call(setter, setter_params(setter, argument))
             print(f"{command} set to {argument}; now {json.dumps(api.call(getter))}")
             return 0
-        except ApiError as exc:
+        except ValueError as exc:
+            print(f"{command}: {argument!r} is not a valid value: {exc}", file=sys.stderr)
+            return 2
+        except (ApiError, TransportError) as exc:
             print(f"{command}: {exc}", file=sys.stderr)
             return 1
 
@@ -186,7 +249,11 @@ def run_live(host: str, port: int, command: str, argument: str | None) -> int:
     if command == "live-start" and isinstance(result, list) and result:
         url = result[0]
         print(f"live view: {url}")
-        frame = read_stream(url)
+        try:
+            frame = read_stream(url)
+        except OSError as exc:      # URLError and socket timeouts are OSError
+            print(f"live view stream failed: {exc}", file=sys.stderr)
+            return 1
         found = jpeg_frames(frame)
         if found:
             print(f"received {len(found)} frame(s), first {len(found[0])} bytes")

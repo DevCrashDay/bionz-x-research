@@ -3,8 +3,9 @@
 One record per hardware or software claim. Records are dated and are **not** rewritten
 when a later result supersedes them: the newer record says what changed.
 
-Current consolidated state: [README research status](../../README.md) and
-[UVC/PTP status and next steps](../UVC_PTP_STATUS.md) (through **E0662**, 2026-11-20).
+Current consolidated state: [README research status](../../README.md) (through **E0662**,
+2026-11-20) and [UVC/PTP status and next steps](../UVC_PTP_STATUS.md) (through **E0494**,
+2026-11-13).
 
 ## Latest records
 

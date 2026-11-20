@@ -6,8 +6,13 @@ This is the other half of Sony's app: not shooting, but getting the photographs.
 guessed — they are the fields Sony's own client reads (``ContentInfo``, ``Original``,
 ``ContentListSource`` in the shipped 7.6.0 package, E0660):
 
-* ``getContentList`` answers a list of items, each with ``content.original[]``
-  (``fileName``, ``url``), plus ``largeUrl``, ``smallUrl`` and ``thumbnailUrl``.
+* every avContent answer has one element, ``result[0]``, and for the list methods that element
+  *is* the list (``JsonUtil.getArray(result, 0)`` in ``AvcontentClient``).
+* ``getContentList`` (version 1.3) lists ``Content`` entries; each carries ``uri``,
+  ``contentKind`` and ``content``, a ``ContentInfo`` holding ``original[]`` (``fileName``,
+  ``url``, ``stillObject``), ``largeUrl``, ``smallUrl`` and ``thumbnailUrl``.
+* ``getSchemeList``/``getSourceList`` are called at version 1.0 and ``getContentCount`` at 1.2,
+  the versions the client itself uses; the count answer is ``[{"count": n}]``.
 * a listing is paged by ``stIdx`` and ``cnt``, with a hard ceiling of 24 items per call in the
   client's own code, so a page larger than that is not asked for here.
 * the source must be discovered first: ``getSchemeList`` then ``getSourceList``.
@@ -51,46 +56,54 @@ def is_send_mode(server_type: str | None) -> bool:
     return bool(server_type) and server_type.strip() == SEND_MODE
 
 
+def _first_list(answer: Any) -> list[Any]:
+    """``result[0]`` when it is a list, else empty: the shape of every avContent list answer."""
+    if isinstance(answer, list) and answer and isinstance(answer[0], list):
+        return answer[0]
+    return []
+
+
 def content_items(answer: Any) -> list[dict[str, Any]]:
     """The file entries in a ``getContentList`` answer, flattened to what a download needs.
 
-    Sony nests them: ``result[0]`` is a page object whose ``content`` array holds entries, and
-    each entry carries an ``original`` array with the real URLs. Anything that does not match
-    that shape is skipped rather than raising, because a card can hold a file type this client
-    has never seen and one odd entry must not stop a transfer of the rest.
+    ``result[0]`` is the list of ``Content`` entries; each entry's ``content`` object holds an
+    ``original`` array with the real URLs. Anything that does not match is skipped rather than
+    raising, because a card can hold a file type this client has never seen and one odd entry
+    must not stop a transfer of the rest. A directory entry has no URL and is skipped too.
     """
     items: list[dict[str, Any]] = []
-    if not isinstance(answer, list) or not answer:
-        return items
-    page = answer[0]
-    if not isinstance(page, dict):
-        return items
-    for entry in page.get("content") or []:
+    for entry in _first_list(answer):
         if not isinstance(entry, dict):
             continue
-        original = entry.get("original") or []
+        info = entry.get("content")
+        if not isinstance(info, dict):
+            continue
+        original = info.get("original") or []
+        if not isinstance(original, list):
+            original = []
         best: dict[str, Any] | None = None
         for candidate in original:
             if isinstance(candidate, dict) and candidate.get("url"):
                 best = candidate
                 break
-        url = (best or {}).get("url") or entry.get("largeUrl") or entry.get("smallUrl")
+        url = (best or {}).get("url") or info.get("largeUrl") or info.get("smallUrl")
         if not url:
             continue
         items.append({
             "file_name": (best or {}).get("fileName") or Path(str(url)).name,
             "url": url,
-            "thumbnail": entry.get("thumbnailUrl"),
+            "thumbnail": info.get("thumbnailUrl"),
+            "uri": entry.get("uri"),
             "still_object": (best or {}).get("stillObject"),
         })
     return items
 
 
 def total_count(answer: Any) -> int | None:
-    """How many files the page says the source holds, when it says so."""
+    """The ``count`` in a ``getContentCount`` answer (``[{"count": n}]``), when it is one."""
     if isinstance(answer, list) and answer and isinstance(answer[0], dict):
-        count = answer[0].get("cnt")
-        return count if isinstance(count, int) else None
+        count = answer[0].get("count")
+        return count if isinstance(count, int) and not isinstance(count, bool) else None
     return None
 
 
@@ -104,18 +117,28 @@ def safe_join(directory: Path, name: str) -> Path:
 
 
 def download(url: str, destination: Path, *, timeout: float = 60.0) -> int:
-    """Copy one file to disk and return the byte count."""
+    """Copy one file to disk and return the byte count.
+
+    Written to a ``.part`` file and renamed only when complete, so an interrupted transfer never
+    leaves a truncated file under the real name; the partial file is removed on failure.
+    """
     destination.parent.mkdir(parents=True, exist_ok=True)
+    partial = destination.with_name(destination.name + ".part")
     request = urllib.request.Request(url, headers={"User-Agent": "a6400-transfer"})
     written = 0
-    with urllib.request.urlopen(request, timeout=timeout) as response, \
-            destination.open("wb") as handle:
-        while True:
-            chunk = response.read(1 << 16)
-            if not chunk:
-                break
-            handle.write(chunk)
-            written += len(chunk)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response, \
+                partial.open("wb") as handle:
+            while True:
+                chunk = response.read(1 << 16)
+                if not chunk:
+                    break
+                handle.write(chunk)
+                written += len(chunk)
+        partial.replace(destination)
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
     return written
 
 
@@ -126,21 +149,24 @@ class Transfer:
         self.api = api
 
     def schemes(self) -> list[str]:
-        result = self.api.call("getSchemeList", service="avContent", version="1.3")
-        if isinstance(result, list) and result and isinstance(result[0], dict):
-            return [s.get("scheme") for s in result[0].get("scheme", []) if s.get("scheme")]
-        return []
+        result = self.api.call("getSchemeList", service="avContent", version="1.0")
+        return [s["scheme"] for s in _first_list(result)
+                if isinstance(s, dict) and isinstance(s.get("scheme"), str)]
 
     def sources(self, scheme: str) -> list[dict[str, Any]]:
         result = self.api.call("getSourceList", [{"scheme": scheme}],
-                               service="avContent", version="1.3")
-        if isinstance(result, list) and result and isinstance(result[0], dict):
-            return list(result[0].get("source") or [])
-        return []
+                               service="avContent", version="1.0")
+        return [s for s in _first_list(result) if isinstance(s, dict)]
+
+    def count(self, uri: str) -> int | None:
+        result = self.api.call("getContentCount", [{"uri": uri, "view": "flat"}],
+                               service="avContent", version="1.2")
+        return total_count(result)
 
     def page(self, uri: str, start: int = 0, count: int = MAX_PAGE) -> Any:
-        if count > MAX_PAGE:
-            raise ValueError(f"Sony's client never asks for more than {MAX_PAGE} items per call")
+        if not 1 <= count <= MAX_PAGE:
+            raise ValueError(f"a page holds 1 to {MAX_PAGE} items; Sony's client never asks "
+                             "for more")
         return self.api.call(
             "getContentList",
             [{"uri": uri, "stIdx": start, "cnt": count, "view": "flat", "sort": "ascending"}],
@@ -213,22 +239,46 @@ def run_live(host: str, port: int, scheme: str | None, limit: int, out: Path | N
     if not sources:
         return 1
 
-    uri = sources[0].get("uri") or sources[0].get("source")
+    uri = sources[0].get("source") or sources[0].get("uri")
     if not uri:
         print("the first source carries no uri", file=sys.stderr)
         return 1
 
-    answer = transfer.page(str(uri), 0, min(limit, MAX_PAGE))
-    items = content_items(answer)
-    print(f"\n{len(items)} file(s) in the first page of {uri} (camera says cnt={total_count(answer)})")
+    try:
+        reported = transfer.count(str(uri))
+    except (ApiError, TransportError) as exc:
+        reported = None
+        print(f"  (getContentCount failed: {exc})", file=sys.stderr)
+
+    items: list[dict[str, Any]] = []
+    start = 0
+    while len(items) < limit:
+        want = min(MAX_PAGE, limit - len(items))
+        try:
+            page = content_items(transfer.page(str(uri), start, want))
+        except (ApiError, TransportError) as exc:
+            print(f"listing stopped at item {start}: {exc}", file=sys.stderr)
+            break
+        items.extend(page)
+        start += want
+        if len(page) < want:
+            break
+    print(f"\n{len(items)} file(s) listed from {uri} (camera counts {reported})")
     for item in items:
         print(f"  {item['file_name']}  {item['url']}")
 
-    if out and items:
+    failed = 0
+    if out:
         for item in items:
-            size = download(item["url"], safe_join(out, item["file_name"]))
+            target = safe_join(out, item["file_name"])
+            try:
+                size = download(item["url"], target)
+            except (OSError, ValueError) as exc:     # URLError and timeouts are OSError
+                failed += 1
+                print(f"  FAILED {item['file_name']}: {exc}", file=sys.stderr)
+                continue
             print(f"  saved {item['file_name']} ({size} bytes)")
-    return 0
+    return 1 if failed else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -236,9 +286,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--scheme", default=None, help="storage, upnp; default is the first offered")
-    parser.add_argument("--limit", type=int, default=MAX_PAGE)
+    parser.add_argument("--limit", type=int, default=MAX_PAGE,
+                        help="how many files to list (paged 24 at a time)")
     parser.add_argument("--out", type=Path, default=None, help="directory to copy into")
     args = parser.parse_args(argv)
+    if args.limit < 1:
+        parser.error("--limit must be at least 1")
 
     return run_live(args.host, args.port, args.scheme, args.limit, args.out)
 
