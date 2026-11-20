@@ -1219,6 +1219,50 @@ static void sony_a6400_set_sgc1_event_a(Object *obj, bool value, Error **errp)
     sony_a6400_sgc1_event_a = value;
 }
 
+/*
+ * Declared stimulus (cond. PROBE gate-force), opt-in and off by default. This
+ * is NOT a model or a fix: when enabled it patches the av-cam step-26 producer
+ * cbz halfword (0xB103 -> Thumb NOP 0xBF00) at guest PA 0x03874fd0, so the
+ * producer always stores 1. That is the same force as F-0047's debugger probe,
+ * applied without a debugger. Only the exact av-cam build whose six producer
+ * bytes are 03 b1 01 23 ab 71 is patched; the check repeats every 100 ms of
+ * virtual time until it has patched once, then the timer stops.
+ */
+#define GATE_FORCE_PA 0x03874FD0ULL
+#define GATE_FORCE_PERIOD_NS (100 * 1000 * 1000LL)
+
+static bool sony_a6400_gate_force_probe;
+static QEMUTimer *sony_a6400_gate_force_timer;
+
+static void sony_a6400_gate_force_tick(void *opaque)
+{
+    static const uint8_t expected[6] = { 0x03, 0xb1, 0x01, 0x23, 0xab, 0x71 };
+    uint8_t bytes[6];
+    uint16_t nop = 0xbf00;
+
+    address_space_read(&address_space_memory, GATE_FORCE_PA,
+                       MEMTXATTRS_UNSPECIFIED, bytes, sizeof(bytes));
+    if (memcmp(bytes, expected, sizeof(expected)) != 0) {
+        timer_mod(sony_a6400_gate_force_timer,
+                  qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + GATE_FORCE_PERIOD_NS);
+        return;
+    }
+    address_space_write(&address_space_memory, GATE_FORCE_PA,
+                        MEMTXATTRS_UNSPECIFIED, &nop, sizeof(nop));
+    fprintf(stderr, "a6400: gate-force-probe patched 0x03874fd0\n");
+}
+
+static bool sony_a6400_get_gate_force_probe(Object *obj, Error **errp)
+{
+    return sony_a6400_gate_force_probe;
+}
+
+static void sony_a6400_set_gate_force_probe(Object *obj, bool value,
+                                            Error **errp)
+{
+    sony_a6400_gate_force_probe = value;
+}
+
 static bool sony_a6400_get_campig_enable_readback(Object *obj, Error **errp)
 {
     return sony_a6400_campig_enable_readback;
@@ -1705,6 +1749,12 @@ static void sony_a6400_init(MachineState *machine)
     } else if (sony_a6400_sgc1_event_a) {
         sony_sgc1_create(machine, pic[35 - 32]);
     }
+    if (sony_a6400_gate_force_probe) {
+        sony_a6400_gate_force_timer =
+            timer_new_ns(QEMU_CLOCK_VIRTUAL, sony_a6400_gate_force_tick, NULL);
+        timer_mod(sony_a6400_gate_force_timer,
+                  qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + GATE_FORCE_PERIOD_NS);
+    }
     if (sony_a6400_usb_vbus_test) {
         sony_usb_vbus_create(machine, pic[230 - 32]);
     }
@@ -2160,6 +2210,12 @@ static void sony_a6400_machine_init(MachineClass *mc)
                                    sony_a6400_set_sgc1_event_a);
     object_class_property_set_description(OBJECT_CLASS(mc), "sgc1-event-a",
         "Enable experimental Sgc1 input sync event A (E0568)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "gate-force-probe",
+                                   sony_a6400_get_gate_force_probe,
+                                   sony_a6400_set_gate_force_probe);
+    object_class_property_set_description(OBJECT_CLASS(mc),
+        "gate-force-probe", "Declared stimulus (cond. PROBE gate-force): patch "
+        "the av-cam step-26 producer cbz to a NOP once; not a fix");
     object_class_property_add_bool(OBJECT_CLASS(mc), "rear-controls",
                                    sony_a6400_get_rear_controls,
                                    sony_a6400_set_rear_controls);

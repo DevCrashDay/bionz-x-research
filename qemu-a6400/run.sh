@@ -20,6 +20,8 @@
 # EVSEL_LATE_US (opt-in source-30 delay in us, E0557; unset = off),
 # CAMPIG_ENABLE_READBACK=1 (opt-in CamPig IRQ enable register, E0566),
 # SGC1_EVENT_A=1 (opt-in Sgc1 event A and IRQ 35, E0569).
+# GATE_FORCE_PROBE=1 (declared stimulus cond. PROBE gate-force: one-shot patch
+# of the av-cam step-26 producer cbz at PA 0x03874fd0 to a NOP; not a fix).
 # LIVEVIEW_SOURCE (opt-in bars, ramp, none, or pgm:PATH, E0591).
 # P2S_TRACE=1 (log the first 64 sensor-writer transfers).
 # USB_VBUS_TEST=1 (enable the runtime usb-vbus QMP property).
@@ -131,6 +133,10 @@ if [ "${CAMPIG_ENABLE_READBACK:-0}" = 1 ]; then
 fi
 if [ "${SGC1_EVENT_A:-0}" = 1 ]; then
     MACHINE="$MACHINE,sgc1-event-a=on"
+fi
+# GATE_FORCE_PROBE=1 (declared stimulus cond. PROBE gate-force; off by default).
+if [ "${GATE_FORCE_PROBE:-0}" = 1 ]; then
+    MACHINE="$MACHINE,gate-force-probe=on"
 fi
 if [ "${REAR_CONTROLS:-0}" = 1 ]; then
     MACHINE="$MACHINE,rear-controls=on"
