@@ -46,6 +46,7 @@
 #include "system/address-spaces.h"
 #include "system/memory.h"
 #include "system/system.h"
+#include "exec/translation-block.h"
 #include "target/arm/cpu.h"
 #include "ui/input.h"
 
@@ -1738,6 +1739,66 @@ static void sony_a6400_set_gate_force_probe(Object *obj, bool value,
     sony_a6400_gate_force_probe = value;
 }
 
+/*
+ * Declared stimulus (cond. PROBE entry-force), opt-in and off by default. This
+ * is NOT a model or a fix: while the camera-control state S (VA 0x6431B594)
+ * is 240, it patches the av-cam entry dispatch at VA 0x6386CDC0 from
+ * "add.w r3, r0, #-1" to "movs r0, #1; movs r3, #0". The tbh at 0x6386CDD8
+ * then selects index 0, so the first entry takes the r0 = 1 path exactly as
+ * F-0060's debugger write did (r0 = 1, r10 = 1). Only the exact av-cam bytes
+ * 00 f1 ff 33 are patched. The original bytes are restored and the translation
+ * blocks invalidated as soon as S leaves 240, so later entries behave
+ * naturally. The timer polls every 100 us of virtual time: the S = 240
+ * window at the first entry is only tens of ms long (L0068 DBG2).
+ */
+#define ENTRY_FORCE_PA 0x0386CDC0ULL
+#define ENTRY_FORCE_S_PA 0x0431B594ULL
+#define ENTRY_FORCE_PERIOD_NS (100 * 1000LL)
+#define ENTRY_FORCE_S_READY 0xf0
+
+static bool sony_a6400_entry_force_probe;
+static QEMUTimer *sony_a6400_entry_force_timer;
+
+static void sony_a6400_entry_force_tick(void *opaque)
+{
+    static const uint8_t orig[4] = { 0x00, 0xf1, 0xff, 0x33 };
+    static const uint8_t forced[4] = { 0x01, 0x20, 0x00, 0x23 };
+    uint8_t bytes[4];
+    uint8_t s;
+
+    address_space_read(&address_space_memory, ENTRY_FORCE_S_PA,
+                       MEMTXATTRS_UNSPECIFIED, &s, sizeof(s));
+    address_space_read(&address_space_memory, ENTRY_FORCE_PA,
+                       MEMTXATTRS_UNSPECIFIED, bytes, sizeof(bytes));
+    if (s == ENTRY_FORCE_S_READY && memcmp(bytes, orig, sizeof(orig)) == 0) {
+        address_space_write(&address_space_memory, ENTRY_FORCE_PA,
+                            MEMTXATTRS_UNSPECIFIED, forced, sizeof(forced));
+        tb_invalidate_phys_range(NULL, ENTRY_FORCE_PA,
+                                 ENTRY_FORCE_PA + sizeof(forced) - 1);
+        fprintf(stderr, "a6400: entry-force-probe applied "
+                "0x6386cdc0=0x2001,0x2300 (dispatch add.w r3,r0,#-1)\n");
+    } else if (s != ENTRY_FORCE_S_READY &&
+               memcmp(bytes, forced, sizeof(forced)) == 0) {
+        address_space_write(&address_space_memory, ENTRY_FORCE_PA,
+                            MEMTXATTRS_UNSPECIFIED, orig, sizeof(orig));
+        tb_invalidate_phys_range(NULL, ENTRY_FORCE_PA,
+                                 ENTRY_FORCE_PA + sizeof(orig) - 1);
+    }
+    timer_mod(sony_a6400_entry_force_timer,
+              qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + ENTRY_FORCE_PERIOD_NS);
+}
+
+static bool sony_a6400_get_entry_force_probe(Object *obj, Error **errp)
+{
+    return sony_a6400_entry_force_probe;
+}
+
+static void sony_a6400_set_entry_force_probe(Object *obj, bool value,
+                                             Error **errp)
+{
+    sony_a6400_entry_force_probe = value;
+}
+
 static bool sony_a6400_get_campig_enable_readback(Object *obj, Error **errp)
 {
     return sony_a6400_campig_enable_readback;
@@ -2343,6 +2404,13 @@ static void sony_a6400_init(MachineState *machine)
         timer_mod(sony_a6400_gate_force_timer,
                   qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + GATE_FORCE_PERIOD_NS);
     }
+    if (sony_a6400_entry_force_probe) {
+        sony_a6400_entry_force_timer =
+            timer_new_ns(QEMU_CLOCK_VIRTUAL, sony_a6400_entry_force_tick, NULL);
+        timer_mod(sony_a6400_entry_force_timer,
+                  qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
+                  ENTRY_FORCE_PERIOD_NS);
+    }
     if (sony_a6400_usb_vbus_test) {
         sony_usb_vbus_create(machine, pic[230 - 32]);
     }
@@ -2847,6 +2915,13 @@ static void sony_a6400_machine_init(MachineClass *mc)
     object_class_property_set_description(OBJECT_CLASS(mc),
         "gate-force-probe", "Declared stimulus (cond. PROBE gate-force): patch "
         "the av-cam step-26 producer cbz to a NOP once; not a fix");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "entry-force-probe",
+                                   sony_a6400_get_entry_force_probe,
+                                   sony_a6400_set_entry_force_probe);
+    object_class_property_set_description(OBJECT_CLASS(mc),
+        "entry-force-probe", "Declared stimulus (cond. PROBE entry-force): "
+        "while S is 240, make the first av-cam entry take the r0 = 1 path; "
+        "not a fix");
     object_class_property_add_bool(OBJECT_CLASS(mc), "rear-controls",
                                    sony_a6400_get_rear_controls,
                                    sony_a6400_set_rear_controls);
