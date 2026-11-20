@@ -88,7 +88,7 @@ uses the explicitly qualified powered WBI fixture and `LIVEVIEW_SOURCE=bars`
 to release the original step-26 lens-state wait. The default frozen-reply
 behavior is unchanged. No attached lens is modeled.
 
-The panel uses stock firmware display selection by default ([E0646](../docs/evidence/0646-qemu-a6400-stock-finder-monitor-rear-lcd.md)):
+The panel uses stock firmware display selection by default ([E0651](../docs/evidence/0651-qemu-a6400-stock-finder-monitor-rear-lcd.md)):
 with `REAR_CONTROLS=1` holding GPIO `P0.2` (`KEY_OTHER_EYE_CONTACT`) idle high, stock `FINDER/MONITOR`
 (`Auto` and `Monitor(Manual)`) renders the rear-LCD layout without patching
 `viewUnified2.so` (`e` toggles the emulated eye sensor; `--diagnostic-lcd`
@@ -111,7 +111,7 @@ pulses longer or changing the other controls. It is an emulated boot
 policy, not a measurement of the physical camera's GPIO circuitry.
 The latched **Power** lever changes the native sub-micro
 input, but automatic settings commit is not proven. See the [explicit
-native save and restart](../docs/evidence/0647-qemu-a6400-late-black-screen-scanout-capture.md#follow-up-settings-survive-an-explicit-native-commit-2026-11-19)
+native save and restart](../docs/evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md#follow-up-settings-survive-an-explicit-native-commit-2026-11-19)
 for the verified settings-persistence path.
 
 For the captured boot only, set `IDT_CAM` to the unmodified
@@ -120,7 +120,7 @@ checks the original kernel, ORIL and image hashes, then preloads the
 auxiliary image at physical `0x20152000`. In the rail-enabled bars
 profile this releases the native final step-42 predicate; it does not
 provide autofocus, stock JPEG playback, or still recording. See the
-[native comparison and replay limits](../docs/evidence/0645-qemu-virtual-media-gates.md#the-original-idt-sidecar-releases-the-captured-step-42-predicate).
+[native comparison and replay limits](../docs/evidence/0650-qemu-virtual-media-gates.md#the-original-idt-sidecar-releases-the-captured-step-42-predicate).
 With that profile, `DDRB_CONTROL=1` opts in to the narrow DDR-B
 idle-to-active transition used by the stock power manager. It restores
 the native EE reply and lets the mounted playback browser initialize.
@@ -132,7 +132,7 @@ used by the stock UPM driver. In the captured profile with DDR-B enabled,
 the original codec-idle request returns and Folder View (Still) lists the
 seeded SD entry. This models completion, not clock rates. Opening the
 entry reaches the original playback worker but still does not display
-the photo. See the [playback evidence](../docs/evidence/0645-qemu-virtual-media-gates.md#the-dfs-clock-switch-releases-the-separate-upm-rule-0-wait).
+the photo. See the [playback evidence](../docs/evidence/0650-qemu-virtual-media-gates.md#the-dfs-clock-switch-releases-the-separate-upm-rule-0-wait).
 
 `ZMA1_STARTUP=1` enables the captured startup-program interrupt on
 that accelerator. With it, `ZMA1_JPEG_FILL=1` also models the stock
@@ -221,7 +221,7 @@ Pass `--reopened` with a separate export from the restart replay. The
 tool requires the same new DCIM path and digest in that export; the
 replay receipts must separately prove it was the same card reopened
 in a fresh QEMU process. Current firmware playback and capture
-limits are in [E0645](../docs/evidence/0645-qemu-virtual-media-gates.md).
+limits are in [E0650](../docs/evidence/0650-qemu-virtual-media-gates.md).
 
 ### USB baseline before streaming
 
@@ -235,7 +235,7 @@ fixture is not evidence that the Sony DWC3 device/OTG path enumerates.
 
 For the stock PC Remote gate, use `tools.research.qemu_usb_host_probe`
 with `--stock-attach before-first-view --stock-ptp-info` and the qualified
-inputs in [E0650](../docs/evidence/0650-qemu-first-view-ptp-and-native-dwc3-reset.md).
+inputs in [E0655](../docs/evidence/0655-qemu-first-view-ptp-and-native-dwc3-reset.md).
 The probe requires native UDC configuration and a validated Sony
 `GetDeviceInfo` data/response pair. Stock firmware currently suppresses the
 USB input before gadget start, even after Play restores `ModelCamera`
@@ -414,7 +414,7 @@ under GPL-2.0-or-later; see [COPYING](COPYING).
 
 From the repository root in WSL, with the rebuilt QEMU and verified
 captured boot inputs, use the powered 384-byte sub-micro fixture documented in
-[E0646](../docs/evidence/0646-qemu-a6400-stock-finder-monitor-rear-lcd.md):
+[E0651](../docs/evidence/0651-qemu-a6400-stock-finder-monitor-rear-lcd.md):
 
 ```bash
 qemu=/path/to/pinned/qemu-checkout

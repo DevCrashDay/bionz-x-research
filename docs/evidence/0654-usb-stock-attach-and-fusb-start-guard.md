@@ -1,4 +1,4 @@
-# E0649 - Stock USB attach and the original FUSB start boundary
+# E0654 - Stock USB attach and the original FUSB start boundary
 
 Date: 2026-11-19. Offline ILCE-6400 only. No physical camera, SD, USB
 device, module load, or streaming operation.
@@ -19,7 +19,7 @@ The original VBUS local synchronous send from
 [E0583](0583-qemu-usb-local-sync-send.md) is not evidence that the view
 started a gadget. [E0598](0598-qemu-token-driven-ep0-configuration.md)
 enumerates the explicitly started **HID** function, not stock MSC or PTP.
-[E0645](0645-qemu-virtual-media-gates.md) reads a sector from a separate
+[E0650](0650-qemu-virtual-media-gates.md) reads a sector from a separate
 non-Sony fixture. Neither meets the stock-transfer gate.
 
 ## QEMU: powered stock decisions and the readiness branch

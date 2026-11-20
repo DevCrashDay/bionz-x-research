@@ -164,7 +164,7 @@ static bool sa_ram_range(hwaddr addr, hwaddr len, bool write)
 }
 
 /*
- * E0645 DGI op 0x13: one linear neutral 4:2:2 output extent. Accept only
+ * E0650 DGI op 0x13: one linear neutral 4:2:2 output extent. Accept only
  * the observed layout, not arbitrary conversion, decoding or scatter DMA.
  */
 static bool sa_jpeg_fill(uint32_t pa)

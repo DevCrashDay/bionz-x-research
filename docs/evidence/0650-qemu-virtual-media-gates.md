@@ -1,4 +1,4 @@
-# E0645 - Virtual SD hotplug and an offline USB Mass Storage baseline
+# E0650 - Virtual SD hotplug and an offline USB Mass Storage baseline
 
 Indexed: 2026-11-19.
 

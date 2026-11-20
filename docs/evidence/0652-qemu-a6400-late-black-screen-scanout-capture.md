@@ -1,8 +1,8 @@
-# E0647 — QEMU a6400 late black-screen scanout and buffer capture
+# E0652 — QEMU a6400 late black-screen scanout and buffer capture
 
 Indexed: 2026-11-19.
 
-Date: 2026-11-18. Offline QEMU full-system investigation following E0574 and [E0646](0646-qemu-a6400-stock-finder-monitor-rear-lcd.md). No physical camera, SD card, or USB device was accessed.
+Date: 2026-11-18. Offline QEMU full-system investigation following E0574 and [E0651](0651-qemu-a6400-stock-finder-monitor-rear-lcd.md). No physical camera, SD card, or USB device was accessed.
 
 Labels: `[C]` confirmed by atomic QMP/guest receipts, `[I]` inference, `[A]` explicit assumption.
 
@@ -16,7 +16,7 @@ Specifically, when the guest's `Power Save Start Time` expires (`1 Min` stock de
 
 ## Inputs and reproduction
 
-Inputs match E0646 (`emmc.img` `18e37ec3...`, `av-cam.bin` `90d515cf...`, `Backup.bin` `13345a90...`, WBI-derived 384 B sub-micro frames `3385ec34...` `[A: powered Slot B TLV 0x03 per E0527]`, QEMU binary `8c042f45...`, `REAR_LCD_DIAGNOSTIC=0`, `EVSEL_LATE_US=500`, `-icount shift=0,sleep=on`).
+Inputs match E0651 (`emmc.img` `18e37ec3...`, `av-cam.bin` `90d515cf...`, `Backup.bin` `13345a90...`, WBI-derived 384 B sub-micro frames `3385ec34...` `[A: powered Slot B TLV 0x03 per E0527]`, QEMU binary `8c042f45...`, `REAR_LCD_DIAGNOSTIC=0`, `EVSEL_LATE_US=500`, `-icount shift=0,sleep=on`).
 
 1. **Why a 133.8 s guest-uptime run with untouched `captured_Backup.bin` stayed visible (`late-black-watch-01`) `[C]`:** In the camera-captured `Backup.bin`, `Network2 -> Bluetooth Rmt Ctrl` is `On`, which inhibits Auto Power Save even though `Setup2 -> Power Save Start Time` is `1 Min` (`step13_setup2.png`, `step14_psave_click.png`). E0573/E0574 booted without `--inputs`, where `Bluetooth Rmt Ctrl` is `Off` and the `1 Min` timer is active.
 2. **Stock `1 Min` Power Save replay (`late-black-1min-01`) `[C]`:** Booted unmodified `captured_Backup.bin`, dismissed the NTSC notice (`ret`), opened `MENU` onto `Network2 -> Bluetooth Rmt Ctrl`, switched `Bluetooth Rmt Ctrl` to `Off` (leaving `Power Save Start Time` at its stock `1 Min`), and closed `MENU` at `~5.9 s` guest uptime (`96.64 s` host). The rear-LCD shooting screen remained visible through `63.34 s` guest uptime (`313.7 s` host), then transitioned to persistent all-black at `65.93 s` guest uptime (`325.79 s` host — `60.0 s` after menu close):

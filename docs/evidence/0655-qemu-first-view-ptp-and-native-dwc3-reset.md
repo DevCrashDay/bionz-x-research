@@ -1,7 +1,7 @@
-# E0650 - Original FirstView USB checks, bulk OUT, and the DWC3 reset entry
+# E0655 - Original FirstView USB checks, bulk OUT, and the DWC3 reset entry
 
 Date: 2026-11-19. Offline ILCE-6400 follow-up to
-[E0649](0649-usb-stock-attach-and-fusb-start-guard.md).
+[E0654](0654-usb-stock-attach-and-fusb-start-guard.md).
 No physical USB, camera, media, module load, or streaming.
 
 ## What was and was not verified
@@ -21,7 +21,7 @@ This tests an edge after original jack initialization but before the
 first-view checks, rather than a cable pulse before the IRQ was enabled
 or after the view had settled. The prepared boot manifest, kernel,
 captured libraries, powered sub-micro replay and read-only eMMC base
-retain E0649's hashes. No application decision or configuration was
+retain E0654's hashes. No application decision or configuration was
 written by the host.
 
 The final early replay observes the actual `SetJackStatus(1,1)` before
@@ -37,7 +37,7 @@ completed all initialization. Neither `ActionOpenUSB` nor
 control reaches the same boundary. The bars are a sensor input fixture,
 not USB output.
 
-The native `NeutrOff` writer from E0649 has two direct routes in the
+The native `NeutrOff` writer from E0654 has two direct routes in the
 captured original firmware: the `TBH` at `libObj+0x4E61B8` selects
 `0x4E65CC` for selector `0x60` and `0x4E671C` for selector `0x87`.
 The former tail-calls the clear routine; the latter clears then calls
@@ -109,7 +109,7 @@ build receipt `usb-13a3-strict-bulk-out-build-02`. An earlier relink
 refused a pre-DWC3 build with no matching object; no upstream checkout
 was modified. **44** native identity, **51** native token, and **33**
 legacy EP0 contract checks pass. The latter uses strict EP0 with the
-bulk feature off. Reproduce the stock attempt with E0649's launcher and
+bulk feature off. Reproduce the stock attempt with E0654's launcher and
 site generator, this binary, and `--stock-attach before-first-view
 --stock-ptp-info --capture-dwc3-context --seconds 280`. The target is
 `0x1001` only after original USB startup, not the diagnostic HID mode.
@@ -136,7 +136,7 @@ no GCTL write, no passed reset, and no fabricated DMA coherence.
 Reverify 0.11.0 verified the pinned byte windows; the source of the
 pointer values is the native QEMU capture, not those byte claims.
 
-Reproduce with E0649's Unicorn command, adding
+Reproduce with E0654's Unicorn command, adding
 `--otg-qemu-context <trusted-stock-report> --otg-qemu-context-sha256 <digest>`.
 `usb-gadget-13a3-dwc3-prefix-01` and `-02` retain the same stop, fd 11
 and userspace SVC `0x5029B078`. Neither the context-only replay nor

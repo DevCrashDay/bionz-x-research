@@ -1,4 +1,4 @@
-# E0652 - Unicorn L3 allocator ownership, GLES shared-memory initialization, Sugilite GPU execution, and first `viewRootPowerSw.uxc` OSD frames
+# E0657 - Unicorn L3 allocator ownership, GLES shared-memory initialization, Sugilite GPU execution, and first `viewRootPowerSw.uxc` OSD frames
 
 Date: 2026-11-20. Offline only; no camera, USB, physical SD, or firmware writes.
 

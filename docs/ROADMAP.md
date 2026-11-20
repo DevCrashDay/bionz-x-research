@@ -78,7 +78,7 @@ progress is recorded separately in [QEMU status](../qemu-a6400/STATUS.md).
 An opt-in sub-micro lens rail reply releases captured step 26, separately
 from the packaged step-32 Ydet gate ([E0591](evidence/0591-qemu-a6400-first-live-view-frame.md)).
 The original file service now mounts virtual SD
-([E0645](evidence/0645-qemu-virtual-media-gates.md)). The opt-in original
+([E0650](evidence/0650-qemu-virtual-media-gates.md)). The opt-in original
 IDT sidecar releases the captured final step-42 predicate. Opt-in DDR-B
 control lets the original UPM and allocator return, restoring the EE
 reply and stock playback-browser initialization. The opt-in DFS switch
@@ -98,9 +98,9 @@ Stock S1 wake, wheel navigation, AF/MF and AEL actions, and explicit
 settings save/restart are verified. Power OFF reaches native teardown,
 but automatic shutdown save is still open
 ([E0573](evidence/0573-qemu-a6400-rear-panel-controls.md),
-[E0647](evidence/0647-qemu-a6400-late-black-screen-scanout-capture.md)).
+[E0652](evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md)).
 
-Unicorn updater and main-firmware boot (2026-11-19..20, [E0648](evidence/0648-unicorn-updater-child-cow-and-hwcap.md), [E0651](evidence/0651-unicorn-main-firmware-boot.md)):
+Unicorn updater and main-firmware boot (2026-11-19..20, [E0653](evidence/0653-unicorn-updater-child-cow-and-hwcap.md), [E0656](evidence/0656-unicorn-main-firmware-boot.md)):
 building on [E0533](evidence/0533-unicorn-native-thumb-userspace-continuation.md),
 `nflasha1` completes post-`uname` child/COW roundtrips and reconciles D16
 `AT_HWCAP` (`0x0000E0D7`). Separately, captured `nflasha3` main firmware boots

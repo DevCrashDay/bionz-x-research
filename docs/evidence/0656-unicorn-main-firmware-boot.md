@@ -1,10 +1,10 @@
-# E0651 - Unicorn main-firmware (`nflasha3`) boot through stock `/sbin/init`, 39 kernel modules, LIRO `entry_main`, and `im.elf` `DMP_2D_Initialize`
+# E0656 - Unicorn main-firmware (`nflasha3`) boot through stock `/sbin/init`, 39 kernel modules, LIRO `entry_main`, and `im.elf` `DMP_2D_Initialize`
 
 Date: 2026-11-20. **Strictly offline.** Captured `ILCE-6400` main-firmware set
 (`artifacts/qemu-a6400/inputs-pr-preflight-20261116-1555`) under `UnicornMachine`
 (`--mmio stop`). No camera access, no USB, and no writes to `emmc.img` or any
 firmware file on disk (`emmc.img` SHA-256 verified unchanged after all runs).
-Follows [E0648](0648-unicorn-updater-child-cow-and-hwcap.md) and
+Follows [E0653](0653-unicorn-updater-child-cow-and-hwcap.md) and
 [E0521](0521-qemu-a6400-main-firmware-boots-to-avcam.md).
 
 Labels: `[C]` confirmed by a run receipt or verified binary bytes, `[I]` inference,
@@ -186,4 +186,4 @@ All intermediate failure receipts (`strict-01` through `strict-app-06`, plus
   `DMP_2D_Initialize : 0`, 39 loaded `.ko` modules, and an interactive shell on
   `UnicornMachine` verifies kernel, storage, module, RTOS entry, and `im.elf`
   process bring-up, not rear-LCD frame rendering (which requires SMP + VPH/SYSV
-  display scanout as in QEMU `E0591`/`E0646`) or physical hardware safety.
+  display scanout as in QEMU `E0591`/`E0651`) or physical hardware safety.

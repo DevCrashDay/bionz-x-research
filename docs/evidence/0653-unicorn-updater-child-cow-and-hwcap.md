@@ -1,4 +1,4 @@
-# E0648 - Unicorn updater child/COW continuation and the D16 capability word
+# E0653 - Unicorn updater child/COW continuation and the D16 capability word
 
 Date: 2026-11-19. Offline ILCE-6400 `nflasha1` updater only. This
 follows the separate boundaries in [E0533](0533-unicorn-native-thumb-userspace-continuation.md)

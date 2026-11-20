@@ -93,7 +93,7 @@ buffer handoff above were checked against this ILCE-6400 firmware.
 | --- | --- |
 | Captured ORIL (`av-cam.bin`) | `dd8f8d0cc74ad4b70100e5728cf8b159b5155e7fb50eaf1147b99c9054740209` |
 | E0524 boot manifest | `bf12cfa60d64560d6db6327e42e81fd5d81b96c883c90879228ed67364cdde6d` |
-| [E0646](0646-qemu-a6400-stock-finder-monitor-rear-lcd.md) powered WBI sub-micro fixture (explicit replay assumption) | `3385ec340e931aa7b7dbb954da99e5b6239174ba90441eb2c905f01bcf5bbda9` |
+| [E0651](0651-qemu-a6400-stock-finder-monitor-rear-lcd.md) powered WBI sub-micro fixture (explicit replay assumption) | `3385ec340e931aa7b7dbb954da99e5b6239174ba90441eb2c905f01bcf5bbda9` |
 | 8×5 binary PGM chart | `01ebbeff1124611ee8e0e439226aaf840dd92b9ae9f24d0655b44d84dba5cbe` |
 | QEMU 11.1.3 frozen causal-v2 binary | `d3a61aa0d8af83cf96d9c3d8fa0b5f585a83f61733b0808f6e9986fe8941bf64` |
 | Frozen causal-v2 QEMU source patch | `e1b4d607d6deb865eebc7a8a5af028c6f26a42e28bfbd956342550e76cfc1bad` |
@@ -208,7 +208,7 @@ The reconstructed **packaged** replay uses the E0561 ORIL (`90d515cf…`)
 and the original `CX62600_UC2` preset (`241c8521…`) both on disk and in
 the bootloader preload. It retains the captured kernel, initrd, system
 files and eMMC layout. This is not a byte-identical copy of the historical
-disk. The E0646 powered WBI fixture, 500 us event delay, CamPig enable
+disk. The E0651 powered WBI fixture, 500 us event delay, CamPig enable
 readback and Sgc1 event-A policy were held fixed. The same QEMU 11.1.3
 binary (`0a9b08341486dd3d9248a1cc9e6cf99e0b2d3bd52c25f8fd029ef963cb657ae7`)
 and a fresh overlay were used on each run:

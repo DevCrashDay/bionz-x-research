@@ -61,7 +61,7 @@ do not prove any guest gesture or streaming data path.
 
 The initial runs used QEMU 11.1.3 (`823fbee11e7aff4fba51a17ab9d733694dd6f21e7bbaa30180b3e3f8a56d62b7`),
 E0524 manifest `bf12cfa60d64560d6db6327e42e81fd5d81b96c883c90879228ed67364cdde6d`,
-and the explicitly assumed E0646 powered sub-micro replay
+and the explicitly assumed E0651 powered sub-micro replay
 (`3385ec340e931aa7b7dbb954da99e5b6239174ba90441eb2c905f01bcf5bbda9`).
 They used the stock display path, rear controls, `EVSEL_LATE_US=500`,
 `-icount shift=0,sleep=on`, and opt-in bar luma. See the run receipts
@@ -194,7 +194,7 @@ repeat the OFF rollback verified in `-02` and `-03`.
 
 ## Stock recording and Open Gate
 
-The captured guest now [mounts the virtual SD card](../0645-qemu-virtual-media-gates.md#follow-up-stock-firmware-mounts-sd-2026-11-19).
+The captured guest now [mounts the virtual SD card](../0650-qemu-virtual-media-gates.md#follow-up-stock-firmware-mounts-sd-2026-11-19).
 Mount and read do not imply recording. The replays use the same captured
 ORIL `dd8f8d0cc74ad4b70100e5728cf8b159b5155e7fb50eaf1147b99c9054740209`,
 prepared boot, and powered sub-micro assumption. Each cold-insert run
@@ -252,8 +252,8 @@ The passive traces narrow the boundary beyond QMP input acceptance:
   shooting or reached the sampled `NeutrOff` store. There were no
   observed MPR starts or SD writes; the original mount completed and
   QMP quit with exit 0.
-- `stock-movie-15` and gated retry `-16` used the distinct [E0645
-  shooting-view board and card](../0645-qemu-virtual-media-gates.md#after-the-captured-step-26-fix):
+- `stock-movie-15` and gated retry `-16` used the distinct [E0650
+  shooting-view board and card](../0650-qemu-virtual-media-gates.md#after-the-captured-step-26-fix):
   QEMU `ab62eff98b068f155ca3bc812d8650301c6dee638523725b6104dd77399ec50c`,
   card `581066b0588df7ffc68836143e0d090eb1282d03625648f375901c311498631a`.
   The LCD remained active (`VPH+0x144 = 0x01000233`), but both late
@@ -419,7 +419,7 @@ No sampled recording start/stop call or SD write follows.
 
 [Replay `stock-movie-sdhc-fat32-idt-01`](../../../artifacts/qemu-a6400/mod-qualification-stock-movie-sdhc-fat32-idt-01/receipt.json)
 adds the original, hash-checked
-[IDT sidecar](../0645-qemu-virtual-media-gates.md#the-original-idt-sidecar-releases-the-captured-step-42-predicate)
+[IDT sidecar](../0650-qemu-virtual-media-gates.md#the-original-idt-sidecar-releases-the-captured-step-42-predicate)
 using the public launcher's `IDT_CAM` option. It boots from a new
 clone of the same initialized card and reaches the AVCHD setting
 shown in the no-sidecar comparison. The view again opens, requests
@@ -547,7 +547,7 @@ either format operation with a specific keypress or prove acknowledgement
 delivery. The optional still-format packet observation could not read
 the request through its bounded guest-VA range; its reply-attempt
 sample was ORIL packet `0x4036`, not evidence of delivery of the
-application-side `0x7541` response described in [E0645](../0645-qemu-virtual-media-gates.md).
+application-side `0x7541` response described in [E0650](../0650-qemu-virtual-media-gates.md).
 
 In the mounted run the two high RC0 stores came through the same
 original call at `0x63a26554` (Thumb LR `0x63a26559`). The original

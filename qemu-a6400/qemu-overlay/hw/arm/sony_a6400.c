@@ -71,7 +71,7 @@
 #define CXD90045_ADC_IRQ0        215
 
 /*
- * GPIO input levels at reset (E0526, E0646), "port.pin" pins that read 1:
+ * GPIO input levels at reset (E0526, E0651), "port.pin" pins that read 1:
  *  - input.ko GPIO keys marked active low ("L") in the a6400 key table
  *    (/proc/udm/input): P0.3 (0x70FD), P0.4 (0x70FE), P0.7 (0x70DC),
  *    P0.10 (0x1F0 MOVIE), P0.11 (0x70C6), P1.1 (0x70EF) -> released;

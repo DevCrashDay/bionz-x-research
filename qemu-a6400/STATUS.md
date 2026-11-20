@@ -503,7 +503,7 @@ the panel was receiving real black frames in a long-running instance.
 A fresh instance recovered the original menu. In a separate replay,
 boot-time blanks had zero ch53 base and both OSD buffers were empty.
 
-[E0646](../docs/evidence/0646-qemu-a6400-stock-finder-monitor-rear-lcd.md)
+[E0651](../docs/evidence/0651-qemu-a6400-stock-finder-monitor-rear-lcd.md)
 identifies GPIO `P0.2` (`Backup` `0x00F90427/28`, polled by `av-cam`
 `0x6361ac28` -> `KEY_OTHER_EYE_CONTACT = 0x708B`) as the active-low EVF eye
 sensor. With `P0.2` idled high by `REAR_CONTROLS=1`, unmodified firmware
@@ -513,7 +513,7 @@ layouts (`LayoutST_NORMAL_WITH_INFO_LR`, `LayoutST_NORMAL_INFO_OFF_LR`,
 `LayoutST_NORMAL_LEVEL_LR`) via stock `FINDER/MONITOR` (`Auto` and
 `Monitor(Manual)`). `rear_panel.py` now defaults to stock selection.
 
-[E0647](../docs/evidence/0647-qemu-a6400-late-black-screen-scanout-capture.md)
+[E0652](../docs/evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md)
 captures VPH/SYSV registers and both OSD buffers across the late black-screen
 failure: when `Power Save Start Time` expires with `Bluetooth Rmt Ctrl` `Off`,
 the guest logs `EV OFF add_off_factor: 0x8`, runs `EV SET_PANEL_OUT`, clears
@@ -522,11 +522,11 @@ the guest logs `EV OFF add_off_factor: 0x8`, runs `EV SET_PANEL_OUT`, clears
 `modelCamera`, and blocks in `Mt F00_010_libObj.so`. QEMU's VPH/SYSV scanout
 continues running; the guest stopped drawing.
 
-The [S1 follow-up](../docs/evidence/0647-qemu-a6400-late-black-screen-scanout-capture.md#follow-up-body-shutter-input-and-save-boundary)
+The [S1 follow-up](../docs/evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md#follow-up-body-shutter-input-and-save-boundary)
 returns the stock shooting OSD after Auto Power Save with half-press on
 `P0.1`. MENU did not wake the display, and the OSD stayed visible after S1
 release. Captured step 26 was unchanged. The stock menu setting changed
-in the UI, and the [explicit native commit](../docs/evidence/0647-qemu-a6400-late-black-screen-scanout-capture.md#follow-up-settings-survive-an-explicit-native-commit-2026-11-19)
+in the UI, and the [explicit native commit](../docs/evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md#follow-up-settings-survive-an-explicit-native-commit-2026-11-19)
 wrote `Backup.bin`; a fresh process restored the identical `Off` menu
 from those persisted bytes. Automatic power-off commit and
 application-level AF/MF--AEL behavior remain unverified.
@@ -537,9 +537,9 @@ in the observed boot, with Sony library bases different from the current
 physical guard. Its unchanged ARM check returns `-5 identity/maps` in
 the guest. See [the mod development workflow](MOD_DEVELOPMENT.md).
 
-## Virtual removable media (2026-11-18 / E0645)
+## Virtual removable media (2026-11-18 / E0650)
 
-[E0645](../docs/evidence/0645-qemu-virtual-media-gates.md) adds an opt-in
+[E0650](../docs/evidence/0650-qemu-virtual-media-gates.md) adds an opt-in
 MMC0 slot with QMP insertion/ejection. The native SD test verifies active-low
 `MODEREAD` bit 24 and sector persistence after process restart without changing
 internal eMMC. With live sub-micro slot A detect and the correct absent

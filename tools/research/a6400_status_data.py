@@ -221,8 +221,8 @@ STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
     as_of="2026-11-20",
     latest=EvidenceRef(
-        evidence_id="E0652",
-        path="docs/evidence/0652-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md",
+        evidence_id="E0657",
+        path="docs/evidence/0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md",
         date="2026-11-20",
         title="Unicorn L3 allocator ownership, GLES shared init, Sugilite GPU and viewRootPowerSw OSD",
         demonstrated=(
@@ -238,8 +238,8 @@ STATUS_SNAPSHOT = StatusSnapshot(
     headline="Unicorn L3 Sugilite GPU & 1.5B-insn heap trace | Unicorn nflasha3 main boot | QEMU live-view",
     cards=(
         EvidenceRef(
-            evidence_id="E0651",
-            path="docs/evidence/0651-unicorn-main-firmware-boot.md",
+            evidence_id="E0656",
+            path="docs/evidence/0656-unicorn-main-firmware-boot.md",
             date="2026-11-20",
             title="Unicorn boots captured nflasha3 main firmware through init, LIRO and im.elf",
             demonstrated=(
@@ -253,8 +253,8 @@ STATUS_SNAPSHOT = StatusSnapshot(
             tier="OFFLINE ORIGINAL MAIN KERNEL + INIT + LIRO + IM.ELF",
         ),
         EvidenceRef(
-            evidence_id="E0650",
-            path="docs/evidence/0650-qemu-first-view-ptp-and-native-dwc3-reset.md",
+            evidence_id="E0655",
+            path="docs/evidence/0655-qemu-first-view-ptp-and-native-dwc3-reset.md",
             date="2026-11-19",
             title="Original FirstView USB checks, bulk OUT and DWC3 reset entry",
             demonstrated=(
@@ -268,8 +268,8 @@ STATUS_SNAPSHOT = StatusSnapshot(
             tier="OFFLINE QEMU + ORIGINAL ARM GUARD",
         ),
         EvidenceRef(
-            evidence_id="E0649",
-            path="docs/evidence/0649-usb-stock-attach-and-fusb-start-guard.md",
+            evidence_id="E0654",
+            path="docs/evidence/0654-usb-stock-attach-and-fusb-start-guard.md",
             date="2026-11-19",
             title="Original stock USB attach and FUSB startup boundaries",
             demonstrated=(
@@ -280,8 +280,8 @@ STATUS_SNAPSHOT = StatusSnapshot(
             tier="OFFLINE QEMU + ORIGINAL ARM GUARD",
         ),
         EvidenceRef(
-            evidence_id="E0648",
-            path="docs/evidence/0648-unicorn-updater-child-cow-and-hwcap.md",
+            evidence_id="E0653",
+            path="docs/evidence/0653-unicorn-updater-child-cow-and-hwcap.md",
             date="2026-11-19",
             title="Unicorn updater child/COW replay and D16 capability comparison",
             demonstrated=(
@@ -295,8 +295,8 @@ STATUS_SNAPSHOT = StatusSnapshot(
             tier="OFFLINE ORIGINAL KERNEL + QEMU CAPABILITY REFERENCE",
         ),
         EvidenceRef(
-            evidence_id="E0647",
-            path="docs/evidence/0647-qemu-a6400-late-black-screen-scanout-capture.md",
+            evidence_id="E0652",
+            path="docs/evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md",
             date="2026-11-19",
             title="QEMU a6400 late black-screen scanout and buffer capture",
             demonstrated=(

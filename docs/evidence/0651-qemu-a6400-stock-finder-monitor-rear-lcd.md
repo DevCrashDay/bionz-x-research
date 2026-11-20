@@ -1,4 +1,4 @@
-# E0646 — QEMU a6400 stock FINDER/MONITOR rear-LCD selection without diagnostic overlay
+# E0651 — QEMU a6400 stock FINDER/MONITOR rear-LCD selection without diagnostic overlay
 
 Indexed: 2026-11-19.
 
