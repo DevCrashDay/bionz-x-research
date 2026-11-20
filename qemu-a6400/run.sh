@@ -57,7 +57,9 @@ if [ "${ZMA1_JPEG_FILL:-0}" = 1 ] && [ "${ZMA1_STARTUP:-0}" != 1 ]; then
 fi
 
 # Check the replay fixture before spending time staging firmware and an overlay.
-SUBMICRO_FRAME_SHA=6d5026e3932f3f46b47cc44a15008ced099dba46041deafbc1c058e4a0fa85ed
+# SUBMICRO_FRAMES_SHA declares a different 384-byte extract, e.g. the one
+# tools.research.qemu_packaged_inputs derives from the public updater's WBI.
+SUBMICRO_FRAME_SHA=${SUBMICRO_FRAMES_SHA:-6d5026e3932f3f46b47cc44a15008ced099dba46041deafbc1c058e4a0fa85ed}
 SUBMICRO_RX="${SUBMICRO_FRAMES:-}"
 if [ -n "$SUBMICRO_RX" ]; then
     if [ -n "${SUBMICRO_PAGE:-}" ]; then
