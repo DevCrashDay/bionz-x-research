@@ -23,10 +23,10 @@
 
 /* ---- Shim ---- */
 #ifndef MLV2_SHIM_ADDR
-#define MLV2_SHIM_ADDR        0x05662760u   /* /usr/lib/libtestcmd.so RX zero tail, 2208 bytes */
+#define MLV2_SHIM_ADDR        0x05662800u   /* /usr/lib/libtestcmd.so RX zero tail (>0x2790 EOF), 2048 bytes */
 #endif
-#define MLV2_REF_SHIM_ADDR    0x05662760u
-#define MLV2_SHIM_CAP         2208u
+#define MLV2_REF_SHIM_ADDR    0x05662800u
+#define MLV2_SHIM_CAP         2048u
 #define MLV2_SHIM_SLOT        MLV2_SHIM_ADDR  /* first word of the shim: ShimState pointer */
 #define MLV2_CORE_PATH        "/tmp_bt/mlv2/core.bin"
 #define MLV2_SD_MANAGED       "/tmp_bt/mlv2/sd-managed"

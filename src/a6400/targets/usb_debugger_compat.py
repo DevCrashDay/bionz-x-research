@@ -28,6 +28,21 @@ VERIFIED_LIBUSBCMD_SIZE = 15948
 VERIFIED_LIBUSBCMD_SHA256 = (
     "9fbf3339792e40caa73faa63d6b2dfa962ca4c47853320b49ff589595283ba71"
 )
+# Official Sony ILCE-6400 FW 2.00 updater image copy (E0090 / E0091): identical across all
+# executable, symbol, relocation, GOT, dynamic, and unwind sections; differs only in .comment (48 B).
+VERIFIED_LIBUSBCMD_UPDATER_SIZE = 15996
+VERIFIED_LIBUSBCMD_UPDATER_SHA256 = (
+    "9f2dd49dfae785aad9fbc1abf53c6d4179b8540c3e68ee1ca06eb2497bb71644"
+)
+VERIFIED_LIBUSBCMD_VARIANTS: tuple[tuple[int, str], ...] = (
+    (VERIFIED_LIBUSBCMD_SIZE, VERIFIED_LIBUSBCMD_SHA256),
+    (VERIFIED_LIBUSBCMD_UPDATER_SIZE, VERIFIED_LIBUSBCMD_UPDATER_SHA256),
+)
+
+
+def is_verified_libusbcmd(data: bytes) -> bool:
+    """Return True iff ``data`` matches a verified FW 2.00 ``libusbcmd.so`` digest."""
+    return (len(data), hashlib.sha256(data).hexdigest()) in VERIFIED_LIBUSBCMD_VARIANTS
 
 DEFAULT_PAYLOAD_DAEMON = "devcrashday_a6400/a6400_usb_debugd.elf"
 DEFAULT_PAYLOAD_LAUNCHER = "devcrashday_a6400/hook/usb_debug_launcher.so"
@@ -65,10 +80,19 @@ class DebuggerTargetSpec:
     usb_extcmd_reference_paths: tuple[str, ...]
     libusbcmd_size: int
     libusbcmd_sha256: str
+    libusbcmd_variants: tuple[tuple[int, str], ...] = ()
     payload_daemon: str = DEFAULT_PAYLOAD_DAEMON
     payload_launcher: str = DEFAULT_PAYLOAD_LAUNCHER
     bootstrap_mode: str = "senser_ff01"
     notes: str = ""
+
+    def accepted_libusbcmd_variants(self) -> tuple[tuple[int, str], ...]:
+        """Return deduplicated ``(size, sha256)`` tuples accepted for ``libusbcmd.so``."""
+        seen: list[tuple[int, str]] = [(self.libusbcmd_size, self.libusbcmd_sha256)]
+        for pair in self.libusbcmd_variants:
+            if pair not in seen:
+                seen.append(pair)
+        return tuple(seen)
 
 
 USB_DEBUGGER_TARGETS: Mapping[str, DebuggerTargetSpec] = {
@@ -88,7 +112,10 @@ USB_DEBUGGER_TARGETS: Mapping[str, DebuggerTargetSpec] = {
         ),
         libusbcmd_size=VERIFIED_LIBUSBCMD_SIZE,
         libusbcmd_sha256=VERIFIED_LIBUSBCMD_SHA256,
-        notes="Primary verified hardware target (E0092, E0401).",
+        libusbcmd_variants=(
+            (VERIFIED_LIBUSBCMD_UPDATER_SIZE, VERIFIED_LIBUSBCMD_UPDATER_SHA256),
+        ),
+        notes="Primary verified hardware target (E0090, E0091, E0092, E0401; both FW 2.00 libusbcmd.so builds).",
     ),
     "ilce_7c": DebuggerTargetSpec(
         target_id="ilce_7c",
@@ -191,10 +218,8 @@ def verify_camera_debugger_compatibility(
     actual_ko_sha = hashlib.sha256(actual_ko).hexdigest()
     actual_lib_sha = hashlib.sha256(actual_lib).hexdigest()
 
-    lib_match = (
-        len(actual_lib) == spec.libusbcmd_size
-        and actual_lib_sha == spec.libusbcmd_sha256
-    )
+    accepted_libs = spec.accepted_libusbcmd_variants()
+    lib_match = (len(actual_lib), actual_lib_sha) in accepted_libs
 
     if reference_ko is not None:
         ko_comparison = compare_metadata_only(actual_ko, reference_ko)
@@ -219,9 +244,10 @@ def verify_camera_debugger_compatibility(
 
     reasons: list[str] = []
     if not lib_match:
+        expected_str = " or ".join(f"{sz} B / {sha}" for sz, sha in accepted_libs)
         reasons.append(
             f"libusbcmd.so mismatch (got {len(actual_lib)} B / {actual_lib_sha}, "
-            f"expected {spec.libusbcmd_size} B / {spec.libusbcmd_sha256})"
+            f"expected {expected_str})"
         )
     if not ko_match:
         reasons.append(

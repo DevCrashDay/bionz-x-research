@@ -122,10 +122,12 @@ class Debugger:
         if not path.startswith('/') or '\0' in path or len(path.encode())>=512 or len(data)>1024*1024:
             raise ValueError('Invalid camera upload path or file larger than 1 MiB')
         quoted=shlex.quote(path)
-        chunks=[data[i:i+640] for i in range(0,len(data),640)] or [b'']
+        # Camera BusyBox v1.13.4 omits the `printf` applet; `echo -ne '\xHH'` is compiled in.
+        # 768 raw bytes expand to <= 3072 escaped chars, staying within MAX_DATA (4064).
+        chunks=[data[i:i+768] for i in range(0,len(data),768)] or [b'']
         for index,chunk in enumerate(chunks):
-            escaped=''.join('\\0%03o'%byte for byte in chunk)
-            command="printf '%b' "+shlex.quote(escaped)+(' > ' if index==0 else ' >> ')+quoted
+            escaped=''.join('\\x%02x'%byte for byte in chunk)
+            command="echo -ne "+shlex.quote(escaped)+(' > ' if index==0 else ' >> ')+quoted
             result=self.request(OP_EXEC,command.encode())
             if result['status'] or result['flags']:
                 raise DebuggerError(result['status'] or -5,result['payload'])
@@ -296,10 +298,31 @@ def connect(transport='auto'):
         yield debugger
 
 
+def _ensure_pmca_path():
+    """Ensure ``pmca`` is importable from bundled, repo, or cached checkouts."""
+    candidates = []
+    meipass = getattr(sys, '_MEIPASS', None)
+    if meipass:
+        mp = Path(meipass)
+        candidates.extend((mp, mp / 'Sony-PMCA-RE'))
+    candidates.extend((
+        ROOT / 'Sony-PMCA-RE',
+        ROOT / '.cache' / 'Sony-PMCA-RE',
+        ROOT.parent / 'Sony-PMCA-RE',
+        ROOT.parent / 'Sony-PMCA-RE-master',
+    ))
+    for candidate in candidates:
+        if (candidate / 'pmca' / 'usb' / 'sony.py').is_file() and (candidate / 'config.py').is_file():
+            if str(candidate) not in sys.path:
+                sys.path.insert(0, str(candidate))
+            return candidate
+    return None
+
+
 @contextlib.contextmanager
 def connect_device():
     """Yield (Debugger, device) so a mode switch can use the same open session."""
-    sys.path.insert(0,str(ROOT/'Sony-PMCA-RE'))
+    _ensure_pmca_path()
     from pmca.commands.usb import importDriver,listDevices
     from pmca.usb.sony import SonyMscExtCmdDevice,SonyMtpExtCmdDevice
     with host_lock(),importDriver(None) as driver:
@@ -319,7 +342,7 @@ def sony_ptp_devices(driver):
 
 def request_msc_switch():
     """Send Sony PTP 0x9282 (SonyReqReconnect arg 0): camera -> mass storage."""
-    sys.path.insert(0, str(ROOT / 'Sony-PMCA-RE'))
+    _ensure_pmca_path()
     from pmca.commands.usb import importDriver
     from pmca.usb.sony import SonyMtpExtCmdDevice
     attempts = []
@@ -338,7 +361,7 @@ def request_msc_switch():
 
 def wait_for_msc(timeout=30, poll=1.0):
     """Wait until the camera enumerates in mass storage mode (054c:0caa)."""
-    sys.path.insert(0, str(ROOT / 'Sony-PMCA-RE'))
+    _ensure_pmca_path()
     from pmca.commands.usb import importDriver, listDevices
     from pmca.usb.sony import SonyMscExtCmdDevice
     deadline = time.monotonic() + timeout

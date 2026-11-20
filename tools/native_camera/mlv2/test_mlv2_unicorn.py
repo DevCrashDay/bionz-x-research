@@ -20,7 +20,7 @@ sys.path.insert(0, str(root))
 from tools.research.pack_mod import extract_elf_text, pack_smod, fnv1a_32  # noqa: E402
 
 B = Path(sys.argv[1])
-SHIM = 0x05662760
+SHIM = 0x05662800
 SET_TEXT, SET_MODE = 0x157356D0, 0x1573BA68
 ANCHOR = 0x1615EC40
 MENU, NODES, STUBS, TARGETS, V1CODE = 0x30000000, 0x31000000, 0x32000000, 0x33000000, 0x34000000
