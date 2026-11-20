@@ -36,6 +36,7 @@ GUARD_NAME, REQ_NAME = "MLV2GRD.ELF", "MLV2.REQ"
 GUEST_GUARD, GUEST_REQ = "/tmp_bt/mlv2_guard", "/tmp_bt/mlv2.req"
 RELOAD_REQ, RELOAD_RESULT = "/tmp_bt/mlv2/reload", "/tmp_bt/mlv2/reload.result"
 MOD_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,40}\.mod$")
+RAW_CHUNK = 3584        # bytes per raw transfer step: below the guest 4 KiB terminal buffer
 CHUNK = 200            # bytes per printf line: 4 chars each; the guest tty truncates lines near 1 KiB
 
 
@@ -63,12 +64,32 @@ def parse_fnv(text: str) -> tuple[int, int] | None:
     return (int(m.group(1)), int(m.group(2), 16)) if m else None
 
 
-def setting_files(guard: Path, request: Path) -> str:
-    """run.sh SETTING_FILES value (host paths must not contain spaces)."""
-    for p in (guard, request):
+def setting_files(guard: Path, request: Path, extra: list[tuple[Path, str]] = ()) -> str:
+    """run.sh SETTING_FILES value (host paths must not contain spaces; names are FAT 8.3, or
+    ``dir/name`` inside an existing /setting directory, e.g. ``mode/dmode`` (fat_add_file.py))."""
+    items = [(guard, GUARD_NAME), (request, REQ_NAME), *extra]
+    for p, name in items:
         if " " in str(p):
             raise ValueError(f"stage {p} from a path without spaces")
-    return f"{guard}:{GUARD_NAME} {request}:{REQ_NAME}"
+        if not (re.fullmatch(r"[A-Z0-9_]{1,8}\.[A-Z0-9]{1,3}", name)
+                or re.fullmatch(r"[a-z0-9_]{1,8}\.[a-z0-9]{1,3}", name)      # lowercase 8.3 (env.txt)
+                or re.fullmatch(r"[a-z0-9_]{1,8}/[a-z0-9_]{1,8}(\.[a-z0-9]{1,3})?", name)):
+            raise ValueError(f"staged name {name!r} is not an 8.3 name")
+    return " ".join(f"{p}:{name}" for p, name in items)
+
+
+def raw_push_command(tmp: str, size: int, tag: int, append: bool = False) -> tuple[str, bytes, bytes]:
+    """Guest command for a raw binary transfer over the serial console, plus the ready and done
+    markers. The terminal goes raw (no echo, no line editing, no signals) before the ready marker
+    is printed, so the host sends exactly ``size`` bytes after it; ``busybox dd bs=1`` writes them
+    (the guest BusyBox 1.29.3 has no ``head`` applet and its ``dd`` no ``iflag=fullblock``).
+    The markers are split with "" so the echoed command line never matches them."""
+    if not tmp.startswith("/") or any(c in tmp for c in " '\"$`\\\n"):
+        raise ValueError(f"unsupported guest path {tmp!r}")
+    ready, done = f"@@R{tag}@@", f"@@D{tag}@@"
+    cmd = (f"busybox stty raw -echo; echo {ready[:3]}\"\"{ready[3:]}; busybox dd bs=1 count={size} 2>/dev/null {">>" if append else ">"} {tmp}; "
+           f"busybox stty sane; echo {done[:3]}\"\"{done[3:]}")
+    return cmd, ready.encode(), done.encode()
 
 
 class Console:
@@ -130,6 +151,25 @@ class Console:
     def send(self, line: str):
         self.sock.sendall(line.encode() + b"\r")
 
+    def run_raw(self, tmp: str, data: bytes, timeout: float = 30) -> bool:
+        """Raw binary transfer of ``data`` into guest file ``tmp`` (see ``raw_push_command``), in
+        chunks of RAW_CHUNK bytes. A raw terminal has no flow control and ``dd bs=1`` reads one byte
+        per system call, so anything beyond the guest's 4 KiB terminal buffer is dropped (a 726 KB
+        single send stalled); each chunk fits the buffer and is appended by its own ``dd``."""
+        for off in range(0, len(data), RAW_CHUNK) or [0]:
+            chunk = data[off:off + RAW_CHUNK]
+            self.tag += 1
+            cmd, ready, done = raw_push_command(tmp, len(chunk), self.tag, append=off > 0)
+            start = self.mark()
+            self.send(cmd)
+            r = self.wait_for(ready, 30, start)
+            if r < 0:
+                return False
+            self.sock.sendall(chunk)
+            if self.wait_for(done, timeout, r) < 0:
+                return False
+        return True
+
     def run(self, command: str, timeout: float = 60) -> str | None:
         """Run one shell command and return its output (between unique markers)."""
         self.tag += 1
@@ -154,11 +194,14 @@ class ModDev:
     nudge: callable = None           # called when the core has not acted yet (e.g. MENU twice)
     extra_files: list[tuple[str, Path, bool]] = field(default_factory=list)
     setup_cmds: list[str] = field(default_factory=list)
+    staged: dict = field(default_factory=dict)    # guest path -> (8.3 name on /setting, host path)
+    raw: bool = None                             # raw serial transfer available (probed once)
     status: dict = field(default_factory=lambda: {"state": "waiting for the guest shell", "events": []})
     seen: dict = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)   # one shell command at a time
     actions: queue.Queue = field(default_factory=queue.Queue)       # toolbar requests
     last: dict = field(default_factory=dict)                        # mod name -> last result
+    bare: bool = False   # boots without Sony's UI (e.g. dmode=2): shell + files only, no loader
 
     def __post_init__(self):
         self.mods = list(self.mods)
@@ -230,18 +273,36 @@ class ModDev:
     def guest_fnv(self, path: str) -> tuple[int, int] | None:
         return parse_fnv(self.sh(f"{GUEST_GUARD} fnv {path}"))
 
+    def raw_ok(self) -> bool:
+        """The raw transfer needs busybox stty and dd; probed once, before any raw byte is sent
+        (raw bytes reaching the shell instead of dd would be run as commands)."""
+        if self.raw is None:
+            out = self.sh("busybox dd bs=1 count=0 </dev/null 2>/dev/null && busybox stty -g >/dev/null && echo RAW\"\"OK")
+            self.raw = "RAWOK" in out
+            self.event(f"raw serial transfer {'available' if self.raw else 'unavailable: printf fallback'}")
+        return self.raw
+
     def push(self, guest_path: str, data: bytes):
         part = guest_path.rsplit("/", 1)
         tmp = f"{part[0]}/.{part[1]}.part"
         t0 = time.monotonic()
-        for line in push_commands(tmp, data):
-            self.sh(line, 30)
+        how = "raw"
+        sent = False
+        if self.raw_ok():
+            with self.lock:
+                sent = self.console.run_raw(tmp, data)
+            if not sent:
+                self.sh("busybox stty sane")
+        if not sent:
+            how = "printf"
+            for line in push_commands(tmp, data):
+                self.sh(line, 30)
         got = self.guest_fnv(tmp)
         if got != (len(data), fnv1a_32(data)):
             self.sh(f"rm -f {tmp}")
             raise RuntimeError(f"transfer check failed for {guest_path}: {got}")
         self.sh(f"mv -f {tmp} {guest_path}")
-        self.event(f"pushed {guest_path} ({len(data)} B, {time.monotonic() - t0:.1f}s, fnv ok)")
+        self.event(f"pushed {guest_path} ({len(data)} B, {time.monotonic() - t0:.1f}s, {how}, fnv ok)")
 
     def wait_menu(self, timeout: float = 240):
         self.status["state"] = "booting"
@@ -257,6 +318,25 @@ class ModDev:
             time.sleep(2)
         raise RuntimeError("menu checkpoint not reached")
 
+    def place(self, guest_path: str, host_path: Path):
+        """Copy a startup file from its pre-boot /setting staging (no serial transfer), checked by
+        size and FNV; files that were not staged are pushed."""
+        data = host_path.read_bytes()
+        name = self.staged.get(guest_path, (None,))[0]
+        if name is None:
+            self.push(guest_path, data)
+            return
+        t0 = time.monotonic()
+        if len(data) > 64 * 1024:
+            # Large files stay on the overlay's /setting (vfat, executable with fmask=0022) behind a
+            # symlink: the guest /tmp_bt tmpfs (1 MiB) already holds the guard and Sony's files.
+            self.sh(f"ln -sf /setting/{name} {guest_path}")
+        else:
+            self.sh(f"cp /setting/{name} {guest_path}")
+        if self.guest_fnv(guest_path) != (len(data), fnv1a_32(data)):
+            raise RuntimeError(f"staged {guest_path} (/setting/{name}) does not match {host_path}")
+        self.event(f"placed {guest_path} ({len(data)} B, {time.monotonic() - t0:.1f}s, staged, fnv ok)")
+
     def install(self):
         self.status["state"] = "installing"
         self.sh("grep -q ' /tmp_bt ' /proc/mounts || mount -t tmpfs tmpfs /tmp_bt; mkdir -p /tmp_bt/mlv2 /tmp_bt/mods")
@@ -265,13 +345,13 @@ class ModDev:
             data = host.read_bytes()
             if self.guest_fnv(guest) != (len(data), fnv1a_32(data)):
                 raise RuntimeError(f"staged {guest} does not match {host}")
-        self.push("/tmp_bt/mlv2/core.bin", (self.loader / "core.bin").read_bytes())
+        self.place("/tmp_bt/mlv2/core.bin", self.loader / "core.bin")
         self.seen["core"] = (self.loader / "core.bin").stat().st_mtime_ns
         for m in self.mods:
-            self.push(f"/tmp_bt/mods/{m.name}", m.read_bytes())
+            self.place(f"/tmp_bt/mods/{m.name}", m)
             self.seen[m] = m.stat().st_mtime_ns
         for guest_path, host_path, executable in self.extra_files:
-            self.push(guest_path, host_path.read_bytes())
+            self.place(guest_path, host_path)
             if executable:
                 self.sh(f"chmod 755 {guest_path}")
         for cmd in self.setup_cmds:
@@ -297,8 +377,14 @@ class ModDev:
         out = self.sh(f"cat /tmp_bt/mods/mod_loader.log 2>/dev/null; echo @@RESULT; cat {RELOAD_RESULT} 2>/dev/null;"
                       f" test -f {RELOAD_REQ} && echo PENDING")
         log, _, rest = out.partition("@@RESULT")
+        # Other mods' own logs in /tmp_bt/mods (for example keytap.log), last 400 lines each.
+        mod_logs = {}
+        names = self.sh("cd /tmp_bt/mods 2>/dev/null && for f in *.log; do [ \"$f\" = mod_loader.log ] || echo \"$f\"; done")
+        for name in [n.strip() for n in names.splitlines() if n.strip().endswith(".log") and "*" not in n]:
+            mod_logs[name] = self.sh(f"cat /tmp_bt/mods/{name} 2>/dev/null").strip().splitlines()[-400:]
         return {"state": self.status["state"], "loader_log": log.strip().splitlines(),
-                "reload_result": rest.replace("PENDING", "").strip(), "reload_pending": "PENDING" in rest}
+                "reload_result": rest.replace("PENDING", "").strip(), "reload_pending": "PENDING" in rest,
+                "mod_logs": mod_logs}
 
     def reload(self, mod: Path, timeout: float = 30):
         """Push and request a reload. The core acts at the next menu refresh or root setup; without
@@ -333,8 +419,36 @@ class ModDev:
                 self.seen[m] = m.stat().st_mtime_ns
                 self.last[m.name] = self.reload(m) or "pending"
 
+    def bare_setup(self):
+        """Shell and helper files only: no SetContentTarget checkpoint and no Mod Loader install."""
+        self.status["state"] = "booting"
+        if self.console.wait_for(b"built-in shell (ash)", 240) < 0:
+            raise RuntimeError("no guest shell")
+        self.console.wait_for(b"# ", 30, self.console.buf.find(b"built-in shell (ash)"))
+        # im.elf mounts /setting (its mount list); the staged files are there only after that.
+        deadline = time.monotonic() + 120
+        while " /setting " not in self.sh("grep ' /setting ' /proc/mounts", 30):
+            if time.monotonic() > deadline:
+                raise RuntimeError("/setting not mounted")
+            time.sleep(2)
+        self.sh("grep -q ' /tmp_bt ' /proc/mounts || mount -t tmpfs tmpfs /tmp_bt; mkdir -p /tmp_bt/mlv2 /tmp_bt/mods")
+        # The guard binary provides the FNV check used by place(); it is copied, not run as a loader.
+        self.sh(f"cp /setting/{GUARD_NAME} {GUEST_GUARD} && chmod 700 {GUEST_GUARD}")
+        for guest_path, host_path, executable in self.extra_files:
+            self.place(guest_path, host_path)
+            if executable:
+                self.sh(f"chmod 755 {guest_path}")
+        for cmd in self.setup_cmds:
+            self.sh(cmd)
+        self.status["state"] = "installed: bare (no Sony UI, no mod loader)"
+
     def run(self, poll: float = 0.5):
         try:
+            if self.bare:
+                self.bare_setup()
+                while not self.console.closed:
+                    time.sleep(poll)
+                return
             self.wait_menu()
             self.install()
             if self.nudge:

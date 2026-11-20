@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add one file to the root directory of a FAT12/FAT16 partition image.
+"""Add one file to the root directory (or an existing subdirectory) of a FAT12/FAT16 partition image.
 
 Used by run.sh to place inputs on the guest /setting partition (nflasha2)
 inside a per-run copy, so the original eMMC image is never modified.
@@ -8,6 +8,8 @@ Refuses to overwrite: exits non-zero if the 8.3 name already exists, the
 root directory is full, or there are not enough free clusters.
 
 usage: fat_add_file.py PARTITION_IMAGE SOURCE_FILE NAME.EXT
+       fat_add_file.py PARTITION_IMAGE SOURCE_FILE DIR/NAME   (DIR must already exist in the root; the
+                       file goes into a free slot of DIR's existing clusters, e.g. mode/dmode)
 """
 
 import struct
@@ -61,21 +63,54 @@ def main() -> int:
     fat_off = reserved * bps
     fat = bytearray(img[fat_off:fat_off + fat_sectors * bps])
 
-    raw_name, case_flags = short_name(name)
+    dirname, _, leaf = name.rpartition('/')
+    raw_name, case_flags = short_name(leaf)
     root_off = fat_off + nfats * fat_sectors * bps
-    slot = None
-    for i in range(root_entries):
-        entry = img[root_off + 32 * i:root_off + 32 * i + 32]
-        if entry[0] == 0 or entry[0] == 0xE5:
-            if slot is None:
-                slot = i
+
+    def find_slot(offsets):
+        """First free 32-byte slot among the given directory entry offsets; refuse duplicates."""
+        slot = None
+        for off in offsets:
+            entry = img[off:off + 32]
+            if entry[0] == 0 or entry[0] == 0xE5:
+                if slot is None:
+                    slot = off
+                if entry[0] == 0:
+                    break
+                continue
+            if entry[11] != 0x0F and entry[:11] == raw_name:
+                raise SystemExit(f'{name} already exists; refusing to overwrite')
+        return slot
+
+    root_offsets = [root_off + 32 * i for i in range(root_entries)]
+    if dirname:
+        if '/' in dirname:
+            raise SystemExit('only one directory level is supported')
+        raw_dir, _ = short_name(dirname)
+        dir_cluster = None
+        for off in root_offsets:
+            entry = img[off:off + 32]
             if entry[0] == 0:
                 break
-            continue
-        if entry[11] != 0x0F and entry[:11] == raw_name:
-            raise SystemExit(f'{name} already exists; refusing to overwrite')
-    if slot is None:
-        raise SystemExit('root directory full')
+            if entry[0] != 0xE5 and entry[11] != 0x0F and entry[11] & 0x10 and entry[:11] == raw_dir:
+                dir_cluster = struct.unpack_from('<H', entry, 26)[0]
+                break
+        if dir_cluster is None:
+            raise SystemExit(f'directory {dirname} not found in the root')
+        offsets, c, eoc_min = [], dir_cluster, (0xFF8 if fat12 else 0xFFF8)
+        while 2 <= c < eoc_min and len(offsets) < 65536:
+            base = data_start + (c - 2) * cluster_bytes
+            offsets += [base + 32 * i for i in range(cluster_bytes // 32)]
+            c = fat_entry(fat, fat12, c)
+        slot_off = find_slot(offsets)
+        if slot_off is None:
+            raise SystemExit(f'directory {dirname} has no free slot in its clusters')
+        where = f'{dirname}/ slot {offsets.index(slot_off)}'
+    else:
+        slot_off = find_slot(root_offsets)
+        if slot_off is None:
+            raise SystemExit('root directory full')
+        where = f'root slot {(slot_off - root_off) // 32}'
 
     need = max(1, (len(data) + cluster_bytes - 1) // cluster_bytes)
     free = [n for n in range(2, clusters + 2) if fat_entry(fat, fat12, n) == 0][:need]
@@ -97,10 +132,10 @@ def main() -> int:
     entry[12] = case_flags
     struct.pack_into('<H', entry, 26, free[0])
     struct.pack_into('<I', entry, 28, len(data))
-    img[root_off + 32 * slot:root_off + 32 * slot + 32] = entry
+    img[slot_off:slot_off + 32] = entry
     open(image_path, 'wb').write(img)
     print(f'added {name} ({len(data)} B) at cluster {free[0]} '
-          f'({"FAT12" if fat12 else "FAT16"}, root slot {slot})')
+          f'({"FAT12" if fat12 else "FAT16"}, {where})')
     return 0
 
 

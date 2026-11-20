@@ -29,6 +29,9 @@
  * Arguments:
  *   entry=0xADDR     handover target virtual address (required)
  *   cpu=N            handover vCPU (default 0)
+ *   skip=N           ignore the first N privileged executions of entry (default 0;
+ *                    1 when the stock kernel itself first boots at the same address).
+ *                    User-mode (CPSR.M == USR) executions of entry are always ignored.
  *   min_setway=N     required DCCISW count (default 1024: QEMU cortex-a5
  *                    CCSIDR 0xe01fe019 = 32 KiB, 4 ways x 256 sets)
  *   park_window=N    secondary park-loop bound in instructions (default 8)
@@ -79,6 +82,8 @@ typedef struct {
 } RegSet;
 
 static uint64_t g_entry;
+static unsigned g_skip;
+static uint64_t g_entry_user_hits;
 static bool g_have_entry;
 static unsigned g_cpu;
 static unsigned g_min_setway = 1024;
@@ -601,9 +606,23 @@ static void on_exec(unsigned int cpu, void *udata)
         return;
     }
     if (op.kind == EV_ENTRY) {
+        uint32_t cpsr = 0;
         if (cpu == g_cpu && !g_checked) {
-            g_checked = true;
-            check_and_report(cpu, pc);
+            if (read_reg(g_regs[cpu].cpsr, &cpsr) && (cpsr & 0x1F) == 0x10) {
+                /* a user process executing the same virtual address is not a handover */
+                g_entry_user_hits++;
+            } else if (g_skip) {
+                g_skip--;
+                outf("handover-guard: entry 0x%08" PRIx64 " hit on cpu%u skipped "
+                     "(CPSR=0x%08x, %u skip(s) left)\n", pc, cpu, cpsr, g_skip);
+            } else {
+                g_checked = true;
+                if (g_entry_user_hits) {
+                    outf("handover-guard: %" PRIu64 " user-mode execution(s) of the entry "
+                         "address ignored\n", g_entry_user_hits);
+                }
+                check_and_report(cpu, pc);
+            }
         }
         g_mutex_unlock(&g_lock);
         return;
@@ -788,6 +807,8 @@ QEMU_PLUGIN_EXPORT int qemu_plugin_install(qemu_plugin_id_t id,
             g_have_entry = true;
         } else if (!strcmp(argv[i], "cpu")) {
             g_cpu = strtoul(v, NULL, 0);
+        } else if (!strcmp(argv[i], "skip")) {
+            g_skip = strtoul(v, NULL, 0);
         } else if (!strcmp(argv[i], "min_setway")) {
             g_min_setway = strtoul(v, NULL, 0);
         } else if (!strcmp(argv[i], "park_window")) {

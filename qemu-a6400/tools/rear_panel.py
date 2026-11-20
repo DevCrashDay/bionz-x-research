@@ -15,6 +15,7 @@ GET /emu reports the run state.
 """
 
 import argparse
+import gzip
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
@@ -116,6 +117,8 @@ def start_uvc_host(usbhost_sock: Path, state: dict, stop_event: threading.Event,
         sock.close()
 
 
+HOSTWIN_HELPER = "/tmp_bt/hostwin_get"
+
 KEYS = {
     "flash": "l",
     "menu": "m",
@@ -211,14 +214,45 @@ def serve(args, scratch, server):
     origin = f"http://127.0.0.1:{server.server_port}"
     env = dict(os.environ, RUN_DIR=str(scratch / "run"), TIMEOUT="0",
                REAR_CONTROLS="1", REAR_LCD_DIAGNOSTIC=str(int(not args.stock)),
-               QEMU_EXTRA=f"-icount shift=0,sleep=on -qmp unix:{monitor},server=on,wait=off")
+               QEMU_EXTRA=f"{os.environ.get('A6400_TIMING', '-icount shift=0,sleep=on')} "
+                          f"-qmp unix:{monitor},server=on,wait=off")
+    # A6400_TIMING overrides the timing options (default icount, E0522 section 0.6), for example
+    # A6400_TIMING="-accel tcg,thread=multi" for multi-threaded TCG speed measurements.
     if args.inputs:
         env["A6400_QEMU_DATA_DIR"] = str(moddev.ensure_linux_inputs(args.inputs))
         env["ULOGIO"] = ""                    # the captured /setting already has its ulogio.bin
+    staged = {}
     if args.loader:
         for name in ("mlv2_guard_arm", "mlv2.req"):
             shutil.copy(args.loader / name, scratch / name)
-        env["SETTING_FILES"] = moddev.setting_files(scratch / "mlv2_guard_arm", scratch / "mlv2.req")
+        # Startup files go onto the run's /setting overlay before boot instead of over the serial
+        # line (about 1.3 s per KiB): guest path -> (8.3 name, host path), copied in the guest.
+        stage_dir = scratch / "stage"
+        stage_dir.mkdir(exist_ok=True)
+        wanted = [("/tmp_bt/mlv2/core.bin", args.loader / "core.bin")]
+        if args.hostwin_helper:
+            # Host window (PA 0x50000000, see run.sh HOSTWIN): a 16 MiB shared file per run, and
+            # the guest helper that copies files out of it (POST /moddev/put uses both).
+            hostwin = scratch / "hostwin.bin"
+            with open(hostwin, "wb") as f:
+                f.truncate(16 << 20)
+            env["HOSTWIN"] = str(hostwin)
+            wanted.append((HOSTWIN_HELPER, args.hostwin_helper))
+        wanted += [(f"/tmp_bt/mods/{m.name}", m) for m in args.mod]
+        wanted += [(spec.partition("=")[0], Path(spec.partition("=")[2])) for spec in args.guest_file]
+        for i, (guest, host) in enumerate(wanted):
+            name = f"STG{i:02d}.BIN"
+            shutil.copy(host, stage_dir / name)
+            staged[guest] = (name, host)
+        extra_setting = []
+        for k, spec in enumerate(args.setting_file):
+            dst, _, src = spec.partition("=")
+            copy = stage_dir / f"SET{k:02d}"             # staged copy: run.sh needs paths without spaces
+            shutil.copy(src, copy)
+            extra_setting.append((copy, dst))
+        env["SETTING_FILES"] = moddev.setting_files(scratch / "mlv2_guard_arm", scratch / "mlv2.req",
+                                                    [(stage_dir / n, n) for n, _ in staged.values()]
+                                                    + extra_setting)
         env["SERIAL"] = f"unix:{scratch / 'serial'},server=on,wait=off"
     uvc_state = {}
     uvc_stop = threading.Event()
@@ -254,6 +288,12 @@ def serve(args, scratch, server):
 
                 extra_files = []
                 setup_cmds = []
+                for spec in args.guest_file:
+                    dst, _, src = spec.partition("=")
+                    extra_files.append((dst, Path(src), dst.endswith((".elf", "_gui")) or "/bin" in dst))
+                setup_cmds.extend(args.guest_cmd)
+                if args.hostwin_helper:
+                    extra_files.append((HOSTWIN_HELPER, args.hostwin_helper, True))
                 if args.uvc_test:
                     extra_files = [
                         ("/tmp_bt/usbg_video_a6400.ko", args.uvc_ko, False),
@@ -264,8 +304,9 @@ def serve(args, scratch, server):
                         "mknod /tmp_bt/video c 248 33",
                         "(/tmp_bt/uvc_mod_daemon </dev/null >/tmp_bt/uvc_daemon.log 2>&1 &)",
                     ]
-                dev = moddev.ModDev(console, args.loader, list(args.mod), nudge=nudge,
-                                    extra_files=extra_files, setup_cmds=setup_cmds)
+                dev = moddev.ModDev(console, args.loader, list(args.mod), nudge=None if args.bare else nudge,
+                                    extra_files=extra_files, setup_cmds=setup_cmds, staged=staged,
+                                    bare=args.bare)
                 threading.Thread(target=dev.run, daemon=True).start()
             if args.uvc_test:
                 plug_wait = None
@@ -366,6 +407,49 @@ def serve(args, scratch, server):
                             tmp.write_bytes(data)
                             os.replace(tmp, UPLOADS / name)
                             dev.request("add", UPLOADS / name)
+                        elif path == "/moddev/put":
+                            # Warm-guest file transfer: raw serial push into the running guest,
+                            # FNV-checked. Large files belong on the overlay's /setting (vfat).
+                            dst = parse_qs(url.query).get("path", [""])[0]
+                            data = body(handler, 16 << 20)
+                            t0 = time.monotonic()
+                            sent = len(data)
+                            hostwin = scratch / "hostwin.bin"
+                            if args.hostwin_helper and hostwin.exists() and len(data) <= (16 << 20) - 4096:
+                                # Host window: write header + data into the shared file, the guest
+                                # helper copies it out and checks length and FNV-1a.
+                                with open(hostwin, "r+b") as f:
+                                    f.seek(4096)
+                                    f.write(data)
+                                    f.seek(0)
+                                    f.write(pack("<4I", 0x4E495748, int(time.time()) & 0xFFFFFFFF,
+                                                 len(data), moddev.fnv1a_32(data)))
+                                    f.flush()
+                                    os.fsync(f.fileno())
+                                out = dev.sh(f"{HOSTWIN_HELPER} {dst}")
+                                if "HWIN OK" not in out:
+                                    raise RuntimeError(f"hostwin_get failed: {out.strip()[-200:]}")
+                                sent = 0
+                            elif len(data) > 16 * 1024 and "gunzip" in dev.sh("busybox --list | grep -x gunzip"):
+                                gz = gzip.compress(data, 9)
+                                sent = len(gz)
+                                dev.push(dst + ".gz", gz)
+                                dev.sh(f"busybox gunzip -c {dst}.gz > {dst}; rm -f {dst}.gz")
+                                if dev.guest_fnv(dst) != (len(data), moddev.fnv1a_32(data)):
+                                    raise RuntimeError(f"unpacked {dst} does not match")
+                            else:
+                                dev.push(dst, data)
+                            handler.reply("application/json", json.dumps(
+                                {"path": dst, "bytes": len(data), "sent": sent,
+                                 "seconds": round(time.monotonic() - t0, 2)}).encode())
+                            return
+                        elif path == "/moddev/sh":
+                            # Developer access to the disposable guest shell (same-origin + header
+                            # checked above): the body is one command, the reply its output.
+                            cmd = body(handler, 4096).decode("utf-8")
+                            out = dev.sh(cmd, 60)
+                            handler.reply("text/plain; charset=utf-8", out.encode())
+                            return
                         elif path == "/mods/watch":
                             target = moddev.host_path(json.loads(body(handler, 4096) or b"{}").get("path", ""))
                             if not target.is_file():
@@ -447,6 +531,19 @@ def main():
     parser.add_argument("--inputs", type=Path, help="Prepared camera-captured inputs (qemu_boot_inputs prepare)")
     parser.add_argument("--loader", type=Path, help="Mod Loader v2 build directory to install and watch")
     parser.add_argument("--mod", type=Path, action="append", default=[], help="SMOD file to load and hot-reload")
+    parser.add_argument("--guest-file", action="append", default=[], metavar="DST=SRC",
+                        help="with --loader: push host file SRC to guest path DST before the install")
+    parser.add_argument("--hostwin-helper", type=Path, metavar="HOSTWIN_GET",
+                        help="with --loader: enable the host window (needs a QEMU with the hostwin "
+                             "machine option) and stage this hostwin_get build as " "/tmp_bt/hostwin_get")
+    parser.add_argument("--setting-file", action="append", default=[], metavar="DIR/NAME=SRC",
+                        help="with --loader: add host file SRC to the run's /setting overlay before boot at "
+                             "DIR/NAME inside an existing directory (e.g. mode/dmode=FILE, bootin's mode file)")
+    parser.add_argument("--bare", action="store_true",
+                        help="with --loader: the boot has no Sony UI (e.g. dmode=2); wait for the shell, "
+                             "place the files, skip the SetContentTarget checkpoint and the loader install")
+    parser.add_argument("--guest-cmd", action="append", default=[], metavar="CMD",
+                        help="with --loader: guest shell command run after the files are pushed")
     parser.add_argument("--uvc-test", action="store_true",
                         help="Enable DWC3 gadget, PL330 DMA, UVC host listener, and stage USB Streaming Test")
     parser.add_argument("--uvc-plug-delay", type=float, default=0.0,

@@ -219,27 +219,27 @@ class StatusSnapshot:
 
 STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
-    as_of="2026-11-19",
+    as_of="2026-11-20",
     latest=EvidenceRef(
-        evidence_id="E0646",
-        path="docs/evidence/0646-ilce-7rm4a-physical-usb-identity-and-getmodelinfo.md",
-        date="2026-11-19",
-        title="ILCE-7RM4A answers native GetModelInfo on firmware 1.13",
+        evidence_id="E0649",
+        path="docs/evidence/0649-ilce6400-live-lens-info-linux-side-negative.md",
+        date="2026-11-20",
+        title="/dev/mem abort policy, BL lens focus decode, and live lens check",
         demonstrated=(
-            "On the owner's a7R IVA running 1.13, read-only Windows PnP shows Mass Storage 054C:0D9D "
-            "(REV_0200, USBSTOR) and PC Remote 054C:0D9F. The unchanged probe's INQUIRY returned "
-            "Sony/DSC/1.00 and GetModelInfo 7a/01 returned one Sony BUSY, then ILCE-7RM4A with product "
-            "code 0032853030 in 0.205 s, so the Mass Storage gadget running on 1.13 routes 0x7A to the "
-            "extcmd handler. "
-            "The probe's ilce_7rm4a usb_pid is now the observed 0x0D9D."
+            "Persisted /proc/klog traces a single-page /dev/mem camera reboot to PA 0x000F8000 "
+            "(FSR 0x008 external abort -> exception monitor warm reboot); tools/devmem_policy.py "
+            "defines physical access tiers, QEMU lowmem-abort=on models the abort, and SIGBUS-catching "
+            "ro_page v2 survives PA 0x000F8000 on hardware (E0647). Static av-cam.bin decode maps BL "
+            "focus commands 0x41-0x4A and 0x1C-0x3C behind the capability bitmap gate (E0648); a live "
+            "read-only check with a Sigma 18-50 F2.8 DC DN confirms ORIL lens capability data is not "
+            "retained in Linux im.elf memory (E0649)."
         ),
         boundary=(
-            "One transaction on one boot; BUSY repeatability is not established. The body was on 1.12 "
-            "until its owner updated it, correcting E0570's current-release note. No /proc, memory, "
-            "partition, root or debugger access; 0x0D9F is not among the packaged descriptors and its "
-            "source is unidentified; MTP and UVC were not observed."
+            "Catching SIGBUS covers precise aborts only, not imprecise aborts or kernel reads; "
+            "DRAM /dev/mem remains forbidden. Second-generation BL focus field units and the Sigma "
+            "mount-bus capability bitmap require a passive mount-bus capture."
         ),
-        tier="READ-ONLY PHYSICAL",
+        tier="READ-ONLY + STATIC",
     ),
     headline="Native Unicorn ash | guarded USB startup | first QEMU live-view test chart",
     cards=(

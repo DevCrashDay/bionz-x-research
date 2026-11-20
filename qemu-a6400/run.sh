@@ -30,6 +30,8 @@
 # WATCHDOG=1 (opt-in CXD4115 hardware watchdog at 0xF2402000, E0636; expiry follows
 # QEMU -action watchdog=, add e.g. QEMU_EXTRA="-icount shift=0,sleep=on -action watchdog=pause").
 # WORK_DMA=1 (opt-in work DMA copy channel at 0xF0102000, E0641).
+# LOWMEM_ABORT=1 (opt-in bus error on PA 0x000F8000 in the reserved first MiB, as on the
+# camera, E0647; guest log under -d guest_errors).
 # REAR_CONTROLS=1 (route host keys to emulated rear camera controls).
 # REAR_LCD_DIAGNOSTIC=1 (E0572 device select on the run's qcow2 overlay).
 # SERIAL (QEMU -serial backend for ttyAM0; default mon:stdio). The mod tools use a unix socket.
@@ -141,6 +143,11 @@ fi
 if [ "${REAR_CONTROLS:-0}" = 1 ]; then
     MACHINE="$MACHINE,rear-controls=on"
 fi
+# HOSTWIN=FILE: developer option, FILE mapped as shared RAM at PA 0x50000000 (16 MiB) for fast
+# test-file transfer into a running guest (tools/warm.py, tools/hostwin_get.c); not a hardware model.
+if [ -n "${HOSTWIN:-}" ]; then
+    MACHINE="$MACHINE,hostwin=$HOSTWIN"
+fi
 if [ "${USB_VBUS_TEST:-0}" = 1 ]; then
     MACHINE="$MACHINE,usb-vbus-test=on"
 fi
@@ -158,6 +165,9 @@ if [ "${WATCHDOG:-0}" = 1 ]; then
 fi
 if [ "${WORK_DMA:-0}" = 1 ]; then
     MACHINE="$MACHINE,work-dma=on"
+fi
+if [ "${LOWMEM_ABORT:-0}" = 1 ]; then
+    MACHINE="$MACHINE,lowmem-abort=on"
 fi
 LIVEVIEW_ARGS=()
 if [ -n "${LIVEVIEW_SOURCE:-}" ]; then

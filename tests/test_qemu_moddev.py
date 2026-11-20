@@ -43,6 +43,13 @@ class PushEncoding(unittest.TestCase):
         self.assertEqual(moddev.setting_files(PurePosixPath("/tmp/g"), PurePosixPath("/tmp/r")), "/tmp/g:MLV2GRD.ELF /tmp/r:MLV2.REQ")
         with self.assertRaises(ValueError):
             moddev.setting_files(PurePosixPath("/a b/g"), PurePosixPath("/tmp/r"))
+        # one existing /setting directory level, e.g. bootin's mode file
+        self.assertEqual(moddev.setting_files(PurePosixPath("/tmp/g"), PurePosixPath("/tmp/r"),
+                                              [(PurePosixPath("/tmp/d"), "mode/dmode")]),
+                         "/tmp/g:MLV2GRD.ELF /tmp/r:MLV2.REQ /tmp/d:mode/dmode")
+        for bad in ("a/b/c", "../dmode", "mode/dm de", "toolongdir/x"):
+            with self.assertRaises(ValueError):
+                moddev.setting_files(PurePosixPath("/tmp/g"), PurePosixPath("/tmp/r"), [(PurePosixPath("/tmp/d"), bad)])
 
 
 class ToolbarActions(unittest.TestCase):
