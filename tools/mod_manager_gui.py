@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import base64
 from collections import deque
-import ctypes
 from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -53,6 +52,8 @@ def _apply_windows_dark_titlebar() -> None:
     if os.name != "nt":
         return
     try:
+        import ctypes
+
         user32 = ctypes.windll.user32
         dwmapi = ctypes.windll.dwmapi
         hwnd = user32.GetActiveWindow()

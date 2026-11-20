@@ -1,7 +1,6 @@
 """Removable SD card staging and SHA-256 verified mod synchronization."""
 from __future__ import annotations
 
-import ctypes
 from datetime import datetime
 import hashlib
 import json
@@ -24,6 +23,8 @@ def _detect_windows_removable_drives() -> list[dict[str, object]]:
     drives: list[dict[str, object]] = []
     if os.name != "nt":
         return drives
+    import ctypes
+
     kernel32 = ctypes.windll.kernel32
     bitmask = kernel32.GetLogicalDrives()
     for idx in range(26):

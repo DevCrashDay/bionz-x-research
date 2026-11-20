@@ -103,6 +103,11 @@ typedef struct __attribute__((packed)) {
 /* flags bit 3: switch ON automatically the first time the core lists the file (once per
  * appearance; a user OFF sticks until the file is removed and added again). */
 #define SMOD_V2_FLAG_AUTO_ON  8u
+/* flags bit 4: command item instead of an ON/OFF switch. The Mods row shows no ON/OFF value
+ * (empty while idle, "Active" while running). Pressing an idle item switches it ON and, when ON
+ * succeeded, posts the MENU key so the menu closes to the shooting screen. Pressing a running item
+ * switches it OFF and keeps the menu open. Auto-on is ignored for command items. */
+#define SMOD_V2_FLAG_ACTION   16u
 #define SMOD_RELOC_MAGIC      0x31434c52u   /* "RLC1" */
 #define SMOD_RELOC_MAX_LIBS   8u
 #define SMOD_RELOC_MAX        1024u

@@ -6,7 +6,7 @@ An open, evidence-backed reverse-engineering, emulation (**QEMU** + **Unicorn**)
 
 **You don't need a camera to contribute.** Roughly 90% of the work is offline Python & C. Every claim below is strictly labelled by what was actually demonstrated (offline emulation, read-only observation, or physical RAM-only run), and nothing is presented as a percentage of "full firmware compatibility."
 
-> **[📦 Install & Use Camera Mods (Mod Loader v2, Touch Menu, ARRI Look)](mods/README.md)** · **[🖥️ Run QEMU Emulator (`sony-a6400`)](qemu-a6400/README.md)** · **[🔬 Develop & Hot-Reload Mods in QEMU](qemu-a6400/MOD_DEVELOPMENT.md)** · **[📷 Add a BIONZ X Camera](docs/ADDING_A_BIONZX_CAMERA.md)** · **[🎥 UVC / PTP Liveview](docs/CONTRIBUTING_UVC_PTP.md)**
+> **[🪟 1-Click Windows Mod Manager GUI](docs/MOD_MANAGER_GUI.md)** · **[📦 Install & Use Camera Mods (Mod Loader v2, Touch Menu, ARRI Look)](mods/README.md)** · **[🖥️ Run QEMU Emulator (`sony-a6400`)](qemu-a6400/README.md)** · **[🔬 Develop & Hot-Reload Mods in QEMU](qemu-a6400/MOD_DEVELOPMENT.md)** · **[📷 Add a BIONZ X Camera](docs/ADDING_A_BIONZX_CAMERA.md)** · **[🎥 UVC / PTP Liveview](docs/CONTRIBUTING_UVC_PTP.md)**
 
 ---
 
@@ -121,6 +121,19 @@ Legend: `🟢 Verified` · `🟡 Partial / Opt-in` · `⚪ Open Boundary` · `�
 | **Open Gate (3:2)** | Staged `IMX284` 3:2 (`1620×1080` / `3240×2160`) recording path via `DMM` & `ZIMA DVENC` | Offline feasibility mapped ([E0578](docs/evidence/0578-a6400-open-gate-3-2-recording-feasibility.md)); untested on hardware |
 
 👉 **[Read `mods/README.md` for step-by-step installation (QEMU & physical `ILCE-6400`)](mods/README.md)**
+
+### 🪟 Quick Start for Camera Owners (1-Click Windows GUI — No Coding Required)
+
+If you just want to install mods or unlock camera tweaks on your **`ILCE-6400`** without using the command line, use the **[BIONZ X Mod Manager GUI](docs/MOD_MANAGER_GUI.md)**:
+
+1. **One-time prerequisite (Windows 10/11):** Install **[Python 3.11+](https://www.python.org/downloads/)** and check **"Add python.exe to PATH"** at the bottom of the installer (or use a prebuilt `BionzX-Mod-Manager.exe` release bundle if you downloaded one).
+2. **Start the app:** Open this project folder and double-click **[`scripts/launch_mod_manager.bat`](scripts/launch_mod_manager.bat)**. On first run it automatically prepares its own isolated environment (`.venv-gui`) and opens the **Sony BIONZ X Mod Manager** window (or browser tab if WebView2 is unavailable).
+3. **Download official tools (first run only):** If a yellow banner appears at the top, click **Download Official Release** (or open the **Tools & Setup** tab and click **Download / Prepare Tools**). The app automatically downloads and verifies Mod Loader v2, the USB helper, and Arrivederci v5.
+4. **Connect your camera:** On the camera, go to `MENU → Setup (briefcase icon) → USB Connection` and select **Mass Storage**. Plug the camera into your computer with a data-capable USB cable and click **Scan Camera**.
+5. **Toggle mods & install in 1 click:** Switch your desired **Runtime Mods** (such as *Menu Touch Full* or *Arrivederci v5*) or **Permanent Tweaks** (such as *Unlimited Video Recording* or *Unlock All 35 Languages*) **ON** or **OFF**, then click **1-Click Install to Camera** and follow the on-screen prompt. *(On a brand-new camera, the first click sets up the USB helper and asks you to turn the camera OFF and ON once, then click **1-Click Install to Camera** one more time.)*
+6. **Use your mods on the camera:** Unplug the USB cable and open `MENU → Mods (tab 7)` on the camera to switch installed runtime mods on or off at any time. Turning the camera off clears RAM-only runtime mods back to stock firmware (**important:** always toggle **Arrivederci OFF** in `MENU → Mods` before turning the camera off).
+
+👉 **Full guides:** **[Windows Mod Manager GUI Guide (`docs/MOD_MANAGER_GUI.md`)](docs/MOD_MANAGER_GUI.md)** · **[Detailed Mod & CLI Guide (`mods/README.md`)](mods/README.md)**
 
 ---
 
