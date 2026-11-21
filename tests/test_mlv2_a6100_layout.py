@@ -60,6 +60,24 @@ class TestA6100Layout(unittest.TestCase):
             self.assertNotEqual(row['a6100'], row['a6400'])
         for row in layout.CONSTANTS.values():
             self.assertNotEqual(row['a6100'], row['a6400'])
+        for row in layout.RECT_TABLES.values():
+            self.assertNotEqual(row['a6100'], row['a6400'])
+        self.assertNotEqual(layout.V1_ANCHOR['a6100'], layout.V1_ANCHOR['a6400'])
+
+    def test_rect_tables_and_v1_anchor_resolve(self):
+        hooks = layout.verify(self.image)
+        self.assertEqual(hooks['rect_tbl1_slot6']['offset'], 0x803984)
+        self.assertEqual(hooks['rect_tbl2_slot6']['offset'], 0x803a04)
+        self.assertEqual(hooks['v1_anchor']['offset'], 0xb7a658)
+        self.assertLessEqual(hooks['v1_anchor']['offset'] + hooks['v1_anchor']['size'],
+                             hooks['v1_anchor']['page_end'])
+
+    def test_non_zero_rect_slot_is_refused(self):
+        data = bytearray(self.image)
+        off = layout.RECT_TABLES['rect_tbl1_slot6']['a6100']
+        data[off] = 1
+        with self.assertRaises(layout.LayoutMismatch):
+            layout.verify(bytes(data), expect_sha256=None)
 
 
 class TestCave(unittest.TestCase):

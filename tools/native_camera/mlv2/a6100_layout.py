@@ -89,6 +89,28 @@ HOOKS = {
                       signal='00f5c23303f52c732de9'),
 }
 
+# The two 7th-tab rectangle tables in viewUnified2.so .rodata (`15PAS_MenuListTab`).
+# In the a6400 FW 2.00 build the guard reference base is 0x155e6000 and the
+# two slot-6 addresses are 0x15de8a64 (+0x802a64) and 0x15de8ae4 (+0x802ae4).
+# Each slot-6 is preceded by the 48-byte `orig_rect_prefix` (tabs 0..5 x/y/w/h)
+# and holds 8 zero bytes at rest.  In the a6100 image that 48-byte prefix occurs
+# only at these two tables (+0x803954 and +0x8039d4).
+RECT_PREFIX = bytes.fromhex(
+    '110000005b004200670000005b004200bd0000005b004200'
+    '130100005b004200690100005b004200bf0100005b004200'
+)
+RECT_PATCH = bytes.fromhex('150200005b004200')
+RECT_TABLES = {
+    'rect_tbl1_slot6': dict(a6100=0x803984, a6400=0x802a64, prefix_off=0x803954),
+    'rect_tbl2_slot6': dict(a6100=0x803a04, a6400=0x802ae4, prefix_off=0x8039d4),
+}
+
+# `MLV2_V1_ANCHOR`: 8-byte {magic, state} slot at the exact end of viewUnified2.so
+# .bss (within the zero-filled tail of its last 4 KiB page).
+# a6400: .bss 0xb06ba8 + 0x72098 = 0xb78c40 (page ends at 0xb79000).
+# a6100: .bss 0xb07d80 + 0x728d8 = 0xb7a658 (page ends at 0xb7b000).
+V1_ANCHOR = dict(a6100=0xb7a658, a6400=0xb78c40, size=8, page_end=0xb7b000)
+
 
 class LayoutMismatch(ValueError):
     pass
@@ -138,6 +160,28 @@ def verify(image: bytes, *, expect_sha256: str | None = VIEWUNIFIED2_SHA256) -> 
             raise LayoutMismatch(f'{name}: +{row["a6100"]:#x} is {stub.hex()}, '
                                  f'expected a PLT stub {PLT_STUB_PREFIX.hex()}')
         out[name] = dict(offset=row['a6100'], symbol=row['symbol'], kind='plt')
+    prefix_hits = []
+    pos = 0
+    while True:
+        i = image.find(RECT_PREFIX, pos)
+        if i < 0:
+            break
+        prefix_hits.append(i)
+        pos = i + 1
+    expected_prefixes = [RECT_TABLES['rect_tbl1_slot6']['prefix_off'],
+                         RECT_TABLES['rect_tbl2_slot6']['prefix_off']]
+    if prefix_hits != expected_prefixes:
+        raise LayoutMismatch(f'rect_prefix: occurs at {[hex(h) for h in prefix_hits]}, '
+                             f'expected {[hex(h) for h in expected_prefixes]}')
+    for name, row in RECT_TABLES.items():
+        slot = image[row['a6100']:row['a6100'] + 8]
+        if slot != b'\x00' * 8:
+            raise LayoutMismatch(f'{name}: +{row["a6100"]:#x} is {slot.hex()}, '
+                                 f'expected 8 zero bytes')
+        out[name] = dict(offset=row['a6100'], prefix_off=row['prefix_off'],
+                         patch=RECT_PATCH)
+    out['v1_anchor'] = dict(offset=V1_ANCHOR['a6100'], size=V1_ANCHOR['size'],
+                            page_end=V1_ANCHOR['page_end'])
     return out
 
 

@@ -153,9 +153,9 @@ overrides, so a per-build port is a matter of constants:
 | --- | --- | --- | --- |
 | three hook VAs | `mlv2_guard.c`, `mlv2_trampoline.S` | `+0x5ab654`, `+0x5aba80`, `+0x5ac044` | `+0x5acc0c`, `+0x5ad038`, `+0x5ad5fc` (**resolved**) |
 | `SET_TEXT`, `SET_MODE` | `mlv2.h` | `+0x14f6d0`, `+0x155a68` | `+0x150030`, `+0x1563c8` (**resolved**) |
-| tab rectangle slots | `mlv2_guard.c` | `+0x807a04`, `+0x807a84`, `+0x807a64`, `+0x807ae4` | **ambiguous**: the 48–96 byte table signature before those slots occurs **6 times** in the a6100 image (a6400: once), so the live layout table has to be identified at runtime |
-| v1 anchor | `mlv2.h` (`+0xb78c40` in viewUnified2 `.bss`) | one free 8-byte slot | needs a free a6100 `.bss` slot |
-| event references | `core.c` | five opaque addresses | four symbols (§M3b) |
+| tab rectangle slots | `mlv2_guard.c` | `+0x802a64`, `+0x802ae4` (`0x15de8a64`, `0x15de8ae4`) | `+0x803984`, `+0x803a04` (**resolved**, §M3c) |
+| v1 anchor | `mlv2.h` (`+0xb78c40` in viewUnified2 `.bss`) | `+0xb78c40` | `+0xb7a658` (**resolved**, §M3c) |
+| event references | `core.c` | five opaque addresses | four symbols (**resolved**, §M3b) |
 
 ## M3b — the five libObj addresses are four named symbols (done)
 
@@ -231,6 +231,52 @@ Consequence: Arrivederci's a6100 port needs a runtime method, not static guessin
 `pmemsave` the av-cam region through QMP and locate the matrix by its Q10 row sums
 (≈1024 per row), then confirm the EC record's live location the same way.
 
+## M3c & M5 — Tab rectangle slots, `.bss` anchor, and emulator verification (done)
+
+### Tab rectangle slots (`RECT_TBL1_SLOT6`, `RECT_TBL2_SLOT6`) and `V1_ANCHOR`
+In `mlv2_guard.c`, the reference `viewUnified2.so` base is `0x155e6000` and the FW 2.00
+slot-6 addresses are `0x15de8a64` (`+0x802a64`) and `0x15de8ae4` (`+0x802ae4`) inside
+`15PAS_MenuListTab` in `.rodata` (an earlier reconnaissance script had subtracted
+`0x155e1000` by mistake and inspected `+0x807a04`). Each slot-6 is preceded by the 48-byte
+`orig_rect_prefix` (tabs 0..5 x/y/w/h) and holds 8 zero bytes at rest.
+
+In the a6100 `viewUnified2.so`, `orig_rect_prefix` occurs at only two offsets:
+`+0x803954` and `+0x8039d4`, giving unambiguous 8-byte zero slots at **`+0x803984`**
+and **`+0x803a04`**.
+
+Similarly, `MLV2_V1_ANCHOR` on the a6400 (`0x1615ec40 - 0x155e6000 = +0xb78c40`) sits at
+the exact end of `.bss` (`0xb06ba8 + 0x72098 = 0xb78c40`). The equivalent end-of-`.bss`
+offset on the a6100 (`0xb07d80 + 0x728d8`) is **`+0xb7a658`** (within the zero-filled tail
+before page boundary `0xb7b000`).
+
+### Build and live QEMU verification (`MLV2_TARGET=a6100`)
+Building with `CI_SKIP_SYSROOT=1 MLV2_TARGET=a6100 bash tools/native_camera/mlv2/build_wsl.sh`:
+
+| Output | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `shim.bin` | 1008 | `1f1533deff61425864534fe06b50c17f0e6d7ae38e1c96b09f5739e722211cf3` |
+| `core.bin` | 8016 (7996 code) | `63bf09c5944ea1d2db37b21ca0f5b4b7b73a4a5053aa6b3849e519e75a9667c6` |
+| `mlv2.req` | 1136 | `a9d3364e1da358c98e9717dc868c6494df53b3a341b817861fadaab03392117b` |
+| `mlv2_guard_arm` | 692524 | `178b5995a733e2e3731e9381d078d390f9d21e9bdc53c0f93090ed78fe91fa6d` |
+
+The default (`a6400`) build remains byte-identical (`bdd1ae95…`, `cd8971b3…`, `02dd9b7d…`).
+
+Booted in QEMU (`rear_panel.py --inputs artifacts/a6100-inputs --loader /tmp/mlv2-a6100-build --mod /tmp/mlv2-a6100-build/ActionTest.mod`):
+
+- Guard check: `TARGET /proc/144 view_bias=fe0bc000 testcmd_bias=ff680000 STATE hooks=stock v1_build=-1 shim=zero MLV2_RESULT=0 changed=0`
+- Guard install: `MLV2_RESULT=0 changed=1`
+- Loader log across menu open, tab 7 (`Mods 1/1 — USB Streaming Test`) ON, automatic menu close, reopen (`Active`), and OFF:
+  ```
+  core_init 00000002
+  core_view_bias fe0bc000
+  tab_icon_tab6 ffc35000
+  core_load 4afed1e8
+  mod_on 043cc000
+  action_close 043cc000
+  mod_off 043cc000
+  ```
+- Also confirmed in the running guest: the 9-int16 B8 color matrix table (`1181, -188, 31, …`) is at `Backup.bin` file offset `0x32c80` (`PA 0x02eb2c80`) and in `av-cam` runtime RAM at **`PA 0x0444b1e4`** (`+0x10` from the a6400's `0x0444b1d4`).
+
 ## Remaining work — updated
 
 | Step | Content | State |
@@ -238,9 +284,9 @@ Consequence: Arrivederci's a6100 port needs a runtime method, not static guessin
 | M2 | shim window + guard preimages | **done** (§M2) |
 | M3 | `SET_TEXT`/`SET_MODE` | **done** (§M3) |
 | M3b | five `libObj` event addresses | **done** (§M3b): resolved by symbol; the a6400 slot constant is a defect and is not ported |
-| M3c | tab rectangle table: identify the live layout table (6 candidates) instead of guessing | next; needs runtime observation in the emulator |
-| M4 | rebase `MenuTouchFull` v2 and locate `Arrivederci`'s a6100 tables | EC record address known (PA `0x03e536bc`), but it is rewritten at runtime; matrix address unknown (needs a Q10 row-sum scan of guest RAM); `MenuTouchFull` hooks still need their libObj sites |
-| M5 | emulator harness: stage `.mod` files, install the guard from the guest shell, ON/OFF receipts | toolchain **available**; guest shell **available**; needs the a6100 guard build (M3b + tab table + anchor) |
+| M3c | tab rectangle table + `.bss` anchor | **done** (§M3c): `+0x803984`, `+0x803a04`, anchor `+0xb7a658` |
+| M5 | emulator harness: build, install guard, verify 7th `Mods` tab and ON/OFF + `action_close` receipts | **done** (§M5) |
+| M4 | physical camera preflight + film-simulation mods | next |
 
 ## Boundary
 

@@ -162,8 +162,12 @@ static int node_int_prop(Node *n, int32_t prop, int32_t *out) {
  * (a fresh v2 install, QEMU) those resources are empty and the tab has no icon, so the tab then
  * uses the sixth tab's icon instead. The hook is looked up at the live libObj.so base. */
 static int mtl_present(void) {
+#ifdef MLV2_TARGET_A6100
+    return 0;   /* a6100 has no v1 ModsTabLook hook; always use the sixth tab's icon */
+#else
     if (!core_libobj_ok) return 0;
     return *(volatile uint32_t *)(MTL_HOOK_ADDR + 2u + core_libobj_bias) == 0xf000f8dfu;
+#endif
 }
 
 static int node_resid_prop(Node *n, int32_t prop, uint32_t *out) {
@@ -608,16 +612,27 @@ static const char *state_text(const Mod *m) {
 /* Post the MENU key to the firmware event manager, as MenuTouchFull does for KEY_MENU (E0520):
  * operator new(16), event constructor (id, type 4, 1), push. ILCE-6400 reference addresses in
  * libObj.so, moved by the live libObj.so base. Returns 1 when the event was queued. */
+#ifdef MLV2_TARGET_A6100
+#define REF_EVMGR_DIRECT (REF_LIBOBJ_BASE + 0x1425c70u)
+#define REF_OP_NEW       (REF_LIBOBJ_BASE + 0x000fd974u)
+#define REF_EV_CTOR      (REF_LIBOBJ_BASE + 0x00840f7du)
+#define REF_EVMGR_PUSH   (REF_LIBOBJ_BASE + 0x00842529u)
+#else
 #define REF_EVMGR_SLOT   0x07089984u
 #define REF_OP_NEW       0x05e15974u
 #define REF_EV_CTOR      0x05e14e20u
 #define REF_EVMGR_PUSH   0x05e18d5du
+#endif
 #define KEY_MENU_EVENT   0x15010102u
 static int post_menu_key(void) {
     if (!core_libobj_ok) return 0;
     uint32_t b = core_libobj_bias;
+#ifdef MLV2_TARGET_A6100
+    uint32_t mgr = *(volatile uint32_t *)(REF_EVMGR_DIRECT + b);
+#else
     uint32_t slot = *(volatile uint32_t *)(REF_EVMGR_SLOT + b);
     uint32_t mgr = slot ? *(volatile uint32_t *)slot : 0u;
+#endif
     if (!mgr) return 0;
     void *ev = ((void *(*)(uint32_t))(REF_OP_NEW + b))(16u);
     if (!ev) return 0;
