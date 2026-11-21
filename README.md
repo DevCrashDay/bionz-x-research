@@ -259,6 +259,11 @@ Run scripts as Python modules from the repo root (`python -m tools.research.<too
 
 ---
 
+External comparison: [ZV-E10 adapted-menu receipt](docs/evidence/external-zve10-menu/README.md)
+records an original English Sony menu under an AP-only adapter. It is separate
+from upstream stock-firmware boot progress and does not advance the a6400
+compatibility or test-count claims.
+
 ## Links & Attribution
 
 [Documentation index](docs/INDEX.md) · [Current state](docs/CURRENT_STATE.md) · [Evidence index](docs/evidence/README.md) · [Related research repositories](docs/RELATED_REPOSITORIES.md) · [Architecture](docs/ARCHITECTURE.md) · [Roadmap](docs/ROADMAP.md) · [Contributing](CONTRIBUTING.MD) · [Repository layout](docs/REPOSITORY.md) · [Agent rules](AGENTS.MD) · [Archived README](docs/archives/README-2026-11-09.md)
