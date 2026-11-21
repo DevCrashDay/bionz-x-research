@@ -183,7 +183,7 @@ class EvidenceRef:
 
 @dataclass(frozen=True)
 class SuiteRecord:
-    """The recorded full-suite result this documentation refresh is pinned to."""
+    """A dated passing full-suite record, which may precede the latest milestone."""
 
     test_count: int
     recorded_at: str
@@ -628,6 +628,22 @@ STATUS_SNAPSHOT = StatusSnapshot(
                 "record remains the dated E0523 baseline."
             ),
             tier="OFFLINE ORIGINAL INSTRUCTIONS + CHECKED FIXTURES",
+        ),
+        EvidenceRef(
+            evidence_id="E0675",
+            path="docs/evidence/0675-a6400a-expanded-bootstrap-review-and-full-dump-boundary.md",
+            date="2026-11-16",
+            title="Local a6400A capture integrity and expanded-scope review",
+            demonstrated=(
+                "The local E0673 60 MiB nflasha5 and E0674 2 MiB MSC LUN 1 captures matched "
+                "their recorded host hashes. E0675 reverified native identity and postflight "
+                "without acquiring any new bytes."
+            ),
+            boundary=(
+                "LUN backing is unverified. Neither a general partition reader nor a qualified "
+                "temporary bootstrap or complete firmware capture exists in this record."
+            ),
+            tier="LOCAL READ-ONLY PHYSICAL + OFFLINE REVIEW",
         ),
         EvidenceRef(
             evidence_id="E0509",
