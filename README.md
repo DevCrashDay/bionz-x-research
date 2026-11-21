@@ -254,7 +254,7 @@ maps unit `0x4092e` to its captured OSD A extent (`0x23A80000`, `0x96000`):
 the app allocates it, maps `/dev/stream` there, writes the full 614,400-byte
 frame (currently a black clear) and loads `viewUnified2.so`.
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=435fdbb50c93)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=bc8ef709fcb7)
 
 ![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
 
