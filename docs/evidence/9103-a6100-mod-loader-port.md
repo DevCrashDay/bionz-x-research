@@ -69,7 +69,7 @@ Guard preimages this build needs: `viewUnified2.so` `7bb0f245…`, `libObj.so`
 byte sequences above. All four hashes and the hook bytes are now in the layout module and
 checked by tests.
 
-## M3 — loader constants (two of seven resolved)
+## M3 — loader constants (resolved by symbol)
 
 The shim calls two Sony functions through PLT stubs. They are resolvable by **symbol
 name**, not by offset arithmetic: the `.plt` is not a constant shift of the a6400 one
@@ -81,12 +81,13 @@ because it is the generic Thumb-to-ARM veneer plus PIC constant loads).
 | `SET_TEXT` | `GEN_Label::setTextDirect(char const*)` | `0x14f6d0` | **`0x150030`** |
 | `SET_MODE` | `ux::wgtsys::Widget::setMode(WidgetMode)` | `0x155a68` | **`0x1563c8`** |
 
-Still unresolved are the five `libObj`-local addresses the core uses for the
-enter/confirm event (`REF_OP_NEW` `+0x0fd974`, `REF_EV_CTOR` `+0x0fce20`,
-`REF_EVMGR_PUSH` `+0x100d5d`, `REF_EVMGR_SLOT` `+0x1371984`, and the alcor index hook at
-`+0x79d4b6`). Neither build exports a symbol at those offsets (both have the same 1901
-exported symbols), so they need structural identification: disassemble the a6400 site,
-take its constants and shape, and match inside the a6100 `libObj.so`.
+The five `libObj`-local addresses the core uses for the enter/confirm event
+(`REF_OP_NEW`, `REF_EV_CTOR`, `REF_EVMGR_PUSH`, `REF_EVMGR_SLOT`) turned out to be four
+named symbols; see §M3b. The fifth, the alcor index hook at `+0x79d4b6` (`MTL_HOOK_ADDR`,
+the `ModsTabLook` tab-artwork hook), is a genuine instruction site and is still
+unresolved. It is optional for v2: `core.c` tests for the hook and falls back to the
+sixth tab's icon when it is absent, so a missing port costs the tab icon, not the loader.
+
 
 ## Toolchain (now installed, root-free)
 
@@ -154,11 +155,56 @@ overrides, so a per-build port is a matter of constants:
 | `SET_TEXT`, `SET_MODE` | `mlv2.h` | `+0x14f6d0`, `+0x155a68` | `+0x150030`, `+0x1563c8` (**resolved**) |
 | tab rectangle slots | `mlv2_guard.c` | `+0x807a04`, `+0x807a84`, `+0x807a64`, `+0x807ae4` | **ambiguous**: the 48–96 byte table signature before those slots occurs **6 times** in the a6100 image (a6400: once), so the live layout table has to be identified at runtime |
 | v1 anchor | `mlv2.h` (`+0xb78c40` in viewUnified2 `.bss`) | one free 8-byte slot | needs a free a6100 `.bss` slot |
-| event manager (5) | `core.c` | `libObj +0xfd974` (new), `+0xfce20` (ctor), `+0x100d5d` (push), RW slot file `+0x1369984` | **unresolved**: both builds are stripped (1,901 dynsyms, no symbol at those offsets), so these need structural matching |
+| event references | `core.c` | five opaque addresses | four symbols (§M3b) |
 
-The three functions and the data slot were located precisely: they fall inside libObj's RX
-mapping (`0x05d18000 + offset`) and, for the slot, inside its RW mapping (file offset
-`0x1369984`). That is where the remaining RE work is.
+## M3b — the five libObj addresses are four named symbols (done)
+
+They are not opaque code sites. Disassembling the a6400 addresses shows PLT veneers and a
+GOT cell, so the whole set resolves from the dynamic symbol table, which both builds
+export (2,547 dynamic symbols, no `.symtab` in either):
+
+| `core.c` name | a6400 | a6100 | Symbol |
+| --- | --- | --- | --- |
+| `REF_OP_NEW` | `0xfd974` | `0xfd974` | `_Znwj` (PLT; imported from libstdc++) |
+| `REF_EV_CTOR` | `0xfce20` | `0xfce20` | `_ZN5EventC1Emhh` (PLT; also defined at `0x840f7d`) |
+| `REF_EVMGR_PUSH` | `0x100d5d` | `0x100d60` | `_ZN12EventManager4pushEP5Eventb` (also defined at `0x842529`) |
+| `REF_EVMGR_SLOT` | `0x07089984` | see below | `g_pEvtMgr` |
+
+The method, and its check: `.rel.plt` binds each PLT entry to a GOT slot; decoding the
+three ARM instructions of each veneer (`add ip, pc, #A; add ip, ip, #B; ldr pc, [ip, #C]`)
+recovers that slot, and the slot names the symbol. All **2,547 of 2,547** PLT entries
+resolve this way in both builds, and the three addresses above are reproduced exactly for
+the a6400 — the same numbers the shipped loader uses.
+
+The PLT addresses happen to be identical in both builds because `.rel.plt` and `.plt` have
+the same size and order; the veneer *displacements* differ (`24febce5` vs `24fdbce5`), so
+matching on bytes would have failed. Matching on the symbol is what makes the port safe.
+
+`a6100_layout.py` now resolves these four by name, with a 16-byte signal per site that must
+be unique in the image, and records the a6100 definitions (`Event::Event` `0x840f7d`,
+`EventManager::push` `0x842529`) as the preferred call targets.
+
+### The data slot: the a6400 constant reads the wrong cell
+
+`REF_EVMGR_SLOT` is a GOT address, and the address rule is now pinned: the RW LOAD has
+`p_vaddr - p_offset = 0x8000`, so a runtime address is
+`rw_lo + (elf_va - (rw_pgoff + 0x8000))`. With the a6400 maps line
+(`0x07016000`, pgoff `0x012f6000`) this reproduces the shipped constant exactly:
+
+```
+libobj_runtime(0x1371984, 0x07016000, 0x012f6000) == 0x07089984
+```
+
+But `0x1371984` is an `R_ARM_RELATIVE` GOT entry holding `0x00d5b359`, a `.text` address —
+it is **not** `g_pEvtMgr`'s `R_ARM_GLOB_DAT` cell, which is at `0x1371044`. `core.c` reads
+that cell and then dereferences it a second time, so `mgr` would be four bytes of code
+(`0x8a47f0e9` at `0xd5b359`). The singleton itself is at ELF `0x1424d70`, i.e. runtime
+`0x0713cd70` in the anonymous mapping that continues libObj's RW segment.
+
+So the a6100 build must **not** port `REF_EVMGR_SLOT`. It reads `g_pEvtMgr` once at the
+address the rule above produces (`0x1425c70` + mapping). That is a one-line change with a
+smaller blast radius than the a6400 code, and the a6400 defect is recorded here rather
+than copied.
 
 ## Arrivederci on the a6100: what the data says (no port claimed)
 
@@ -190,12 +236,11 @@ Consequence: Arrivederci's a6100 port needs a runtime method, not static guessin
 | Step | Content | State |
 | --- | --- | --- |
 | M2 | shim window + guard preimages | **done** (§M2) |
-| M3 | `SET_TEXT`/`SET_MODE` | **done**; five `libObj`-local event addresses remain |
-| M3b | structural match of the five `libObj` addresses | next; needs disassembly of the a6400 sites |
+| M3 | `SET_TEXT`/`SET_MODE` | **done** (§M3) |
+| M3b | five `libObj` event addresses | **done** (§M3b): resolved by symbol; the a6400 slot constant is a defect and is not ported |
+| M3c | tab rectangle table: identify the live layout table (6 candidates) instead of guessing | next; needs runtime observation in the emulator |
 | M4 | rebase `MenuTouchFull` v2 and locate `Arrivederci`'s a6100 tables | EC record address known (PA `0x03e536bc`), but it is rewritten at runtime; matrix address unknown (needs a Q10 row-sum scan of guest RAM); `MenuTouchFull` hooks still need their libObj sites |
 | M5 | emulator harness: stage `.mod` files, install the guard from the guest shell, ON/OFF receipts | toolchain **available**; guest shell **available**; needs the a6100 guard build (M3b + tab table + anchor) |
-| M3c | tab rectangle table: identify the live layout table (6 candidates) instead of guessing | runtime observation in the emulator |
-| M4 | rebase `MenuTouchFull` v2 and locate `Arrivederci`'s a6100 tables | EC record address known (PA `0x03e536bc`), but it is rewritten at runtime; matrix address unknown (needs a Q10 row-sum scan of guest RAM); `MenuTouchFull` hooks still need their libObj sites |
 
 ## Boundary
 

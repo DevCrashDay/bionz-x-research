@@ -85,5 +85,63 @@ class TestCave(unittest.TestCase):
         self.assertEqual(hashlib.sha256(self.lib).hexdigest(), layout.TESTCMD_SHA256)
 
 
+class TestLibObjEvents(unittest.TestCase):
+    """The a6400 core's five opaque libObj addresses are four named symbols."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.path = ROOT / 'artifacts/a6100-pp/extract/a6100-lib/libObj.so'
+        if not cls.path.is_file():
+            raise unittest.SkipTest('a6100 libObj.so is not present in this checkout')
+        cls.image = cls.path.read_bytes()
+
+    def test_all_four_references_resolve(self):
+        events = layout.verify_libobj(self.image)
+        self.assertEqual(events['event_new']['offset'], 0xfd974)
+        self.assertEqual(events['event_ctor']['offset'], 0x840f7d)
+        self.assertEqual(events['event_push']['offset'], 0x842529)
+        self.assertEqual(events['event_mgr']['offset'], 0x1425c70)
+
+    def test_symbols_are_the_a6400_ones(self):
+        events = layout.verify_libobj(self.image)
+        self.assertEqual(events['event_new']['symbol'], '_Znwj')
+        self.assertEqual(events['event_ctor']['symbol'], '_ZN5EventC1Emhh')
+        self.assertEqual(events['event_push']['symbol'],
+                         '_ZN12EventManager4pushEP5Eventb')
+        self.assertEqual(events['event_mgr']['symbol'], 'g_pEvtMgr')
+
+    def test_unknown_build_is_refused(self):
+        with self.assertRaises(layout.LayoutMismatch):
+            layout.verify_libobj(self.image + b'\0')
+
+    def test_moved_site_is_refused(self):
+        data = bytearray(self.image)
+        off = layout.LIBOBJ_EVENTS['event_push']['a6100']
+        data[off:off + 2] = b'\x00\x00'
+        with self.assertRaises(layout.LayoutMismatch):
+            layout.verify_libobj(bytes(data))
+
+    def test_a6400_definitions_are_not_reused(self):
+        for name in ('event_ctor', 'event_push', 'event_mgr'):
+            row = layout.LIBOBJ_EVENTS[name]
+            self.assertNotEqual(row['a6100'], row['a6400'], name)
+
+    def test_runtime_rule_reproduces_the_shipped_a6400_constant(self):
+        # The shipped loader addresses g_pEvtMgr's GOT entry as 0x07089984; the
+        # same cell is ELF 0x1371984 in the a6400 image, with the RW maps line
+        # 0x07016000 / pgoff 0x012f6000.
+        self.assertEqual(layout.libobj_runtime(0x1371984, 0x07016000, 0x012f6000),
+                         0x07089984)
+        # The singleton itself is 0x940 lower in .bss and lands in the anonymous
+        # mapping that continues libObj's RW segment.
+        self.assertEqual(layout.libobj_runtime(0x1424d70, 0x07016000, 0x012f6000),
+                         0x0713cd70)
+
+    def test_a6100_segment_is_page_rounded_like_the_a6400_one(self):
+        seg = layout.LIBOBJ_SEGMENT
+        self.assertEqual(seg['p_vaddr'] - seg['p_offset'], seg['gap'])
+        self.assertEqual((seg['p_offset'] + 0xfff) & ~0xfff, 0x12f7000)
+
+
 if __name__ == '__main__':
     unittest.main()

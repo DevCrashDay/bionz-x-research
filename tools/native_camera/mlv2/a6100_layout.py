@@ -13,6 +13,7 @@ a6400 constants.
 from __future__ import annotations
 
 import hashlib
+import struct
 from pathlib import Path
 
 # SHA-256 of the modules the loader touches in the ILCE-6100 V1.00 root filesystem.
@@ -39,6 +40,38 @@ CONSTANTS = {
 }
 
 PLT_STUB_PREFIX = bytes.fromhex('7847c046')  # bx pc; nop (Thumb -> ARM veneer)
+
+# The five libObj references the a6400 core used to post a MENU key are symbols,
+# not opaque offsets: three are functions the DSO defines itself and one is the
+# EventManager singleton pointer.  They are resolved by name from the dynamic
+# symbol table, so a build whose .plt or .text moves cannot silently mismatch.
+# `event_new` stays a PLT stub because operator new is imported from libstdc++.
+LIBOBJ_EVENTS = {
+    'event_new': dict(kind='plt', a6100=0xfd974, a6400=0xfd974,
+                      symbol='_Znwj',
+                      signal='12c68fe26dca8ce224fdbce512c68fe2'),
+    'event_ctor': dict(kind='func', a6100=0x840f7d, a6400=0x840fed,
+                       symbol='_ZN5EventC1Emhh',
+                       signal='b50446416000af027243721420bcf4f4'),
+    'event_push': dict(kind='func', a6100=0x842529, a6400=0x842599,
+                       symbol='_ZN12EventManager4pushEP5Eventb',
+                       signal='e9f04184b0044602af08460d461646ff'),
+    'event_mgr': dict(kind='object', a6100=0x1425c70, a6400=0x1424d70,
+                      symbol='g_pEvtMgr', signal=None),
+}
+
+# `g_pEvtMgr` lives in .bss, so it has no file bytes to match.  Its GOT entry is
+# still verifiable: the .rel.dyn record that binds it is (r_offset, r_info) with
+# r_info = (symbol index 2361 << 8) | R_ARM_GLOB_DAT, unique in the image.
+GOT_RELOC = dict(got=0x1371f44, r_info=0x93915, file=0xcc1c8)
+
+# libObj's RW LOAD.  The kernel maps the segment at the page containing
+# p_offset, so the runtime address of an ELF virtual address is
+#   rw_lo + (elf_va - (rw_pgoff + gap)),  gap = p_vaddr - p_offset.
+# `gap` is 0x8000 in both builds.  Checked against the a6400 constant the
+# shipped loader uses: libobj_runtime(0x1371984, 0x07016000, 0x012f6000)
+# returns 0x07089984.
+LIBOBJ_SEGMENT = dict(p_vaddr=0x12fe5bc, p_offset=0x12f65bc, gap=0x8000)
 
 # site -> a6100/a6400 offsets, the bytes the trampoline replays (`original`,
 # `replay` bytes) and a longer unique locator (`signal`). The replayed bytes are
@@ -105,6 +138,47 @@ def verify(image: bytes, *, expect_sha256: str | None = VIEWUNIFIED2_SHA256) -> 
             raise LayoutMismatch(f'{name}: +{row["a6100"]:#x} is {stub.hex()}, '
                                  f'expected a PLT stub {PLT_STUB_PREFIX.hex()}')
         out[name] = dict(offset=row['a6100'], symbol=row['symbol'], kind='plt')
+    return out
+
+
+def libobj_runtime(elf_va: int, rw_lo: int, rw_pgoff: int) -> int:
+    """Runtime address of a libObj ELF virtual address, from its RW maps line.
+
+    `rw_lo`/`rw_pgoff` come from `/proc/<pid>/maps`; the page-rounded file
+    offset means the mapping starts `gap` bytes into the segment, not at
+    p_vaddr.  Works for the file-backed part and for the anonymous .bss
+    mapping that follows it, because both continue the same linear layout.
+    """
+    return rw_lo + (elf_va - (rw_pgoff + LIBOBJ_SEGMENT['gap']))
+
+
+def verify_libobj(image: bytes) -> dict:
+    """Resolve the four event references, or raise if the image is not this build."""
+    actual = sha256(image)
+    if actual != LIBOBJ_SHA256:
+        raise LayoutMismatch(f'libObj SHA-256 {actual} is not the a6100 build '
+                             f'{LIBOBJ_SHA256}')
+    out = {}
+    for name, row in LIBOBJ_EVENTS.items():
+        if row['signal'] is None:
+            out[name] = dict(offset=row['a6100'], symbol=row['symbol'],
+                             kind=row['kind'])
+            continue
+        signal = bytes.fromhex(row['signal'])
+        at = image[row['a6100']:row['a6100'] + len(signal)]
+        if at != signal:
+            raise LayoutMismatch(f'{name}: bytes at +{row["a6100"]:#x} are '
+                                 f'{at.hex()}, expected {signal.hex()}')
+        if image.count(signal) != 1:
+            raise LayoutMismatch(f'{name}: signal occurs {image.count(signal)} '
+                                 f'times, expected once')
+        out[name] = dict(offset=row['a6100'], symbol=row['symbol'],
+                         kind=row['kind'], signal=signal)
+    record = struct.pack('<II', GOT_RELOC['got'], GOT_RELOC['r_info'])
+    if image.count(record) != 1 or \
+            image[GOT_RELOC['file']:GOT_RELOC['file'] + 8] != record:
+        raise LayoutMismatch('event_mgr: g_pEvtMgr GOT relocation is not at '
+                             f'+{GOT_RELOC["got"]:#x}')
     return out
 
 
