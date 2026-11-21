@@ -91,12 +91,28 @@ def serial_readiness(text: str, shell_seen: bool, marker_seen: bool,
     return shell_seen, marker_seen
 
 
+class QmpDisconnected(RuntimeError):
+    """The peer closed the read side; ordinary QMP requests still fail."""
+
+
 class Qmp:
-    def __init__(self, path: Path, deadline: float):
+    def __init__(self, path: Path | tuple[str, int], deadline: float):
         self.deadline, self.ident = deadline, 0
-        self.socket = socket.socket(socket.AF_UNIX)
+        if isinstance(path, tuple):
+            host, port = path
+            if host != '127.0.0.1' or type(port) is not int or not 1 <= port <= 65535:
+                raise ValueError('TCP QMP must use a numeric loopback endpoint')
+            self.socket = socket.socket(socket.AF_INET)
+            endpoint = path
+        else:
+            self.socket = socket.socket(socket.AF_UNIX)
+            endpoint = str(path)
         self.socket.settimeout(5)
-        self.socket.connect(str(path))
+        try:
+            self.socket.connect(endpoint)
+        except OSError:
+            self.socket.close()
+            raise
         self.stream = self.socket.makefile('rwb', buffering=0)
         self.events = []
         self.greeting = self.read()
@@ -109,8 +125,13 @@ class Qmp:
         if remaining <= 0:
             raise TimeoutError('QMP observation deadline exceeded')
         self.socket.settimeout(min(5, remaining))
-        line = self.stream.readline(1024 * 1024 + 1)
-        if not line or len(line) > 1024 * 1024:
+        try:
+            line = self.stream.readline(1024 * 1024 + 1)
+        except ConnectionResetError as error:
+            raise QmpDisconnected('QMP peer reset the connection before its reply') from error
+        if not line:
+            raise QmpDisconnected('QMP response is absent')
+        if len(line) > 1024 * 1024:
             raise RuntimeError('QMP response is absent or exceeds 1 MiB')
         return json.loads(line)
 
@@ -130,6 +151,19 @@ class Qmp:
                 return result
         self.events.extend(item for item in pending if not (isinstance(item, dict) and item.get('id') == self.ident))
         raise RuntimeError('QMP response message bound exceeded')
+
+    def quit(self, process: subprocess.Popen, *, timeout: float = 10) -> int:
+        # QEMU qapi/control.json @quit explicitly permits EOF before its reply.
+        # Accept read-side closure only for quit, and require a normal exit.
+        # A send failure, protocol error, timeout or nonzero exit still fails.
+        try:
+            self.request('quit')
+        except QmpDisconnected:
+            pass
+        returncode = process.wait(timeout=timeout)
+        if returncode != 0:
+            raise RuntimeError(f'QEMU quit with nonzero status: {returncode}')
+        return returncode
 
     def close(self):
         self.stream.close()

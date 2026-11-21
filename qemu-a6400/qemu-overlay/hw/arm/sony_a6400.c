@@ -1016,6 +1016,23 @@ static void sony_set_ddrb_control(Object *obj, bool enabled, Error **errp)
  * QEMU's generic arm_load_kernel() cannot express this layout, so the
  * machine loads the images itself and enters the kernel on CPU reset.
  */
+/* Adapted ZV-E10 UI kernel layout; never selected by the stock profile. */
+static bool sony_a6400_zve10_menu_boot;
+
+static bool sony_get_zve10_menu_boot(Object *obj, Error **errp)
+{
+    return sony_a6400_zve10_menu_boot;
+}
+
+static void sony_set_zve10_menu_boot(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "zve10-menu-boot is a startup-only policy");
+        return;
+    }
+    sony_a6400_zve10_menu_boot = enabled;
+}
+
 #define CXD90045_KERNEL_LOAD     0x00108000ULL
 #define CXD90045_INITRD_LOAD     0x00700000ULL
 #define CXD90045_INITRD_MAX      0x00800000ULL
@@ -1141,6 +1158,11 @@ static void sony_a6400_write_stubs(unsigned ncpu)
     for (int i = 0; i < 20; i++) {
         blob0[i] = cpu_to_le32(cxd90045_stub0[i]);
     }
+    if (sony_a6400_zve10_menu_boot) {
+        /* ARM immediate encoding: mov pc, #0x138000. */
+        blob0[13] = cpu_to_le32(0xe3a0f94e);
+        blob0[19] = cpu_to_le32(0x100); /* adapted kernel uses Linux ATAGS */
+    }
     cxd90045_spi_targets(&blob0[20], ncpu);
     rom_add_blob_fixed("sony_a6400.stub0", blob0, sizeof(blob0),
                        CXD90045_STUB0);
@@ -1182,13 +1204,53 @@ static void sony_a6400_cpu_reset(void *opaque)
     }
 }
 
+/* Standard Linux ATAGS for the rebuilt UI kernel, not the stock Sony ABI. */
+static void sony_a6400_menu_atags(MachineState *machine, uint32_t initrd_size)
+{
+    const char *cmdline = machine->kernel_cmdline ? machine->kernel_cmdline : "";
+    size_t cmd_words = (strlen(cmdline) + 1 + 3) / 4;
+    size_t count = 5 + 4 + 4 + 2 + cmd_words + 2;
+    if (count * 4 > CXD90045_STUB0 - 0x100) {
+        error_report("sony-a6400: adapted menu ATAGS exceed reserved space");
+        exit(1);
+    }
+    g_autofree uint32_t *tags = g_new0(uint32_t, count);
+    uint32_t *p = tags;
+
+    *p++ = cpu_to_le32(5);
+    *p++ = cpu_to_le32(0x54410001); /* ATAG_CORE */
+    p += 3;
+    *p++ = cpu_to_le32(4);
+    *p++ = cpu_to_le32(0x54410002); /* ATAG_MEM */
+    *p++ = cpu_to_le32(0x40000000);
+    *p++ = 0;
+    *p++ = cpu_to_le32(4);
+    *p++ = cpu_to_le32(0x54420005); /* ATAG_INITRD2 */
+    *p++ = cpu_to_le32(0x10000000);
+    *p++ = cpu_to_le32(initrd_size);
+    *p++ = cpu_to_le32(2 + cmd_words);
+    *p++ = cpu_to_le32(0x54410009); /* ATAG_CMDLINE */
+    memcpy(p, cmdline, strlen(cmdline) + 1);
+    rom_add_blob_fixed("sony_a6400.menu_atags", tags, count * 4, 0x100);
+}
+
 static void sony_a6400_load_boot_contract(MachineState *machine,
                                           ARMCPU **cpus, unsigned ncpu)
 {
     const char *append = machine->kernel_cmdline ? machine->kernel_cmdline : "";
     g_autofree char *params = NULL;
     ssize_t size;
+    hwaddr kernel_load = sony_a6400_zve10_menu_boot ?
+                          0x00138000 : CXD90045_KERNEL_LOAD;
+    hwaddr initrd_load = sony_a6400_zve10_menu_boot ?
+                          0x10000000 : CXD90045_INITRD_LOAD;
+    uint64_t initrd_max = sony_a6400_zve10_menu_boot ?
+                          0x10000000 : CXD90045_INITRD_MAX;
 
+    if (sony_a6400_zve10_menu_boot && ncpu != 1) {
+        error_report("sony-a6400: adapted ZV-E10 menu requires -smp 1");
+        exit(1);
+    }
     for (unsigned i = 0; i < ncpu; i++) {
         qemu_register_reset(sony_a6400_cpu_reset, cpus[i]);
     }
@@ -1197,8 +1259,8 @@ static void sony_a6400_load_boot_contract(MachineState *machine,
         return;
     }
 
-    size = load_image_targphys(machine->kernel_filename, CXD90045_KERNEL_LOAD,
-                               CXD90045_INITRD_LOAD - CXD90045_KERNEL_LOAD,
+    size = load_image_targphys(machine->kernel_filename, kernel_load,
+                               initrd_load - kernel_load,
                                &error_fatal);
     if (size <= 0) {
         error_report("sony-a6400: could not load kernel '%s'",
@@ -1208,13 +1270,17 @@ static void sony_a6400_load_boot_contract(MachineState *machine,
 
     if (machine->initrd_filename) {
         size = load_image_targphys(machine->initrd_filename,
-                                   CXD90045_INITRD_LOAD, CXD90045_INITRD_MAX,
+                                   initrd_load, initrd_max,
                                    &error_fatal);
         if (size <= 0) {
             error_report("sony-a6400: could not load initrd '%s'",
                          machine->initrd_filename);
             exit(1);
         }
+    }
+
+    if (sony_a6400_zve10_menu_boot) {
+        sony_a6400_menu_atags(machine, machine->initrd_filename ? size : 0);
     }
 
     params = g_str_has_prefix(append, "kemco") ? g_strdup(append)
@@ -2374,12 +2440,17 @@ static void sony_a6400_init(MachineState *machine)
         sony_a6400_create_lowmem_abort(sysmem, cpus, ncpu);
     }
     if (sony_a6400_hostwin && *sony_a6400_hostwin) {
+#ifdef _WIN32
+        error_report("sony-a6400: hostwin requires a POSIX host");
+        exit(1);
+#else
         MemoryRegion *win = g_new0(MemoryRegion, 1);
         if (!memory_region_init_ram_from_file(win, NULL, "a6400.hostwin", CXD90045_HOSTWIN_SIZE,
                                               0, RAM_SHARED, sony_a6400_hostwin, 0, &error_fatal)) {
             exit(1);
         }
         memory_region_add_subregion_overlap(sysmem, CXD90045_HOSTWIN_PA, win, 10);
+#endif
     }
 
     /*
@@ -2968,6 +3039,12 @@ static void sony_a6400_machine_init(MachineClass *mc)
     object_class_property_set_description(OBJECT_CLASS(mc), "work-dma",
         "Model the work DMA copy channel at 0xF0102000 (+0x1C0, mode "
         "0x1C491000 only; E0641)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "zve10-menu-boot",
+                                   sony_get_zve10_menu_boot,
+                                   sony_set_zve10_menu_boot);
+    object_class_property_set_description(OBJECT_CLASS(mc), "zve10-menu-boot",
+        "Opt in to the adapted ZV-E10 UI kernel layout (single CPU, "
+        "kernel 0x138000, initrd 0x10000000, maximum 256 MiB)");
     object_class_property_add_bool(OBJECT_CLASS(mc), "ddrb-control",
                                    sony_get_ddrb_control, sony_set_ddrb_control);
     object_class_property_set_description(OBJECT_CLASS(mc), "ddrb-control",

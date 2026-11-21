@@ -21,6 +21,8 @@ Central navigation map for the Sony BIONZ X (`CXD90045`) universal emulator and 
 | [CURRENT_STATE.md](CURRENT_STATE.md) | Active checkpoint across all four tracks (L2 Boot, L3 App/GUI, Track B UVC/PTP, Multi-Device) |
 | [REPOSITORY.md](REPOSITORY.md) | Repository layout, module launch paths, and structural CI checks |
 | [RELATED_REPOSITORIES.md](RELATED_REPOSITORIES.md) | Agent-facing catalog of related Sony research repositories, starting points, provenance rules and cross-model transfer limits |
+| [Adapted ZV-E10 menu integration](ZVE10_ADAPTED_MENU.md) | Explicit upstream QEMU boot profile, checked inputs, native UART replay and VPH scanout checks |
+| [External ZV-E10 menu receipt](evidence/external-zve10-menu/README.md) | Contributor-local adapted menu, English screenshots and boundaries; not an upstream stock-boot milestone |
 | [LIVE_CAMERA_EMULATOR_WORKFLOW.md](LIVE_CAMERA_EMULATOR_WORKFLOW.md) | Safe read-only live camera observation and emulator handoff workflow |
 | [NATIVE_USB_DEBUGGER.md](NATIVE_USB_DEBUGGER.md) | Native USB debugger protocol and safety rules |
 | [A6400A Jiritsu packet mapping](evidence/0525-a6400a-jiritsu-senser-offline-packets.md) | Packaged service dispatch, Senser/OSAL layouts and reproducible offline packet fixtures; no USB backend |

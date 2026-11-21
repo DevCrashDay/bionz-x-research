@@ -2,6 +2,9 @@
 
 Out-of-tree QEMU v11.1.3 overlay and patch for the Sony ILCE-6400 (`CXD90045` / `ARM-CXD900X0`), modeled after the clean `qemu-overlay/` + `patches/` pattern used by `Oein/a5000-emulator`. The previous 10.1.0 build and evidence remain preserved. See [verified tool versions, regression results and rollback](../docs/TOOLCHAIN.md).
 
+An explicit [adapted ZV-E10 menu experiment](../docs/ZVE10_ADAPTED_MENU.md)
+uses this board with a separate boot policy and checked private inputs.
+
 ## Prerequisites (WSL2 Ubuntu)
 
 Install the QEMU build dependencies in WSL2 Ubuntu:
