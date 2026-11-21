@@ -22,7 +22,10 @@ class TestUsbDebuggerCompat(unittest.TestCase):
         targets = list_debugger_targets()
         self.assertIn("ilce_6400", targets)
         self.assertIn("ilce_7c", targets)
+        self.assertIn("zv_e10", targets)
         self.assertEqual(get_debugger_target("ILCE-7C").target_id, "ilce_7c")
+        self.assertEqual(get_debugger_target("ZV-E10").target_id, "zv_e10")
+        self.assertEqual(get_debugger_target("zve10").target_id, "zv_e10")
 
     def test_unknown_target_raises(self):
         with self.assertRaises(KeyError):
