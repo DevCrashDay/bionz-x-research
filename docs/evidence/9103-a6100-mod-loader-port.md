@@ -125,6 +125,41 @@ needed for the SD-card boot package, not for the RAM install through the guard.
   prefix, or a cave that no longer fits the page.
 - Nine tests covering those cases and asserting the a6400 offsets are not silently reused.
 
+## M5 path: the emulated guest has a root shell
+
+The a6100 run's serial console is a root shell, not just kernel log. A second QEMU instance
+started with `SERIAL=unix:/tmp/a6100-serial.sock,server=on,wait=off` answered:
+
+```
+/ # echo MARK-$$
+MARK-141
+/ # ls /tmp_bt
+ble_local_keys  bsa_s_pid  bt-avk-fifo
+```
+
+So the emulator has an injection path after all: stage the loader files through
+`SETTING_FILES` (they land in `/setting` on the disposable overlay), copy them to
+`/tmp_bt`, and run the guard from the shell. No host-side memory poking is needed.
+
+## What the guard needs, and what is still a6400-specific
+
+The guard is better factored than expected: it finds the `im.elf` process, takes each
+library base from `/proc/<pid>/maps` by leaf name, and computes `view_bias`/`testcmd_bias`
+against its reference bases. It is already built with `-DMLV2_VIEW_BASE`/`-DMLV2_SHIM_ADDR`
+overrides, so a per-build port is a matter of constants:
+
+| Constant | Where | a6400 | a6100 |
+| --- | --- | --- | --- |
+| three hook VAs | `mlv2_guard.c`, `mlv2_trampoline.S` | `+0x5ab654`, `+0x5aba80`, `+0x5ac044` | `+0x5acc0c`, `+0x5ad038`, `+0x5ad5fc` (**resolved**) |
+| `SET_TEXT`, `SET_MODE` | `mlv2.h` | `+0x14f6d0`, `+0x155a68` | `+0x150030`, `+0x1563c8` (**resolved**) |
+| tab rectangle slots | `mlv2_guard.c` | `+0x807a04`, `+0x807a84`, `+0x807a64`, `+0x807ae4` | **ambiguous**: the 48–96 byte table signature before those slots occurs **6 times** in the a6100 image (a6400: once), so the live layout table has to be identified at runtime |
+| v1 anchor | `mlv2.h` (`+0xb78c40` in viewUnified2 `.bss`) | one free 8-byte slot | needs a free a6100 `.bss` slot |
+| event manager (5) | `core.c` | `libObj +0xfd974` (new), `+0xfce20` (ctor), `+0x100d5d` (push), RW slot file `+0x1369984` | **unresolved**: both builds are stripped (1,901 dynsyms, no symbol at those offsets), so these need structural matching |
+
+The three functions and the data slot were located precisely: they fall inside libObj's RX
+mapping (`0x05d18000 + offset`) and, for the slot, inside its RW mapping (file offset
+`0x1369984`). That is where the remaining RE work is.
+
 ## Remaining work — updated
 
 | Step | Content | State |
@@ -133,7 +168,9 @@ needed for the SD-card boot package, not for the RAM install through the guard.
 | M3 | `SET_TEXT`/`SET_MODE` | **done**; five `libObj`-local event addresses remain |
 | M3b | structural match of the five `libObj` addresses | next; needs disassembly of the a6400 sites |
 | M4 | rebase `MenuTouchFull` v2 and locate `Arrivederci`'s a6100 tables | per-site mapping + av-cam table discovery |
-| M5 | emulator harness: stage `.mod` files, apply the shim through QMP/gdbstub, ON/OFF receipts | needs the binaries, i.e. the ARM toolchain — **now available** |
+| M5 | emulator harness: stage `.mod` files, install the guard from the guest shell, ON/OFF receipts | toolchain **available**; guest shell **available**; needs the a6100 guard build (M3b + tab table + anchor) |
+| M3c | tab rectangle table: identify the live layout table (6 candidates) instead of guessing | runtime observation in the emulator |
+| M4 | rebase `MenuTouchFull` v2 and locate `Arrivederci`'s a6100 tables | per-site mapping + av-cam table discovery |
 
 ## Boundary
 
