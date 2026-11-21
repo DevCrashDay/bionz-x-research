@@ -175,9 +175,17 @@ class CxdPeripheralsTests(unittest.TestCase):
         from project_paths import PROJECT_ROOT
         from src.a6400.devices.cxd90045_peripherals import load_submicro_frames
         frames = load_submicro_frames(PROJECT_ROOT)
-        self.assertIsNotNone(frames)
+        if frames is None:
+            self.skipTest("local captured sub-micro binary not present")
         self.assertEqual(len(frames), 384)
         self.assertEqual(frames[:4], bytes.fromhex('20002200'))
+
+    def test_load_submicro_frames_returns_none_when_absent(self):
+        import tempfile
+        from pathlib import Path
+        from src.a6400.devices.cxd90045_peripherals import load_submicro_frames
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(load_submicro_frames(Path(tmp)))
 
     def test_adc_unit1_done_and_released_keys(self):
         irqs = {}
