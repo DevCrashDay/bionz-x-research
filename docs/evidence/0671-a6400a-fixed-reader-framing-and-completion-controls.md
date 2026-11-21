@@ -1,10 +1,10 @@
-# E0515 - a6400A fixed-reader framing and completion controls
+# E0671 - a6400A fixed-reader framing and completion controls
 
 Date: 2026-11-15. **Entirely offline; keep the camera disconnected.**
 No USB enumeration, request, mode/driver change, camera write, installer,
 preload hook or physical-memory operation occurred. **No raw partition bytes
 were captured.** This follows
-[E0514](0514-a6400a-ghidra-reader-consumers-and-fixed-partition-candidate.md).
+[E0670](0670-a6400a-ghidra-reader-consumers-and-fixed-partition-candidate.md).
 
 ## 1. Decision and demonstrated scope
 
@@ -16,7 +16,7 @@ stream but remain errors, never successful acquisitions.
 Original response extraction arms completion state **`0x10` before streaming**.
 The original transaction destructor, packet builder and registered callback
 can then unmap, unlock and close the owned fixed-nflasha5 resources under
-declared synchronous OSAL/libc fixtures. This advances beyond E0514's direct
+declared synchronous OSAL/libc fixtures. This advances beyond E0670's direct
 callback release, but **does not execute a real pthread forced unwind or
 attest an acknowledged USB STOP**.
 
@@ -190,9 +190,9 @@ Run from the repository root with the existing environment, choosing new
 output directories:
 
 ```powershell
-.\venv\Scripts\python.exe -m tools.research.a6400a_transfer_controls --output-dir .\artifacts\analysis\e0515-a6400a-fixed-reader-framing\controls-final
-.\venv\Scripts\python.exe -m tools.research.a6400a_reader_controls --output-dir .\artifacts\analysis\e0515-a6400a-fixed-reader-framing\earlier-reader-regression
-.\venv\Scripts\python.exe -m tools.research.a6400a_service_contracts --output-dir .\artifacts\analysis\e0515-a6400a-fixed-reader-framing\earlier-service-regression
+.\venv\Scripts\python.exe -m tools.research.a6400a_transfer_controls --output-dir .\artifacts\analysis\e0671-a6400a-fixed-reader-framing\controls-final
+.\venv\Scripts\python.exe -m tools.research.a6400a_reader_controls --output-dir .\artifacts\analysis\e0671-a6400a-fixed-reader-framing\earlier-reader-regression
+.\venv\Scripts\python.exe -m tools.research.a6400a_service_contracts --output-dir .\artifacts\analysis\e0671-a6400a-fixed-reader-framing\earlier-service-regression
 .\venv\Scripts\python.exe -m unittest tests.test_a6400a_fixed_reader tests.test_a6400a_service_contracts -q
 ```
 
@@ -211,7 +211,7 @@ The final combined regression command passes **144 tests**:
 Pylance diagnostics and syntax checks are clean for the new reader, controls,
 tests and shared reader helper. The physically guarded full suite runs
 **1,795 tests: 1 failure, 4 errors, 151 skips**, exiting **1**. Failure/error
-IDs exactly match E0514's 1,777-case run, with **18 additional passing tests**:
+IDs exactly match E0670's 1,777-case run, with **18 additional passing tests**:
 the existing original-target `__pipe` expectation and missing
 `e0322-uvc-overlay-plan.json` remain unchanged.
 
@@ -239,7 +239,7 @@ corrected queries use observed entries and linked/Ghidra translation.
 
 Complete REA bundles, input identities, original-code replays and validation
 receipts are retained privately under
-`artifacts/analysis/e0515-a6400a-fixed-reader-framing/`. These are offline
+`artifacts/analysis/e0671-a6400a-fixed-reader-framing/`. These are offline
 receipts, not captured camera firmware. All owned Ghidra engines are closed;
 the complete 23-record final bundle is saved before investigation reset.
 
@@ -264,11 +264,11 @@ Key REA evidence:
 2. Qualify request write accounting, empty-terminator handling and the real
    cancellation/STOP handoff against the original transport/runtime contracts.
 3. Preserve a clear failure/recovery receipt when completion delivery or exit
-   is unacknowledged. Mapping failure residue from E0514 remains relevant.
+   is unacknowledged. Mapping failure residue from E0670 remains relevant.
 4. Only then perform a supervised model/firmware/admission/read qualification.
    Even success qualifies **nflasha5 only**, not the remaining partitions.
 
-[E0516](0516-a6400a-guarded-fixed-acquisition-and-supervised-gate.md) implements
+[E0672](0672-a6400a-guarded-fixed-acquisition-and-supervised-gate.md) implements
 the separate guarded adapter/client and a supervised sequence. It preserves
 real write counts and partial fragments, drains cooperative cancellation and
 requires owner recovery instead of an unqualified abort on unknown transfers.

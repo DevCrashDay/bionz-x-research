@@ -1,8 +1,8 @@
-# E0519 - a6400A expanded bootstrap review and full-dump boundary
+# E0675 - a6400A expanded bootstrap review and full-dump boundary
 
 Date: **2026-11-16 UTC**. The owner requests all flash partitions and complete
 firmware, confirms installed version **1.01 unchanged**, and expands
-qualification beyond E0518's no-upload/no-mode-change scope.
+qualification beyond E0674's no-upload/no-mode-change scope.
 
 **The requested full dump is not complete. No new partition bytes are acquired.**
 Host permissions now permit actual camera requests, but neither a general
@@ -25,12 +25,12 @@ The existing bounded native tools establish:
   USBSTOR in **203.934 ms**, including one response-only BUSY wait.
 
 The postflight is a responsiveness observation, not live module attestation,
-monotonic `/proc/uptime`, `/tmp_bt` inventory or retrospective proof of E0517
+monotonic `/proc/uptime`, `/tmp_bt` inventory or retrospective proof of E0673
 Senser cleanup. No owned camera helper was staged. The SCSI inquiry revision
 `1.00` is not substituted for the owner's firmware-version confirmation.
 
 Receipts remain under
-`artifacts/analysis/e0519-a6400a-full-dump-attempt/`, including
+`artifacts/analysis/e0675-a6400a-full-dump-attempt/`, including
 `host-preflight-01/`, `native-channel-01/`, `original-binding-01/` and
 `native-postflight-01/`.
 
@@ -40,13 +40,13 @@ Both earlier captures are read back and hash-verified without changing them:
 
 | Source | Bytes | SHA-256 |
 | --- | --- | --- |
-| E0517 raw `/dev/nflasha5` | 62,914,560 | `d131b73f9c4610bdc3f549a65e94d70c11cc92d3071b878d65ef46a8fe13b3b6` |
-| E0518 exported MSC LUN 1 | 2,097,152 | `824fb2144bca8fb3dfabffeb9e132408604bae37296b209df5e590be07db2027` |
+| E0673 raw `/dev/nflasha5` | 62,914,560 | `d131b73f9c4610bdc3f549a65e94d70c11cc92d3071b878d65ef46a8fe13b3b6` |
+| E0674 exported MSC LUN 1 | 2,097,152 | `824fb2144bca8fb3dfabffeb9e132408604bae37296b209df5e590be07db2027` |
 
 These are **existing captures**, not newly acquired bytes. LUN 1 remains
 `msc-lun1.bin`; matching geometry does not attest `/dev/nflasha23` backing.
-See [E0517](0517-a6400a-first-actual-nflasha5-capture.md) and
-[E0518](0518-a6400a-readonly-msc-lun-capture-and-flash-boundary.md) for the
+See [E0673](0673-a6400a-first-actual-nflasha5-capture.md) and
+[E0674](0674-a6400a-readonly-msc-lun-capture-and-flash-boundary.md) for the
 original acquisition paths and physical limits.
 
 The unchanged package partition configuration has SHA-256
@@ -97,7 +97,7 @@ The upload and loader consumers are more specific than their command names:
   Its separate `/mnt`-prefixed path is not a general automatic loader.
   Its memory-cache mode requires an existing script runtime, not a supplied
   root execution context.
-- The identity-matched E0514 `jit_thread` decompilation is reused: initialization
+- The identity-matched E0670 `jit_thread` decompilation is reused: initialization
   mounts nflasha6, may restore/delete recovery files, copies the library into
   a nested tmpfs, and then loads it. A later RAM copy does not make the
   preceding internal-flash operations nonpersistent.
@@ -110,7 +110,7 @@ The upload and loader consumers are more specific than their command names:
   endpoint or safe acquisition bootstrap.
 
 The earlier `sys_mount` flags without `MS_RDONLY` remain documented in
-[E0514](0514-a6400a-ghidra-reader-consumers-and-fixed-partition-candidate.md).
+[E0670](0670-a6400a-ghidra-reader-consumers-and-fixed-partition-candidate.md).
 Actual mount state, existing files, rollback and interruption recovery remain
 unobserved. No library is uploaded to internal flash as a compatibility test,
 and the original installer/preload guards are not changed.
@@ -177,12 +177,12 @@ receipts are preserved under the Windows artifact directory.
 Executed from the repository root:
 
 ```powershell
-.\venv\Scripts\python.exe -m tools.research.a6400a_native_readonly --output-dir .\artifacts\analysis\e0519-a6400a-full-dump-attempt\host-preflight-01
-.\venv\Scripts\python.exe -m tools.research.a6400a_debugger_presence --check-channel --output-dir .\artifacts\analysis\e0519-a6400a-full-dump-attempt\native-channel-01
-.\venv\Scripts\python.exe -m tools.research.a6400a_senser_acquire --action inspect --output-dir .\artifacts\analysis\e0519-a6400a-full-dump-attempt\original-binding-01
-.\venv\Scripts\python.exe -m tools.research.a6400a_reader_controls --output-dir .\artifacts\analysis\e0519-a6400a-full-dump-attempt\reader-controls-baseline-01
-.\venv\Scripts\python.exe -m tools.research.a6400a_service_contracts --output-dir .\artifacts\analysis\e0519-a6400a-full-dump-attempt\service-controls-baseline-01
-.\venv\Scripts\python.exe -m tools.research.a6400a_native_readonly --inquiry --model-info --output-dir .\artifacts\analysis\e0519-a6400a-full-dump-attempt\native-postflight-01
+.\venv\Scripts\python.exe -m tools.research.a6400a_native_readonly --output-dir .\artifacts\analysis\e0675-a6400a-full-dump-attempt\host-preflight-01
+.\venv\Scripts\python.exe -m tools.research.a6400a_debugger_presence --check-channel --output-dir .\artifacts\analysis\e0675-a6400a-full-dump-attempt\native-channel-01
+.\venv\Scripts\python.exe -m tools.research.a6400a_senser_acquire --action inspect --output-dir .\artifacts\analysis\e0675-a6400a-full-dump-attempt\original-binding-01
+.\venv\Scripts\python.exe -m tools.research.a6400a_reader_controls --output-dir .\artifacts\analysis\e0675-a6400a-full-dump-attempt\reader-controls-baseline-01
+.\venv\Scripts\python.exe -m tools.research.a6400a_service_contracts --output-dir .\artifacts\analysis\e0675-a6400a-full-dump-attempt\service-controls-baseline-01
+.\venv\Scripts\python.exe -m tools.research.a6400a_native_readonly --inquiry --model-info --output-dir .\artifacts\analysis\e0675-a6400a-full-dump-attempt\native-postflight-01
 ```
 
 The metadata and final identity commands exit **0**. Channel observation exits

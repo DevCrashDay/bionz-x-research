@@ -1,9 +1,9 @@
-# E0516 - a6400A guarded fixed acquisition and supervised connection gate
+# E0672 - a6400A guarded fixed acquisition and supervised connection gate
 
 Date: 2026-11-15. **Offline implementation and qualification.**
 No camera discovery, USB request, driver/mode change or physical dump is
 performed by the qualification described here. This advances
-[E0515](0515-a6400a-fixed-reader-framing-and-completion-controls.md)
+[E0671](0671-a6400a-fixed-reader-framing-and-completion-controls.md)
 from an offline protocol reader to a separately opt-in live acquisition client.
 **It supports only the stock fixed `/dev/nflasha5` callback, not all partitions.**
 
@@ -29,7 +29,7 @@ The cancellation policy avoids the unsupported forced-abort assumption:
   acknowledged exit are not a physical descriptor/mapping-close attestation.
 
 The previously observed owner restart and signed USBSTOR restoration in
-[E0512](0512-a6400a-live-senser-entry-and-recovery.md) provide the recovery
+[E0668](0668-a6400a-live-senser-entry-and-recovery.md) provide the recovery
 precedent. They do not prove a future STOP will succeed.
 
 ## 2. Implementation
@@ -112,7 +112,7 @@ partial files, one-shot replay prevention and unacknowledged exit.
 These are **constructed bytes**, not captured firmware. They do not establish
 runtime level-3 admission, live capacity, flash stability during a read,
 pthread forced unwinding, delivered OSAL completion, drained DMA or a
-restored camera. E0515's original-code completion-delivery failure still
+restored camera. E0671's original-code completion-delivery failure still
 leaves the mapping/descriptor active.
 
 Two failed development receipts are preserved:
@@ -126,13 +126,13 @@ Two failed development receipts are preserved:
 
 The existing original-instruction framing/serializer/completion, reader
 consumer and service-admission baselines are replayed under the new
-`artifacts/analysis/e0516-a6400a-guarded-fixed-acquisition/` directory.
+`artifacts/analysis/e0672-a6400a-guarded-fixed-acquisition/` directory.
 Source/input identities and guarded full-suite receipts remain separate from
 physical observations.
 
 Final focused validation passes **185 tests**. The guarded full suite runs
 **1,813 tests: 1 failure, 4 errors, 151 skips**, exit **1**. Failure/error IDs
-exactly match E0515's 1,795-case baseline, with **18 additional passing
+exactly match E0671's 1,795-case baseline, with **18 additional passing
 tests**. The unchanged gaps are the original-target `__pipe` expectation and
 missing `e0322-uvc-overlay-plan.json`.
 
@@ -165,7 +165,7 @@ the owner is available for normal restart/recovery.
    only the existing allowlisted inquiry/model transaction, not generic PMCA
    `infoCommand`, updater initialization or sector I/O.
 3. Use only the already-reviewed camera-specific WinUSB binding for
-   `054C:0F0F`; the separate `0336` binding was staged in E0512. Preserve host
+   `054C:0F0F`; the separate `0336` binding was staged in E0668. Preserve host
    driver receipts. Never target `0994` or another device. Then:
 
    ```powershell
@@ -203,7 +203,7 @@ separately reviewed nonpersistent bootstrap. Updater-extracted images are
 not substituted for raw captures, and the old installer/preload guards stay
 intact.
 
-[E0517](0517-a6400a-first-actual-nflasha5-capture.md) records the first
+[E0673](0673-a6400a-first-actual-nflasha5-capture.md) records the first
 supervised hardware result: an actual 60 MiB nflasha5 capture with independently
 verified host hashes. It preserves the failed handoff and unacknowledged exit;
 the other partitions and camera cleanup are not promoted to verified.

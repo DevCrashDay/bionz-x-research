@@ -1,16 +1,16 @@
-# E0512 - a6400A live Senser entry, file-read refusal and recovery; no partition capture
+# E0668 - a6400A live Senser entry, file-read refusal and recovery; no partition capture
 
 Date: 2026-11-15 UTC; first entry/recovery on 2026-11-14 UTC. The owner explicitly approved
 necessary acquisition operations. **No firmware image, executable payload,
 shell command, camera file write, raw-sector write or physical-memory scan
 was issued. No partition data was captured.**
 
-Offline follow-up: [E0513](0513-a6400a-offline-senser-dispatch-and-native-read-gates.md)
+Offline follow-up: [E0669](0669-a6400a-offline-senser-dispatch-and-native-read-gates.md)
 reproduces the missing-handler/response-prefix decision in original instructions,
 distinguishes real adjustment gates and maps native command declarations.
 It performs no additional camera request.**
 
-[E0514](0514-a6400a-ghidra-reader-consumers-and-fixed-partition-candidate.md)
+[E0670](0670-a6400a-ghidra-reader-consumers-and-fixed-partition-candidate.md)
 adds actual Ghidra and downstream original-instruction controls. It identifies
 a fixed-node candidate but does not authorize or perform reconnection or a dump.**
 
@@ -126,7 +126,7 @@ entry then completed:
 
 Raw authentication material and keys were not retained. These are live
 observations, unlike the earlier package-only controls in
-[E0511](0511-a6400a-debugger-abi-and-live-channel-boundary.md).
+[E0667](0667-a6400a-debugger-abi-and-live-channel-boundary.md).
 
 ## Receipts and validation
 

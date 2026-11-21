@@ -1,4 +1,4 @@
-# E0518 - a6400A read-only MSC LUN capture and remaining flash boundary
+# E0674 - a6400A read-only MSC LUN capture and remaining flash boundary
 
 Date: **2026-11-15 UTC**. The owner requested the remaining `nflasha*`
 partitions and firmware, excluding the already acquired `nflasha5`.
@@ -16,10 +16,10 @@ firmware backup were not obtained.** No `nflasha5` request was sent.
 | Field | Observation |
 | --- | --- |
 | Native camera identity | `ILCE-6400A`, product-code bytes `0032858730` |
-| Version provenance | Owner-confirmed 1.01 in E0517; no new firmware-version query |
+| Version provenance | Owner-confirmed 1.01 in E0673; no new firmware-version query |
 | Current transport | Healthy `054C:0F0F`, Microsoft `USBSTOR`, no rebinding |
 | Source | Camera-parent-verified MSC LUN 1; actual SCSI address `0/0/1` |
-| Capture | `artifacts/analysis/e0518-a6400a-remaining-partitions/msc-lun1-live-01/msc-lun1.bin` |
+| Capture | `artifacts/analysis/e0674-a6400a-remaining-partitions/msc-lun1-live-01/msc-lun1.bin` |
 | Bytes | **2,097,152 / 2 MiB** |
 | SHA-256 | `824fb2144bca8fb3dfabffeb9e132408604bae37296b209df5e590be07db2027` |
 | Capacity | READ CAPACITY: last LBA **4095**, block size **512** |
@@ -111,7 +111,7 @@ Key observations:
   of the live mounted drive or absence of virtualization. Ghidra's exact
   pathname-xref query returns no actionable references; that does not prove
   the string is unused. No live Fsys record, `/proc` or `/sys` is obtained.
-- Matching E0514/E0517 Senser evidence is reused: the proven fixed raw reader
+- Matching E0670/E0673 Senser evidence is reused: the proven fixed raw reader
   selects only `nflasha5`; stock FF01/FF03 and stat-sized Jiritsu reads are
   not promoted to general raw-flash access.
 
@@ -121,7 +121,7 @@ Offsets there are section-relative, not runtime addresses. No original
 kernel is executed and no unknown syscall/device response is supplied.
 
 The complete **27-record** REA bundle is saved as
-`artifacts/analysis/e0518-a6400a-remaining-partitions/rea-stock-read-routes.json`.
+`artifacts/analysis/e0674-a6400a-remaining-partitions/rea-stock-read-routes.json`.
 The owned Ghidra engine is closed and retained investigation state is cleared.
 
 ## 4. Failures, postflight and scope limits
@@ -139,7 +139,7 @@ That observer correctly exits **2**, not root-debugger success.
 
 The camera remains in healthy USBSTOR Mass Storage. No owned helper was
 staged on the camera or remains to remove. `/proc/uptime`, `/tmp_bt`, the
-live partition list and old E0517 Senser-resource release are **unverified**;
+live partition list and old E0673 Senser-resource release are **unverified**;
 fresh USB identity does not retroactively acknowledge that older STOP.
 
 One inline configuration-verification command initially fails on an unused,
@@ -155,7 +155,7 @@ Boot areas and any whole-device alias remain unknown on this body.
 Configured zero-size slots are not declared physically absent or filled with
 invented empty dumps.
 
-- `nflasha5`: deliberately skipped; preserve the E0517 capture unchanged.
+- `nflasha5`: deliberately skipped; preserve the E0673 capture unchanged.
 - `nflasha23`: a matching-size exported LUN image is saved, but live backing
   attribution remains an explicit separate gate.
 - Other partitions and full firmware: **blocked within the selected existing
@@ -172,7 +172,7 @@ The actual owner-approved elevated command, from the repository root:
 
 ```powershell
 .\venv\Scripts\python.exe -m tools.research.a6400a_msc_lun_readonly `
-  --read-lun1 --output-dir .\artifacts\analysis\e0518-a6400a-remaining-partitions\msc-lun1-live-01
+  --read-lun1 --output-dir .\artifacts\analysis\e0674-a6400a-remaining-partitions\msc-lun1-live-01
 ```
 
 Result: **exit 0**, complete LUN image and receipt, **not complete firmware**.
@@ -187,7 +187,7 @@ recorded in `focused-validation-final/validation-inputs.json` and
 
 - Focused LUN/identity selectors: **33 passed**, zero physical access.
 - Pylance syntax checks: both new Python files pass.
-- Status generator `--write` / `--check`: pass. The synchronized E0518
+- Status generator `--write` / `--check`: pass. The synchronized E0674
   README/dashboard checks pass **39 cases**:
   `.\venv\Scripts\python.exe -m unittest tests.test_research_status_sync tests.test_research_status_dashboard -q`.
 - Guarded full suite: **1,824 run, 1 failure, 4 errors, 151 skips**.

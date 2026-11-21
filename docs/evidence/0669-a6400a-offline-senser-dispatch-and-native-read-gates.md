@@ -1,17 +1,17 @@
-# E0513 - a6400A offline Senser dispatch, native read gates and own-image L3 prefix
+# E0669 - a6400A offline Senser dispatch, native read gates and own-image L3 prefix
 
 Date: 2026-11-15. **Entirely offline.** The camera was not enumerated, opened,
 switched, uploaded to or written. No installer, preload hook, updater session,
 SD access or physical-memory scan was used. No partition capture is claimed.
 
-Follow-up: [E0514](0514-a6400a-ghidra-reader-consumers-and-fixed-partition-candidate.md)
+Follow-up: [E0670](0670-a6400a-ghidra-reader-consumers-and-fixed-partition-candidate.md)
 uses the now-working Ghidra backend, traces the actual read consumers, and
 qualifies additional original-byte fixtures without camera access.
 
 ## 1. Result
 
 The preserved 1.01 package explains the
-[E0512 live refusal](0512-a6400a-live-senser-entry-and-recovery.md):
+[E0668 live refusal](0668-a6400a-live-senser-entry-and-recovery.md):
 **there is no registered FileControl factory to unlock in the examined stock
 Senser tables.** Missing functions fall through the generic `NoAction(0x80)`
 path. MemoryDump is absent as well. This is stronger than inferring a disabled
@@ -203,11 +203,11 @@ main/updater distinction and per-image address guards.
 ## 7. Commands, failures and validation
 
 All generated receipts stay private under
-`artifacts/analysis/e0513-a6400a-offline-service-contracts/`.
+`artifacts/analysis/e0669-a6400a-offline-service-contracts/`.
 
 ```powershell
-.\venv\Scripts\python.exe -m tools.research.a6400a_service_contracts --output-dir .\artifacts\analysis\e0513-a6400a-offline-service-contracts\controls-final
-.\venv\Scripts\python.exe -m tools.research.msc_extcmd_trace --debugger-abi --output-dir .\artifacts\analysis\e0513-a6400a-offline-service-contracts\native-driver-controls-01
+.\venv\Scripts\python.exe -m tools.research.a6400a_service_contracts --output-dir .\artifacts\analysis\e0669-a6400a-offline-service-contracts\controls-final
+.\venv\Scripts\python.exe -m tools.research.msc_extcmd_trace --debugger-abi --output-dir .\artifacts\analysis\e0669-a6400a-offline-service-contracts\native-driver-controls-01
 .\venv\Scripts\python.exe -m unittest tests.test_a6400a_service_contracts tests.test_msc_extcmd_trace tests.test_usb_debug_abi_trace tests.test_target_profiles tests.test_camera_debugger_lock -q
 ```
 
@@ -233,7 +233,7 @@ Final combined validation:
 ```
 
 Result: **134 tests pass**. The guarded full-suite discovery runs **1,761
-tests, 1 failure, 4 errors, 151 skips**. Failure/error IDs exactly match E0512:
+tests, 1 failure, 4 errors, 151 skips**. Failure/error IDs exactly match E0668:
 the four errors require the missing E0322 overlay manifest; the failure is the
 original-target `__pipe` symbol lookup. There are five additional tests and no
 new regression failure IDs. A legacy raw-SD open is denied before access; its
@@ -244,7 +244,7 @@ under `full-validation-01/`. It denies USB discovery, native device APIs,
 physical-client subprocesses and raw/non-repository-drive opens. The dashboard's
 1,787-test passing E0510 record remains historical, not this run's result.
 `final-outcome.json` verifies the final eight input hashes, validated source
-hashes, exact E0512 wire-header match and own-image L3 boundary.
+hashes, exact E0668 wire-header match and own-image L3 boundary.
 
 No firmware hashes are refreshed, no missing API is mapped, and no camera
 installer or guest response policy is relaxed.

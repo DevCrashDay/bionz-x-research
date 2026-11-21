@@ -1,4 +1,4 @@
-# E0511 - a6400A debugger ABI and live channel boundary
+# E0667 - a6400A debugger ABI and live channel boundary
 
 Date: 2026-11-14. **Offline original-instruction controls plus one explicitly
 approved, elevated, read-only normal Mass Storage observation.** No service or

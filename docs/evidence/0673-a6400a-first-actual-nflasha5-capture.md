@@ -1,4 +1,4 @@
-# E0517 - first actual ILCE-6400A nflasha5 capture
+# E0673 - first actual ILCE-6400A nflasha5 capture
 
 Date: 2026-11-15 UTC. **One real raw partition was acquired from the owner's
 camera.** This is not updater-extracted data or a constructed fixture.
@@ -11,7 +11,7 @@ camera.** This is not updater-extracted data or a constructed fixture.
 | Camera | Native normal-mode response: `ILCE-6400A`, product code `0032858730` |
 | Installed version | Owner explicitly reports camera firmware **1.01** |
 | Camera source | Stock `0601/32` read-only callback, hardcoded `/dev/nflasha5` |
-| Host file | `artifacts/analysis/e0516-a6400a-guarded-fixed-acquisition/live-01/fixed-nflasha5-immediate/nflasha5.bin` |
+| Host file | `artifacts/analysis/e0672-a6400a-guarded-fixed-acquisition/live-01/fixed-nflasha5-immediate/nflasha5.bin` |
 | Exact size | **62,914,560 bytes / 60 MiB** |
 | SHA-256 | `d131b73f9c4610bdc3f549a65e94d70c11cc92d3071b878d65ef46a8fe13b3b6` |
 | Wire | 60 headers, 1,920 empty terminators, 3,901 I/O calls including the one request |
@@ -34,21 +34,21 @@ separate analysis outputs.
 
 The capture uses the
 [guarded fixed-node client](../../tools/research/a6400a_fixed_acquire.py)
-qualified in [E0516](0516-a6400a-guarded-fixed-acquisition-and-supervised-gate.md).
+qualified in [E0672](0672-a6400a-guarded-fixed-acquisition-and-supervised-gate.md).
 The capture-version tools are copied and hash-checked before follow-up edits
 under:
 
 ```text
-artifacts/analysis/e0517-a6400a-first-raw-partition/capture-source-snapshots/
-artifacts/analysis/e0517-a6400a-first-raw-partition/capture-tool-identities.json
+artifacts/analysis/e0673-a6400a-first-raw-partition/capture-source-snapshots/
+artifacts/analysis/e0673-a6400a-first-raw-partition/capture-tool-identities.json
 ```
 
 This preserves the exact acquisition client, protocol reader, legacy
 entry/authentication wrapper and native identity observer. Their source hashes
-match E0516's validated manifest and the actual capture receipt.
+match E0672's validated manifest and the actual capture receipt.
 
 The client uses original instruction evidence for the fixed node, capacity,
-framing, response extraction and release from E0514/E0515. The live read does
+framing, response extraction and release from E0670/E0671. The live read does
 not enable FF01/FF03 or install the custom native root debugger. No firmware
 image, executable payload, shell command, camera file write, raw storage write,
 `/dev/stream` operation or physical-memory/page-table sweep is sent.
@@ -75,7 +75,7 @@ provenance. A planned safe-eject helper for checking the version on-camera was
 never executed and was removed when that confirmation arrived.
 
 The owner changes normal `054C:0F0F` to WinUSB. Its actual bound package is
-`oem80.inf`, not the earlier E0512 `oem79.inf`:
+`oem80.inf`, not the earlier E0668 `oem79.inf`:
 
 | Actual input | Observed SHA-256 / signature |
 | --- | --- |
@@ -87,7 +87,7 @@ The owner changes normal `054C:0F0F` to WinUSB. Its actual bound package is
 The old-reference catalog check fails and is not silently refreshed. The
 actually bound INF, hardware-ID scope and hash-matched catalog are reviewed
 separately. WMI's `IsSigned=false` observation is retained; catalog validation
-is a different observation. The staged `0336` package still matches E0512's
+is a different observation. The staged `0336` package still matches E0668's
 recorded INF/catalog hashes and has a Valid catalog signature.
 
 No agent-driven driver installation occurs in this attempt. `0994` is never
@@ -167,7 +167,7 @@ Evidence:
 The complete bundle is retained as `rea-captured-image-signatures.json`.
 No extraction, code execution or new camera read occurs in this inspection.
 
-Hash-matched E0514 Ghidra evidence is reused for other paths:
+Hash-matched E0670 Ghidra evidence is reused for other paths:
 
 - `adj_cmd_get_file2` is still stat-size driven; its normal-file path reads
   exactly `st_size` and calls `fsync`. Its cached-memory mode requires existing,

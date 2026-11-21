@@ -1,4 +1,4 @@
-# E0514 - a6400A Ghidra read consumers and fixed-partition candidate
+# E0670 - a6400A Ghidra read consumers and fixed-partition candidate
 
 Date: 2026-11-15. **Entirely offline. No camera connection requested.**
 No USB enumeration, mode change, camera request, installer, preload hook,
@@ -48,7 +48,7 @@ identities, not a live installed-byte attestation:
 
 The connected WSL REA **6.9.0** / Ghidra **12.1.4** backend performs actual
 decompilation and instruction queries. Unlike
-[E0513](0513-a6400a-offline-senser-dispatch-and-native-read-gates.md),
+[E0669](0669-a6400a-offline-senser-dispatch-and-native-read-gates.md),
 this checkpoint does not substitute Capstone for an unavailable Ghidra engine.
 Capstone and Unicorn independently examine/execute the original bytes.
 
@@ -69,7 +69,7 @@ Inputs are hash-checked before original-code execution.
 Ghidra `Parse` at linked `0x127A0` walks `pFunc`, calls a matching factory and
 constructs `NoAction(0x80)` when there is no match or command object.
 `TransactionStart` is at linked `0x13370`, Ghidra `0x23370`.
-Its file-backed admission table agrees with E0513.
+Its file-backed admission table agrees with E0669.
 
 Resolved helper linked **`0x11F44`** returns false for `0601/1A`, `0601/FE`
 and `0601/FF`, diverting those commands from subsystem IPC to local handling.
@@ -200,7 +200,7 @@ operations are invoked on the camera.
 ## 6. Other pFunc paths and native extcmd registry
 
 ProductInfo, AdjustControl, TestMode and authentication-completion decompilation
-corroborate E0513: terminal flags affect ProductInfo's `00F1` path, but do not
+corroborate E0669: terminal flags affect ProductInfo's `00F1` path, but do not
 register FF01/FF03. TestMode communicates through `/var/fifo/sen_host_req` and
 `sen_host_res`; the bounded supplied-library/bin marker scan did not identify
 an additional consumer of those FIFO names. This is not a proof of runtime
@@ -210,7 +210,7 @@ absence or permission to create a consumer.
 protocol/list: feature/plugin creation requires IPC/registration state;
 transport descriptors are inserted by ID and duplicate IDs are refused.
 It is not a hidden fixed table of arbitrary file-read commands.
-The original preparation controls for features **1/2/4/6/7**, and E0513's
+The original preparation controls for features **1/2/4/6/7**, and E0669's
 network cleanup/write caution, remain in force. No native "Get" family is
 promoted to raw-flash access by name alone.
 
@@ -237,9 +237,9 @@ The separate original-a6400 L2 shell result is not reassigned to this body.
 ## 8. Reproduction, receipts and next boundary
 
 ```powershell
-.\venv\Scripts\python.exe -m tools.research.a6400a_reader_controls --output-dir .\artifacts\analysis\e0514-a6400a-reader-consumers\controls-final
-.\venv\Scripts\python.exe -m tools.research.a6400a_userspace_prefix --policy brk-uname --output-dir .\artifacts\analysis\e0514-a6400a-reader-consumers\l3-prefix-final
-.\venv\Scripts\python.exe -m tools.research.a6400a_service_contracts --output-dir .\artifacts\analysis\e0514-a6400a-reader-consumers\earlier-contract-regression
+.\venv\Scripts\python.exe -m tools.research.a6400a_reader_controls --output-dir .\artifacts\analysis\e0670-a6400a-reader-consumers\controls-final
+.\venv\Scripts\python.exe -m tools.research.a6400a_userspace_prefix --policy brk-uname --output-dir .\artifacts\analysis\e0670-a6400a-reader-consumers\l3-prefix-final
+.\venv\Scripts\python.exe -m tools.research.a6400a_service_contracts --output-dir .\artifacts\analysis\e0670-a6400a-reader-consumers\earlier-contract-regression
 .\venv\Scripts\python.exe -m unittest tests.test_a6400a_service_contracts tests.test_msc_extcmd_trace tests.test_usb_debug_abi_trace -q
 ```
 
@@ -268,7 +268,7 @@ The exact harness, source digests and complete log are in `full-validation/`.
 No missing input or guard is weakened to obtain green.
 
 Private receipts and complete REA bundles are under
-`artifacts/analysis/e0514-a6400a-reader-consumers/`. Query ambiguity between
+`artifacts/analysis/e0670-a6400a-reader-consumers/`. Query ambiguity between
 PLT thunks and real definitions is retained; corrected queries use observed
 entries, not guessed runtime addresses. Key evidence:
 
@@ -288,7 +288,7 @@ normal/cancel/error release sequence. Only then consider a supervised live
 admission/read test; even success would qualify only the measured node, not
 all firmware or every `nflasha*` partition.
 
-[E0515](0515-a6400a-fixed-reader-framing-and-completion-controls.md) follows
+[E0671](0671-a6400a-fixed-reader-framing-and-completion-controls.md) follows
 this boundary with exact remaining-byte framing, bounded constructed host
 replays and original extraction/destructor/callback release controls. It still
 does not enable a live adapter or qualify actual forced unwinding/USB exit.
