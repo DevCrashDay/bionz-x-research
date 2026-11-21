@@ -80,6 +80,39 @@ being replaced is the only UI change this patch makes.
 - `PP_UNLOCK=1`, same page and row: `Picture Profile  PP7`
 - generated patch byte-identical to the validated reference; boot log unchanged
 
+## RAM-only route (no flash write)
+
+The repo's RAM-only mods (see `mods/README.md`) do not write flash: a small guard is pushed
+to `/tmp_bt/`, executed, and it uses `ptrace` on `im.elf` to install a loader and patch
+process memory; a reboot clears everything. Two things matter for this camera:
+
+1. **The foothold already exists in principle.** The recorded senser session on this body
+   round-tripped a push to `/tmp_bt/` and executed a file there (a 1.3 KB script; 12 MB
+   failed only because `/tmp` is small). A small ARM payload fits.
+2. **The shipped loader itself is not usable here.** `mods/README.md` states the loader and
+   its guard target the captured `ILCE-6400` 2.00 library layout and verify stock hooks and
+   library hashes; the a6100 Ver.1.00 build would fail that check by design. The ZV-E10
+   path (direct RAM injection via the Senser terminal) is blocked on this body because the
+   terminal input does not reach a shell.
+
+For *this* gate the RAM variant is simpler than porting the loader, because it does not
+need a hook at all:
+
+- The property is a load-time symbol redirect in the file. In RAM, the equivalent is to
+  overwrite the **Soft Skin node object** (40 bytes, `CautionConfig.so` `.bss`,
+  `cmnViewSettingNodeRootSoftSkin`) with the **Picture Profile node object**
+  (`cmnViewSettingNodeRootPictureProfile`, also 40 bytes) once both are constructed.
+  Every menu slot that already points at the Soft Skin node then behaves as the PP item,
+  with no file change and no replay of the menu build.
+- It needs exactly one memory write from any foothold (`ptrace`/`gdb`/UART/mod loader):
+  resolve both addresses from the loaded `CautionConfig.so`, copy 40 bytes, reopen the
+  menu.
+- It is reverted by a power cycle, so the risk is a hung app, not a brick.
+
+What is missing to run it on hardware is the same thing as before: a working injection
+path for this build. In the emulator the equivalent RAM write can be exercised with a gdb
+stub attached to the machine; that was not built here.
+
 ## Why this record exists
 
 So the procedure, the exact bytes, the verification md5 and the blockers are written down
