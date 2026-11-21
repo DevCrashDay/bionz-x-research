@@ -183,7 +183,7 @@ class EvidenceRef:
 
 @dataclass(frozen=True)
 class SuiteRecord:
-    """The recorded full-suite result this documentation refresh is pinned to."""
+    """A dated passing full-suite record, which may precede the latest milestone."""
 
     test_count: int
     recorded_at: str
@@ -219,29 +219,47 @@ class StatusSnapshot:
 
 STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
-    as_of="2026-11-20",
+    as_of="2026-11-21",
     latest=EvidenceRef(
-        evidence_id="E0659",
-        path="docs/evidence/0659-unicorn-sio-gpio-oracle.md",
-        date="2026-11-20",
-        title="Unicorn SIO and GPIO from the QEMU oracle",
+        evidence_id="E9006",
+        path="docs/evidence/9006-captured-dmm-unit-4092e-authentic-osd-surface.md",
+        date="2026-11-21",
+        title="Captured DMM unit 0x4092e is OSD A/B; an opt-in mapping opens the authentic 640x480 surface",
         demonstrated=(
-            "A 64000-record QEMU MMIO capture identifies SIO 0xF2405600 and GPIO 0xF2910110. "
-            "Unicorn now returns the oracle status word 0x18000000 and port-1 input 0x32, "
-            "channel 3 replays the hash-checked 384-byte sub-micro extract, "
-            "and ADC unit 1 completes with status 0x101 and released-key results 0x3FF."
+            "The preserved nflasha5 DMM table has two 0x4092e records (indices 28 and 32) whose extents are "
+            "OSD A/B: 0x23A80000 and 0x23B16000, size 0x96000, extent id 0x62, handles 0x041C/0x0420. "
+            "An opt-in policy returns the first record; the app allocates the full extent, "
+            "maps /dev/stream to physical 0x23A80000 and writes all 614,400 bytes. viewUnified2.so is loaded."
         ),
         boundary=(
-            "No Unicorn nflasha3 replay in this record, so ObjMic completion and a rear-LCD frame are not shown. "
-            "Rear-control, SD, and lens sub-micro edits stay off."
+            "The surface is zero at 200M, so the full write is a clear/black frame; UI content and the draw "
+            "trigger are not established. The captured table is a preserved image, not live camera state. "
+            "No camera access."
         ),
-        tier="OFFLINE UNICORN PERIPHERAL CONTRACT",
+        tier="OFFLINE PUBLIC UPDATERS + QEMU",
     ),
-    headline="Unicorn SIO/GPIO oracle | Unicorn SYSV/VPH frame clock | Unicorn nflasha3 main boot",
+    headline="Unicorn SIO/GPIO & SYSV/VPH oracle | L3 OSD surface & 20ms wait | a6400A & ZV-E10 touch",
     cards=(
         EvidenceRef(
-            evidence_id="E0658",
-            path="docs/evidence/0658-unicorn-sysv-vph-frame-clock.md",
+            evidence_id="E0677",
+            path="docs/evidence/0677-unicorn-sio-gpio-oracle.md",
+            date="2026-11-20",
+            title="Unicorn SIO and GPIO from the QEMU oracle",
+            demonstrated=(
+                "A 64000-record QEMU MMIO capture identifies SIO 0xF2405600 and GPIO 0xF2910110. "
+                "Unicorn now returns the oracle status word 0x18000000 and port-1 input 0x32, "
+                "channel 3 replays the hash-checked 384-byte sub-micro extract, "
+                "and ADC unit 1 completes with status 0x101 and released-key results 0x3FF."
+            ),
+            boundary=(
+                "No Unicorn nflasha3 replay in this record, so ObjMic completion and a rear-LCD frame are not shown. "
+                "Rear-control, SD, and lens sub-micro edits stay off."
+            ),
+            tier="OFFLINE UNICORN PERIPHERAL CONTRACT",
+        ),
+        EvidenceRef(
+            evidence_id="E0676",
+            path="docs/evidence/0676-unicorn-sysv-vph-frame-clock.md",
             date="2026-11-20",
             title="Unicorn SYSV/VPH frame clock and evsel ext-vd",
             demonstrated=(
@@ -253,6 +271,50 @@ STATUS_SNAPSHOT = StatusSnapshot(
                 "CPUs 1-3 stay offline. The evsel late-src phase is not ported."
             ),
             tier="OFFLINE UNICORN PERIPHERAL CONTRACT",
+        ),
+        EvidenceRef(
+            evidence_id="E0664",
+            path="docs/evidence/0664-shutter-works-drive-mode-decides.md",
+            date="2026-11-21",
+            title="Camera Wi-Fi: the shutter works, and the drive mode decides whether it is offered",
+            demonstrated=(
+                "On the owner's ILCE-6400 2.00 the camera AP serves Sony ScalarWebAPI; the packaged "
+                "orb-server carries 221 camera methods and Creative Style is not served (E0658). At "
+                "drive mode Continuous the camera advertises 47 methods with startContShooting and "
+                "without actTakePicture (E0659); at Single it advertises 50 with the shutter, and one "
+                "photograph was taken over Wi-Fi after a half-press (E0664). Sony's Android client "
+                "7.6.0, decompiled and not run, guards the shutter on that list (E0660). avContent "
+                "answers error 12 in 'Control with Smartphone' mode and no network call switches the "
+                "mode (E0662)."
+            ),
+            boundary=(
+                "Only drive mode and lens were shown to change the list; whether the exposure mode "
+                "gates setShutterSpeed and setExposureMode is untested, and startContShooting was not "
+                "re-called with a transcript. 'Send to Smartphone' mode was not observed. The 221-method "
+                "count belongs to the packaged orb-server, a different point release than the unit."
+            ),
+            tier="PHYSICAL + OFFLINE APK",
+        ),
+        EvidenceRef(
+            evidence_id="E0663",
+            path="docs/evidence/0663-callgraph-plt-correction-and-real-ipc-table.md",
+            date="2026-11-20",
+            title="Correction: the IPC table of E0483 was calls to other imports",
+            demonstrated=(
+                "objdump shows that none of E0483's 29 'IPC call sites' is an IPC call: a fixed "
+                "12-byte PLT stride gave each import its neighbour's name once Thumb-prefixed 16-byte "
+                "entries appear. With the PLT decoded from each entry's GOT slot (2,547 of 2,547 "
+                "agreeing with objdump), bl targets computed from the unaligned PC, Thumb bits "
+                "honoured and the section walked by instruction length, the a6400 libObj.so holds "
+                "763 IPC call sites, 544 with a constant; six queue ids match ids observed at runtime "
+                "in the emulator. E0484's zero direct ObjDisplay_* callers holds on thirteen bodies."
+            ),
+            boundary=(
+                "Constant tracking is straight-line over 64 bytes and does not see a branch into the "
+                "window; each constant is a lead to confirm by disassembly. Wrappers, indirect calls "
+                "and other libraries are outside the table, and no queue's runtime consumer is claimed."
+            ),
+            tier="OFFLINE PACKAGED FIRMWARE",
         ),
         EvidenceRef(
             evidence_id="E0657",
@@ -598,6 +660,22 @@ STATUS_SNAPSHOT = StatusSnapshot(
                 "record remains the dated E0523 baseline."
             ),
             tier="OFFLINE ORIGINAL INSTRUCTIONS + CHECKED FIXTURES",
+        ),
+        EvidenceRef(
+            evidence_id="E0675",
+            path="docs/evidence/0675-a6400a-expanded-bootstrap-review-and-full-dump-boundary.md",
+            date="2026-11-16",
+            title="Local a6400A capture integrity and expanded-scope review",
+            demonstrated=(
+                "The local E0673 60 MiB nflasha5 and E0674 2 MiB MSC LUN 1 captures matched "
+                "their recorded host hashes. E0675 reverified native identity and postflight "
+                "without acquiring any new bytes."
+            ),
+            boundary=(
+                "LUN backing is unverified. Neither a general partition reader nor a qualified "
+                "temporary bootstrap or complete firmware capture exists in this record."
+            ),
+            tier="LOCAL READ-ONLY PHYSICAL + OFFLINE REVIEW",
         ),
         EvidenceRef(
             evidence_id="E0509",

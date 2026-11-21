@@ -149,7 +149,7 @@ class CxdPeripheralsTests(unittest.TestCase):
             mem_read=lambda addr, n: b'',
             mem_write=lambda addr, data: None,
         )
-        # Oracle e0659: ch3 status writes, then the config word reads back.
+        # Oracle e0677: ch3 status writes, then the config word reads back.
         channel3 = SIO_BASE + 3 * 0x200
         bus.write(channel3, 0x80000000)
         self.assertEqual(bus.read(channel3), 0)
@@ -232,7 +232,7 @@ class CxdPeripheralsTests(unittest.TestCase):
             mem_read=lambda addr, n: b'',
             mem_write=lambda addr, data: None,
         )
-        # Oracle e0659: ZMA0 ID words at 0xF34A00F0.
+        # Oracle e0677: ZMA0 ID words at 0xF34A00F0.
         self.assertEqual(bus.read(0xF34A00F0), 0x30414D5A)
         self.assertEqual(bus.read(0xF34A00F4), 0x302E3156)
         ident = b''.join(bus.read(0xF35C00F0 + 4 * i).to_bytes(4, 'little') for i in range(4))

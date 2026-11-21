@@ -10,13 +10,17 @@ Runtime mods for Sony **BIONZ X (`CXD90045`)** cameras load through a guarded RA
 
 See the [firmware qualification matrix and replay receipts](../docs/evidence/mods/2026-11-19-firmware-qualification.md) for what was verified on each build.
 
+> [!WARNING]
+> **Sony ZV-E10 Support (Direct RAM Injection — Mod Loader Untested):**
+> Mod Loader v1 and v2 are **currently untested on the ZV-E10** (SD-card `.mod` loading and the 7th `Mods` tab have not yet been ported to ZV-E10). At the moment, `MenuTouchFull` (including Fn menu touch in live preview) is injected directly into `im.elf` volatile DRAM via USB Senser terminal mode. See [`tools/native_camera/zve10/README.md`](../tools/native_camera/zve10/README.md).
+
 ---
 
 ## Available Mods
 
 | Mod | Format | What it does | Status & Notes |
 | :--- | :--- | :--- | :--- |
-| **[MenuTouchFull (`MTF2`)](menu_touch_full/README.md)** | `SMOD v1` / `SMOD v2` | Adds full touch support to Sony's main menu: tab taps, page-dot taps, horizontal swipe paging, 1st-tap select / 2nd-tap open, popup option tap & vertical swipe scroll, outside-tap close | v1 verified on `ILCE-6400` ([E0520](../docs/evidence/0520-mtf2-full-menu-touch-verified-on-a6400.md)); v2 navigation, popup highlights, and dismissal verified in [guest ON/OFF replays](../docs/evidence/mods/2026-11-19-firmware-qualification.md#native-touch-follow-up) |
+| **[MenuTouchFull (`MTF2`)](menu_touch_full/README.md)** | `SMOD v1` / `SMOD v2` / Direct RAM (`ZV-E10`) | Adds full touch support to Sony's main menu: tab taps, page-dot taps, horizontal swipe paging, 1st-tap select / 2nd-tap open, popup option tap & vertical swipe scroll, outside-tap close | v1 verified on `ILCE-6400` ([E0520](../docs/evidence/0520-mtf2-full-menu-touch-verified-on-a6400.md)); v2 navigation, popup highlights, and dismissal verified in [guest ON/OFF replays](../docs/evidence/mods/2026-11-19-firmware-qualification.md#native-touch-follow-up). **`ZV-E10`**: hardware-verified full main menu + 12-tile Fn menu touch via direct RAM injection ([details](../tools/native_camera/zve10/README.md); *Mod Loader is untested on ZV-E10 at the moment*) |
 | **[Arrivederci](arri_isp/arrivederci/README.md)** | `SMOD v1` / `SMOD v2` | ARRI LogC3 Classic tone curve (EC record 31) + fitted Q10 color matrix (entry B8) for Picture Profile **S-Log3 / S-Gamut3.Cine** | **Usable in Modset v2** ([E0555](../docs/evidence/0555-arrivederci-menu-exit-recompute-and-cc8-refill.md), [E0556](../docs/evidence/0556-arrivederci-classic-fitted-matrix.md)). **Turn OFF before power-off** so Sony's backup does not retain the matrix |
 | **ModsTabLook** | `SMOD v2` | Renders the custom `MODS` tab icon artwork (`E0522`) instead of reusing the 6th tab's ★ icon | Auto-enabled in QEMU mod-dev mode ([E0522](../docs/evidence/0522-mods-tab-icon-and-uxd-image-container.md), [MOD_DEVELOPMENT.md](../qemu-a6400/MOD_DEVELOPMENT.md)) |
 | **Open Gate (3:2) Recording** | Shelved | Candidate `IMX284` 3:2 (`1620×1080` / `3240×2160`) recording path via `DMM` & `ZIMA DVENC` | [Original buffer selection and recording limits](../docs/evidence/mods/2026-11-19-firmware-qualification.md#stock-recording-and-open-gate). No runnable recording mod or playable camera/guest clip has been demonstrated. |

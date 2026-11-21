@@ -1,7 +1,10 @@
 """Offline unit tests for the Run B26 (Phase 4) E0476 pre-arm harness."""
+from unittest import mock
 import unittest
 
 from tools.research.run_b26_uvc_prearm import (
+    DAEMON_PATH,
+    MODULE_PATH,
     composite_state,
     parse_b26_log_evidence,
     verify_local_artifacts,
@@ -9,11 +12,23 @@ from tools.research.run_b26_uvc_prearm import (
 
 
 class RunB26HarnessTests(unittest.TestCase):
+    @unittest.skipUnless(
+        MODULE_PATH.is_file() and DAEMON_PATH.is_file(),
+        "local E0476 prearm/daemon build artifacts not present",
+    )
     def test_verify_local_artifacts_pins_e0476_module_and_daemon(self):
         result = verify_local_artifacts()
         self.assertTrue(result["module"]["ok"], result["module"])
         self.assertTrue(result["daemon"]["ok"], result["daemon"])
         self.assertTrue(result["all_ok"])
+
+    def test_verify_local_artifacts_fails_closed_when_missing(self):
+        with mock.patch("tools.research.run_b26_uvc_prearm.MODULE_PATH", MODULE_PATH.with_name("missing.ko")):
+            with mock.patch("tools.research.run_b26_uvc_prearm.DAEMON_PATH", DAEMON_PATH.with_name("missing-lived")):
+                result = verify_local_artifacts()
+        self.assertFalse(result["module"]["ok"])
+        self.assertFalse(result["daemon"]["ok"])
+        self.assertFalse(result["all_ok"])
 
     def test_parse_b26_log_evidence_accepts_prearm_r1(self):
         sample = (

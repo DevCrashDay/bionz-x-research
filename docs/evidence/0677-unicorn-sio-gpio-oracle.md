@@ -1,10 +1,10 @@
-# E0659 — Unicorn SIO and GPIO from the QEMU oracle
+# E0677 — Unicorn SIO and GPIO from the QEMU oracle
 
 Date: 2026-11-20. Offline. The QEMU capture used the existing `sony-a6400` machine. No camera or USB was touched.
 
 ## Observation
 
-A 75-second `mmio` capture of QEMU 11.1.3 (`artifacts/analysis/oracle-e0659.jsonl`, 64,000 MMIO records, plugin `unicorn_oracle.so`) puts the two hottest device windows that Unicorn still answered as zeros at:
+A 75-second `mmio` capture of QEMU 11.1.3 (`artifacts/analysis/oracle-e0677.jsonl`, 64,000 MMIO records, plugin `unicorn_oracle.so`) puts the two hottest device windows that Unicorn still answered as zeros at:
 
 - `cxd-sio` `0xF2405000`, especially channel 3 status `0xF2405600`. The first guest writes are `0x80000000`, `0x40000000`, then `0x18000000`. After the config write the same address reads back `0x18000000`. A later start write reads back `0x38000000` (config bits 28 and 27 plus done bit 29).
 - `cxd-gpio` `0xF2910000`. Port 1 input `0xF2910110` polls as `0x32` from the first sample.

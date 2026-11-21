@@ -22,6 +22,8 @@
 # SGC1_EVENT_A=1 (opt-in Sgc1 event A and IRQ 35, E0569).
 # GATE_FORCE_PROBE=1 (declared stimulus cond. PROBE gate-force: one-shot patch
 # of the av-cam step-26 producer cbz at PA 0x03874fd0 to a NOP; not a fix).
+# ENTRY_FORCE_PROBE=1 (declared stimulus cond. PROBE entry-force: while the
+# camera-control state is 240, force the first av-cam entry to r0 = 1; not a fix).
 # LIVEVIEW_SOURCE (opt-in bars, ramp, none, or pgm:PATH, E0591).
 # P2S_TRACE=1 (log the first 64 sensor-writer transfers).
 # USB_VBUS_TEST=1 (enable the runtime usb-vbus QMP property).
@@ -57,7 +59,9 @@ if [ "${ZMA1_JPEG_FILL:-0}" = 1 ] && [ "${ZMA1_STARTUP:-0}" != 1 ]; then
 fi
 
 # Check the replay fixture before spending time staging firmware and an overlay.
-SUBMICRO_FRAME_SHA=6d5026e3932f3f46b47cc44a15008ced099dba46041deafbc1c058e4a0fa85ed
+# SUBMICRO_FRAMES_SHA declares a different 384-byte extract, e.g. the one
+# tools.research.qemu_packaged_inputs derives from the public updater's WBI.
+SUBMICRO_FRAME_SHA=${SUBMICRO_FRAMES_SHA:-6d5026e3932f3f46b47cc44a15008ced099dba46041deafbc1c058e4a0fa85ed}
 SUBMICRO_RX="${SUBMICRO_FRAMES:-}"
 if [ -n "$SUBMICRO_RX" ]; then
     if [ -n "${SUBMICRO_PAGE:-}" ]; then
@@ -216,6 +220,10 @@ fi
 # GATE_FORCE_PROBE=1 (declared stimulus cond. PROBE gate-force; off by default).
 if [ "${GATE_FORCE_PROBE:-0}" = 1 ]; then
     MACHINE="$MACHINE,gate-force-probe=on"
+fi
+# ENTRY_FORCE_PROBE=1 (declared stimulus cond. PROBE entry-force; off by default).
+if [ "${ENTRY_FORCE_PROBE:-0}" = 1 ]; then
+    MACHINE="$MACHINE,entry-force-probe=on"
 fi
 if [ "${REAR_CONTROLS:-0}" = 1 ]; then
     MACHINE="$MACHINE,rear-controls=on"

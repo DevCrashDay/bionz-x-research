@@ -1,4 +1,4 @@
-# E0658 — Unicorn SYSV/VPH frame clock and evsel `ext-vd`
+# E0676 — Unicorn SYSV/VPH frame clock and evsel `ext-vd`
 
 Date: 2026-11-20. Offline. No camera, USB, or firmware image was executed for this record.
 

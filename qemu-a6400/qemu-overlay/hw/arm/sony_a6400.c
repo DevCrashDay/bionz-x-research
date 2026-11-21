@@ -9,6 +9,7 @@
  *   - SRAM:       0xFE000000 .. 0xFE100000 (1 MiB)
  *   - A9MPCore:   0xF8000000 (GIC CPU @ 0xF8000100, GIC Dist @ 0xF8001000)
  *   - PL011 UART0:0xF2000000 (IRQ 150 -> SPI 118)
+ *   - PL011 UART3:0xF2003000 (IRQ 120 -> SPI 88, null chardev)
  *   - CXD4115 timer: 0xF2403000, channel n -> IRQ 153 + n (E0522)
  *   - 4 x Cortex-A5 (E0522: secondaries released through SRAM mailbox
  *     0xFE005010 + 4 * (cpu - 1) by cxd900x0_smp_init)
@@ -46,6 +47,7 @@
 #include "system/address-spaces.h"
 #include "system/memory.h"
 #include "system/system.h"
+#include "exec/translation-block.h"
 #include "target/arm/cpu.h"
 #include "ui/input.h"
 
@@ -60,6 +62,8 @@
 #define CXD90045_PERIPH_BASE     0xF8000000ULL
 #define CXD90045_UART0_BASE      0xF2000000ULL
 #define CXD90045_UART0_SPI       (150 - 32)
+#define CXD90045_UART3_BASE      0xF2003000ULL
+#define CXD90045_UART3_SPI       (120 - 32)
 #define CXD90045_TIMER_BASE      0xF2403000ULL
 #define CXD90045_TIMER_IRQ0      153
 #define CXD90045_WDT_BASE        0xF2402000ULL
@@ -1015,6 +1019,23 @@ static void sony_set_ddrb_control(Object *obj, bool enabled, Error **errp)
  * QEMU's generic arm_load_kernel() cannot express this layout, so the
  * machine loads the images itself and enters the kernel on CPU reset.
  */
+/* Adapted ZV-E10 UI kernel layout; never selected by the stock profile. */
+static bool sony_a6400_zve10_menu_boot;
+
+static bool sony_get_zve10_menu_boot(Object *obj, Error **errp)
+{
+    return sony_a6400_zve10_menu_boot;
+}
+
+static void sony_set_zve10_menu_boot(Object *obj, bool enabled, Error **errp)
+{
+    if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        error_setg(errp, "zve10-menu-boot is a startup-only policy");
+        return;
+    }
+    sony_a6400_zve10_menu_boot = enabled;
+}
+
 #define CXD90045_KERNEL_LOAD     0x00108000ULL
 #define CXD90045_INITRD_LOAD     0x00700000ULL
 #define CXD90045_INITRD_MAX      0x00800000ULL
@@ -1140,6 +1161,11 @@ static void sony_a6400_write_stubs(unsigned ncpu)
     for (int i = 0; i < 20; i++) {
         blob0[i] = cpu_to_le32(cxd90045_stub0[i]);
     }
+    if (sony_a6400_zve10_menu_boot) {
+        /* ARM immediate encoding: mov pc, #0x138000. */
+        blob0[13] = cpu_to_le32(0xe3a0f94e);
+        blob0[19] = cpu_to_le32(0x100); /* adapted kernel uses Linux ATAGS */
+    }
     cxd90045_spi_targets(&blob0[20], ncpu);
     rom_add_blob_fixed("sony_a6400.stub0", blob0, sizeof(blob0),
                        CXD90045_STUB0);
@@ -1181,13 +1207,53 @@ static void sony_a6400_cpu_reset(void *opaque)
     }
 }
 
+/* Standard Linux ATAGS for the rebuilt UI kernel, not the stock Sony ABI. */
+static void sony_a6400_menu_atags(MachineState *machine, uint32_t initrd_size)
+{
+    const char *cmdline = machine->kernel_cmdline ? machine->kernel_cmdline : "";
+    size_t cmd_words = (strlen(cmdline) + 1 + 3) / 4;
+    size_t count = 5 + 4 + 4 + 2 + cmd_words + 2;
+    if (count * 4 > CXD90045_STUB0 - 0x100) {
+        error_report("sony-a6400: adapted menu ATAGS exceed reserved space");
+        exit(1);
+    }
+    g_autofree uint32_t *tags = g_new0(uint32_t, count);
+    uint32_t *p = tags;
+
+    *p++ = cpu_to_le32(5);
+    *p++ = cpu_to_le32(0x54410001); /* ATAG_CORE */
+    p += 3;
+    *p++ = cpu_to_le32(4);
+    *p++ = cpu_to_le32(0x54410002); /* ATAG_MEM */
+    *p++ = cpu_to_le32(0x40000000);
+    *p++ = 0;
+    *p++ = cpu_to_le32(4);
+    *p++ = cpu_to_le32(0x54420005); /* ATAG_INITRD2 */
+    *p++ = cpu_to_le32(0x10000000);
+    *p++ = cpu_to_le32(initrd_size);
+    *p++ = cpu_to_le32(2 + cmd_words);
+    *p++ = cpu_to_le32(0x54410009); /* ATAG_CMDLINE */
+    memcpy(p, cmdline, strlen(cmdline) + 1);
+    rom_add_blob_fixed("sony_a6400.menu_atags", tags, count * 4, 0x100);
+}
+
 static void sony_a6400_load_boot_contract(MachineState *machine,
                                           ARMCPU **cpus, unsigned ncpu)
 {
     const char *append = machine->kernel_cmdline ? machine->kernel_cmdline : "";
     g_autofree char *params = NULL;
     ssize_t size;
+    hwaddr kernel_load = sony_a6400_zve10_menu_boot ?
+                          0x00138000 : CXD90045_KERNEL_LOAD;
+    hwaddr initrd_load = sony_a6400_zve10_menu_boot ?
+                          0x10000000 : CXD90045_INITRD_LOAD;
+    uint64_t initrd_max = sony_a6400_zve10_menu_boot ?
+                          0x10000000 : CXD90045_INITRD_MAX;
 
+    if (sony_a6400_zve10_menu_boot && ncpu != 1) {
+        error_report("sony-a6400: adapted ZV-E10 menu requires -smp 1");
+        exit(1);
+    }
     for (unsigned i = 0; i < ncpu; i++) {
         qemu_register_reset(sony_a6400_cpu_reset, cpus[i]);
     }
@@ -1196,8 +1262,8 @@ static void sony_a6400_load_boot_contract(MachineState *machine,
         return;
     }
 
-    size = load_image_targphys(machine->kernel_filename, CXD90045_KERNEL_LOAD,
-                               CXD90045_INITRD_LOAD - CXD90045_KERNEL_LOAD,
+    size = load_image_targphys(machine->kernel_filename, kernel_load,
+                               initrd_load - kernel_load,
                                &error_fatal);
     if (size <= 0) {
         error_report("sony-a6400: could not load kernel '%s'",
@@ -1207,13 +1273,17 @@ static void sony_a6400_load_boot_contract(MachineState *machine,
 
     if (machine->initrd_filename) {
         size = load_image_targphys(machine->initrd_filename,
-                                   CXD90045_INITRD_LOAD, CXD90045_INITRD_MAX,
+                                   initrd_load, initrd_max,
                                    &error_fatal);
         if (size <= 0) {
             error_report("sony-a6400: could not load initrd '%s'",
                          machine->initrd_filename);
             exit(1);
         }
+    }
+
+    if (sony_a6400_zve10_menu_boot) {
+        sony_a6400_menu_atags(machine, machine->initrd_filename ? size : 0);
     }
 
     params = g_str_has_prefix(append, "kemco") ? g_strdup(append)
@@ -1736,6 +1806,66 @@ static void sony_a6400_set_gate_force_probe(Object *obj, bool value,
                                             Error **errp)
 {
     sony_a6400_gate_force_probe = value;
+}
+
+/*
+ * Declared stimulus (cond. PROBE entry-force), opt-in and off by default. This
+ * is NOT a model or a fix: while the camera-control state S (VA 0x6431B594)
+ * is 240, it patches the av-cam entry dispatch at VA 0x6386CDC0 from
+ * "add.w r3, r0, #-1" to "movs r0, #1; movs r3, #0". The tbh at 0x6386CDD8
+ * then selects index 0, so the first entry takes the r0 = 1 path exactly as
+ * F-0060's debugger write did (r0 = 1, r10 = 1). Only the exact av-cam bytes
+ * 00 f1 ff 33 are patched. The original bytes are restored and the translation
+ * blocks invalidated as soon as S leaves 240, so later entries behave
+ * naturally. The timer polls every 100 us of virtual time: the S = 240
+ * window at the first entry is only tens of ms long (L0068 DBG2).
+ */
+#define ENTRY_FORCE_PA 0x0386CDC0ULL
+#define ENTRY_FORCE_S_PA 0x0431B594ULL
+#define ENTRY_FORCE_PERIOD_NS (100 * 1000LL)
+#define ENTRY_FORCE_S_READY 0xf0
+
+static bool sony_a6400_entry_force_probe;
+static QEMUTimer *sony_a6400_entry_force_timer;
+
+static void sony_a6400_entry_force_tick(void *opaque)
+{
+    static const uint8_t orig[4] = { 0x00, 0xf1, 0xff, 0x33 };
+    static const uint8_t forced[4] = { 0x01, 0x20, 0x00, 0x23 };
+    uint8_t bytes[4];
+    uint8_t s;
+
+    address_space_read(&address_space_memory, ENTRY_FORCE_S_PA,
+                       MEMTXATTRS_UNSPECIFIED, &s, sizeof(s));
+    address_space_read(&address_space_memory, ENTRY_FORCE_PA,
+                       MEMTXATTRS_UNSPECIFIED, bytes, sizeof(bytes));
+    if (s == ENTRY_FORCE_S_READY && memcmp(bytes, orig, sizeof(orig)) == 0) {
+        address_space_write(&address_space_memory, ENTRY_FORCE_PA,
+                            MEMTXATTRS_UNSPECIFIED, forced, sizeof(forced));
+        tb_invalidate_phys_range(NULL, ENTRY_FORCE_PA,
+                                 ENTRY_FORCE_PA + sizeof(forced) - 1);
+        fprintf(stderr, "a6400: entry-force-probe applied "
+                "0x6386cdc0=0x2001,0x2300 (dispatch add.w r3,r0,#-1)\n");
+    } else if (s != ENTRY_FORCE_S_READY &&
+               memcmp(bytes, forced, sizeof(forced)) == 0) {
+        address_space_write(&address_space_memory, ENTRY_FORCE_PA,
+                            MEMTXATTRS_UNSPECIFIED, orig, sizeof(orig));
+        tb_invalidate_phys_range(NULL, ENTRY_FORCE_PA,
+                                 ENTRY_FORCE_PA + sizeof(orig) - 1);
+    }
+    timer_mod(sony_a6400_entry_force_timer,
+              qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + ENTRY_FORCE_PERIOD_NS);
+}
+
+static bool sony_a6400_get_entry_force_probe(Object *obj, Error **errp)
+{
+    return sony_a6400_entry_force_probe;
+}
+
+static void sony_a6400_set_entry_force_probe(Object *obj, bool value,
+                                             Error **errp)
+{
+    sony_a6400_entry_force_probe = value;
 }
 
 static bool sony_a6400_get_campig_enable_readback(Object *obj, Error **errp)
@@ -2280,6 +2410,15 @@ static void sony_a6400_init(MachineState *machine)
     }
 
     pl011_create(CXD90045_UART0_BASE, pic[CXD90045_UART0_SPI], serial_hd(0));
+    /*
+     * UART3 is a second, independent PL011.  The kernel's udif table names it
+     * "uart3" at 0xF2003000 (size 0x1000, IRQ 120) and AMBA-probes it as
+     * uart_devs[3]; without the device the PrimeCell ID reads return 0 and
+     * registration fails.  The stock pl011 already exposes PID 0x00141011 /
+     * CID 0xB105F00D, matching the kernel's expected AMBA IDs.  No second
+     * -serial is passed, so the chardev is NULL and UART0/console is untouched.
+     */
+    pl011_create(CXD90045_UART3_BASE, pic[CXD90045_UART3_SPI], serial_hd(1));
 
     timer = qdev_new("cxd4115-timer");
     sysbus_realize_and_unref(SYS_BUS_DEVICE(timer), &error_fatal);
@@ -2313,12 +2452,17 @@ static void sony_a6400_init(MachineState *machine)
         sony_a6400_create_lowmem_abort(sysmem, cpus, ncpu);
     }
     if (sony_a6400_hostwin && *sony_a6400_hostwin) {
+#ifdef _WIN32
+        error_report("sony-a6400: hostwin requires a POSIX host");
+        exit(1);
+#else
         MemoryRegion *win = g_new0(MemoryRegion, 1);
         if (!memory_region_init_ram_from_file(win, NULL, "a6400.hostwin", CXD90045_HOSTWIN_SIZE,
                                               0, RAM_SHARED, sony_a6400_hostwin, 0, &error_fatal)) {
             exit(1);
         }
         memory_region_add_subregion_overlap(sysmem, CXD90045_HOSTWIN_PA, win, 10);
+#endif
     }
 
     /*
@@ -2342,6 +2486,13 @@ static void sony_a6400_init(MachineState *machine)
             timer_new_ns(QEMU_CLOCK_VIRTUAL, sony_a6400_gate_force_tick, NULL);
         timer_mod(sony_a6400_gate_force_timer,
                   qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + GATE_FORCE_PERIOD_NS);
+    }
+    if (sony_a6400_entry_force_probe) {
+        sony_a6400_entry_force_timer =
+            timer_new_ns(QEMU_CLOCK_VIRTUAL, sony_a6400_entry_force_tick, NULL);
+        timer_mod(sony_a6400_entry_force_timer,
+                  qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
+                  ENTRY_FORCE_PERIOD_NS);
     }
     if (sony_a6400_usb_vbus_test) {
         sony_usb_vbus_create(machine, pic[230 - 32]);
@@ -2525,6 +2676,48 @@ static void sony_a6400_init(MachineState *machine)
         qdev_prop_set_uint64(cc, "base", 0xF3120000ULL);
         sysbus_realize_and_unref(SYS_BUS_DEVICE(cc), &error_fatal);
         sysbus_mmio_map_overlap(SYS_BUS_DEVICE(cc), 0, 0xF3120000ULL, -600);
+    }
+
+    /*
+     * L0031: uncovered sub-windows of two more register blocks, modelled by
+     * the same generic cxd90045-camcore rule file (base selects the block
+     * table, window says where this sub-window starts).  Each window is
+     * mapped at -600: above the cxd90045.unmodelled catch-all (-1000) and
+     * below every existing device model, which therefore keep winning:
+     *   (0xF2400000 is left unmodelled: guest-written status words, see
+     *   cxd90045_camcore.c.)
+     *   - 0xF3C00000: 0xF3C04000..0xF3C08FFF; the P2S page
+     *     0xF3C00000..0xF3C00FFF and the evsel block 0xF3C30000 are not
+     *     covered.
+     *   - 0xF2910000: 0xF2912000/0x4000/0x5000; the 18-port GPIO model covers
+     *     only 0x100*18 = 0x1200 bytes (0xF2910000..0xF29111FF), so these
+     *     three pages are outside it, and DFS 0xF2916000 is not covered.
+     */
+    {
+        static const struct {
+            hwaddr base;
+            hwaddr window;
+            uint64_t size;
+            const char *name;
+        } cc_windows[] = {
+            { 0xF3C00000ULL, 0xF3C04000ULL, 0x5000, "cxd90045.camcore-f3c0-4000" },
+            { 0xF2910000ULL, 0xF2912000ULL, 0x1000, "cxd90045.camcore-f291-2000" },
+            { 0xF2910000ULL, 0xF2914000ULL, 0x1000, "cxd90045.camcore-f291-4000" },
+            { 0xF2910000ULL, 0xF2915000ULL, 0x1000, "cxd90045.camcore-f291-5000" },
+        };
+        size_t k;
+
+        for (k = 0; k < ARRAY_SIZE(cc_windows); k++) {
+            DeviceState *cc = qdev_new("cxd90045-camcore");
+
+            qdev_prop_set_string(cc, "name", cc_windows[k].name);
+            qdev_prop_set_uint64(cc, "size", cc_windows[k].size);
+            qdev_prop_set_uint64(cc, "base", cc_windows[k].base);
+            qdev_prop_set_uint64(cc, "window", cc_windows[k].window);
+            sysbus_realize_and_unref(SYS_BUS_DEVICE(cc), &error_fatal);
+            sysbus_mmio_map_overlap(SYS_BUS_DEVICE(cc), 0,
+                                    cc_windows[k].window, -600);
+        }
     }
 
     /*
@@ -2847,6 +3040,13 @@ static void sony_a6400_machine_init(MachineClass *mc)
     object_class_property_set_description(OBJECT_CLASS(mc),
         "gate-force-probe", "Declared stimulus (cond. PROBE gate-force): patch "
         "the av-cam step-26 producer cbz to a NOP once; not a fix");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "entry-force-probe",
+                                   sony_a6400_get_entry_force_probe,
+                                   sony_a6400_set_entry_force_probe);
+    object_class_property_set_description(OBJECT_CLASS(mc),
+        "entry-force-probe", "Declared stimulus (cond. PROBE entry-force): "
+        "while S is 240, make the first av-cam entry take the r0 = 1 path; "
+        "not a fix");
     object_class_property_add_bool(OBJECT_CLASS(mc), "rear-controls",
                                    sony_a6400_get_rear_controls,
                                    sony_a6400_set_rear_controls);
@@ -2893,6 +3093,12 @@ static void sony_a6400_machine_init(MachineClass *mc)
     object_class_property_set_description(OBJECT_CLASS(mc), "work-dma",
         "Model the work DMA copy channel at 0xF0102000 (+0x1C0, mode "
         "0x1C491000 only; E0641)");
+    object_class_property_add_bool(OBJECT_CLASS(mc), "zve10-menu-boot",
+                                   sony_get_zve10_menu_boot,
+                                   sony_set_zve10_menu_boot);
+    object_class_property_set_description(OBJECT_CLASS(mc), "zve10-menu-boot",
+        "Opt in to the adapted ZV-E10 UI kernel layout (single CPU, "
+        "kernel 0x138000, initrd 0x10000000, maximum 256 MiB)");
     object_class_property_add_bool(OBJECT_CLASS(mc), "ddrb-control",
                                    sony_get_ddrb_control, sony_set_ddrb_control);
     object_class_property_set_description(OBJECT_CLASS(mc), "ddrb-control",

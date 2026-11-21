@@ -44,8 +44,25 @@ def is_verified_libusbcmd(data: bytes) -> bool:
     """Return True iff ``data`` matches a verified FW 2.00 ``libusbcmd.so`` digest."""
     return (len(data), hashlib.sha256(data).hexdigest()) in VERIFIED_LIBUSBCMD_VARIANTS
 
+# ZV-E10 (FW 2.00 - 2.03) driver pair:
+# Built with Sony CE Linux 8.2.7.6 / GCC 4.5.1 (build 20220614).
+# libusbcmd.so is byte-identical to ILCE-6400A 1.01 (SHA 23b94deb...; differing from
+# a6400 only by a 46-byte .comment record + 2-byte e_shoff pad -> +48 B).
+# usb_extcmd.ko is 14,796 B (-12 B vs a6400, matching a6400A 1.01 toolchain generation).
+ZVE10_USB_EXTCMD_SIZE = 14796
+ZVE10_USB_EXTCMD_NORMALIZED_SHA256 = (
+    "1083cadde9dda2534585c1571fc1b320781fdeccb43cfc648e1d342dba55620f"
+)
+ZVE10_LIBUSBCMD_SIZE = 15996
+ZVE10_LIBUSBCMD_SHA256 = (
+    "23b94deb094d31f160cfe1d46330f2425e94d4801dfccb66720c4cf4b81cfb7e"
+)
+
 DEFAULT_PAYLOAD_DAEMON = "devcrashday_a6400/a6400_usb_debugd.elf"
 DEFAULT_PAYLOAD_LAUNCHER = "devcrashday_a6400/hook/usb_debug_launcher.so"
+
+ZVE10_PAYLOAD_DAEMON = "artifacts/native/zve10-usb-debugger/zve10_usb_debugd.elf"
+ZVE10_PAYLOAD_LAUNCHER = "artifacts/native/zve10-usb-debugger/usb_debug_launcher.so"
 
 DEBUGGER_RELEASE_REPO = "ivica00/sony-a6400-research"
 DEBUGGER_RELEASE_TAG = "usb-debugger-binaries-v1"
@@ -158,6 +175,29 @@ USB_DEBUGGER_TARGETS: Mapping[str, DebuggerTargetSpec] = {
             "installer cannot treat this body as compatible."
         ),
     ),
+    "zv_e10": DebuggerTargetSpec(
+        target_id="zv_e10",
+        model_name="ZV-E10",
+        firmware_versions=("2.00", "2.01", "2.02", "2.03"),
+        qualification="verified",
+        usb_extcmd_size=ZVE10_USB_EXTCMD_SIZE,
+        usb_extcmd_normalized_sha256=ZVE10_USB_EXTCMD_NORMALIZED_SHA256,
+        usb_extcmd_exact_sha256s=(
+            "98cb54e3d3600f754fc348f553f1d248b64bf2105e461239f60fe88db3d0473a",
+        ),
+        usb_extcmd_reference_paths=(
+            "artifacts/hardware/zve10-pull/usb_extcmd.ko",
+        ),
+        libusbcmd_size=ZVE10_LIBUSBCMD_SIZE,
+        libusbcmd_sha256=ZVE10_LIBUSBCMD_SHA256,
+        payload_daemon=ZVE10_PAYLOAD_DAEMON,
+        payload_launcher=ZVE10_PAYLOAD_LAUNCHER,
+        bootstrap_mode="senser_ff01",
+        notes=(
+            "Verified on live ZV-E10 (FW 2.02, body_version 100.110.035). "
+            "Native USB debugger and MTF2 touch layer verified over Senser terminal protocol."
+        ),
+    ),
 }
 
 
@@ -169,6 +209,8 @@ def list_debugger_targets() -> tuple[str, ...]:
 def get_debugger_target(target_id: str) -> DebuggerTargetSpec:
     """Look up a registered debugger target spec by ID."""
     key = target_id.strip().lower().replace("-", "_")
+    if key == "zve10":
+        key = "zv_e10"
     if key not in USB_DEBUGGER_TARGETS:
         known = ", ".join(list_debugger_targets())
         raise KeyError(
