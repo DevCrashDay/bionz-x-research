@@ -46,8 +46,9 @@ Proof:
 - boot unchanged: 2,057 vs 2,058 normalized serial lines, the only difference is one log
   line carrying a different runtime address.
 
-Not proven: the rendered PP screen. The emulator does not reach the menu in 60 s (av-cam
-step-32 wait), so this is stated as a boundary, not as a screenshot claim.
+Not proven: the PP screen's own contents. The menu row is proven: with the redirect off
+the same page 9/11 row reads `Soft Skin Effect  Off`; with `PP_UNLOCK=1` it reads
+`Picture Profile  PP7`. Soft Skin is not reachable while the redirect is on.
 
 ## Provenance note
 

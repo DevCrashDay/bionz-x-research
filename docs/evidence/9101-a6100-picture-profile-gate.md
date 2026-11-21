@@ -138,8 +138,23 @@ runtime address. No boot-path change, no new fault.
 
 **What this does and does not prove.** It proves the guest's `CautionConfig.so` now
 resolves the Soft Skin node to the Picture Profile node, that the patch is the same one
-already validated for this build, and that the rest of the boot is unchanged. It does not
-prove the PP screen renders: the menu is not reached in the 60 s window (§7).
+already validated for this build, and that the rest of the boot is unchanged. It also
+proves the effect on the drawn menu, with an A/B pair captured from two QEMU instances of
+the same prepared inputs:
+
+| Run | Camera Settings 1, page 9/11 (`Color/WB/Img. Processing`) |
+| --- | --- |
+| `PP_UNLOCK` unset (stock) | `White Balance`, `Priority Set in AWB`, `DRO/Auto HDR`, `Creative Style`, `Picture Effect`, **`Soft Skin Effect  Off`** |
+| `PP_UNLOCK=1` | same page, same row: **`Picture Profile  PP7`** |
+
+The row is the Soft Skin slot; the redirect turns it into the Picture Profile item, which
+opens with the current profile value from the backup data. This is the first on-screen
+confirmation in this record, and it also corrects the first pass's assumption that the
+a6100's own tree already carried PP: that tree has the Soft Skin slot, and the 21 PP menu
+references live in the other model trees inside the same `viewUnified2.so`.
+
+Side effect, stated plainly: Soft Skin Effect is not reachable while the redirect is on.
+Toggle `PP_UNLOCK` off for a stock camera.
 
 ## 6. Reproducing
 
@@ -168,10 +183,11 @@ A6100_DUMP=<dump> python3 -m unittest tests.test_a6100_picture_profile
   §4 states both facts.
 - The validity byte's object address is still unresolved (the setter loads it through a
   GOT slot); the unlock does not touch it.
-- **Boundary:** the emulator does not reach the menu in 60 s (it stops at the av-cam
-  step-32 wait on this build), so "PP appears on screen" is **not** claimed. Confirming
-  the rendered menu needs either a longer/more complete boot or the camera itself, which
-  is outside this task's offline boundary. The camera was not written to.
+- **Boundary:** the emulator reaches the shooting screen and the menu under the interactive
+  rear panel with a 60 s+ wall-clock budget (icount makes it ~5x slower than real time),
+  and the A/B pair in §5 was captured there. What is still not established: the PP screen's
+  own contents (gamma/colour rows), and any behaviour on a physical camera. The camera was
+  not written to.
 
 ## 8. Assumptions
 
