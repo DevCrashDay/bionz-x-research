@@ -92,11 +92,23 @@ def serial_readiness(text: str, shell_seen: bool, marker_seen: bool,
 
 
 class Qmp:
-    def __init__(self, path: Path, deadline: float):
+    def __init__(self, path: Path | tuple[str, int], deadline: float):
         self.deadline, self.ident = deadline, 0
-        self.socket = socket.socket(socket.AF_UNIX)
+        if isinstance(path, tuple):
+            host, port = path
+            if host != '127.0.0.1' or type(port) is not int or not 1 <= port <= 65535:
+                raise ValueError('TCP QMP must use a numeric loopback endpoint')
+            self.socket = socket.socket(socket.AF_INET)
+            endpoint = path
+        else:
+            self.socket = socket.socket(socket.AF_UNIX)
+            endpoint = str(path)
         self.socket.settimeout(5)
-        self.socket.connect(str(path))
+        try:
+            self.socket.connect(endpoint)
+        except OSError:
+            self.socket.close()
+            raise
         self.stream = self.socket.makefile('rwb', buffering=0)
         self.events = []
         self.greeting = self.read()

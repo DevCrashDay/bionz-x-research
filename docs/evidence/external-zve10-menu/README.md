@@ -93,11 +93,12 @@ source-file hashes and the prepared UI-kernel/CPIO identities.
 The contributor implementation was an uncommitted local worktree based on
 `11d8b25983898801270217fa04f1aaca73f5e55b` in `qn06142/zv-e10-re`. That base is
 not asserted to be publicly available. Exact implementation hashes are retained
-in the receipt. **This PR contributes an external experiment receipt and
-screenshots, not an upstream-integrated runtime or a fresh-clone replay.**
-Private prepared inputs and the full local implementation would be needed to
-repeat the original commands. No upstream emulator replay was performed for
-this documentation contribution.
+in the receipt. **The initial PR revision contributed an external experiment receipt and
+screenshots in its initial documentation-only revision.** The subsequent
+[upstream board integration](../../ZVE10_ADAPTED_MENU.md) adds a separate
+launcher and replay, documented in [integration validation](integration-validation.md).
+Private prepared inputs are still required; the original commands below remain
+specific to the contributor checkout.
 
 The contributor ran, from that local checkout:
 

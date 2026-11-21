@@ -259,6 +259,10 @@ Run scripts as Python modules from the repo root (`python -m tools.research.<too
 
 ---
 
+An opt-in [ZV-E10 adapted-menu integration](docs/ZVE10_ADAPTED_MENU.md)
+runs prepared private inputs on the upstream QEMU board, with native event and
+scanout checks. This does not qualify stock boot or physical controls.
+
 External comparison: [ZV-E10 adapted-menu receipt](docs/evidence/external-zve10-menu/README.md)
 records an original English Sony menu under an AP-only adapter. It is separate
 from upstream stock-firmware boot progress and does not advance the a6400
