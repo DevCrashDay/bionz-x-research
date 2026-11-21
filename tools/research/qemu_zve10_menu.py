@@ -309,8 +309,7 @@ def run(qemu: Path, inputs: dict, output: Path, seconds: int, keys: list[str], *
             start = len(menu.text)
             menu.send('STOP')
             receipt['stopped'] = menu.wait('NE_STOPPED', start)
-            qmp.request('quit')
-            receipt['returncode'] = process.wait(timeout=10)
+            receipt['returncode'] = qmp.quit(process)
             receipt['completed'] = receipt['returncode'] == 0
     except Exception as error:
         receipt['error'] = f'{type(error).__name__}: {error}'

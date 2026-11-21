@@ -73,8 +73,7 @@ class NativeMenuBootLayoutTests(unittest.TestCase):
             self.assertEqual(struct.unpack('<I', self.read(qmp, 0x104c, 4))[0], 0x100)
             self.assertEqual(struct.unpack('<4I', self.read(qmp, 0x124, 16)),
                              (4, 0x54420005, 0x10000000, self.initrd.stat().st_size))
-        qmp.request('quit')
-        self.assertEqual(process.wait(timeout=5), 0)
+        self.assertEqual(qmp.quit(process, timeout=5), 0)
 
     def test_stock_layout_is_unchanged(self):
         self.check_layout('', 0x108000, 0x700000, 0xe3a0f942)

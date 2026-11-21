@@ -6,10 +6,11 @@ import shutil
 import socket
 import time
 import unittest
+from unittest.mock import Mock
 import uuid
 
 from project_paths import PROJECT_ROOT
-from tools.research.qemu_boot_probe import Qmp
+from tools.research.qemu_boot_probe import Qmp, QmpDisconnected
 from tools.research.qemu_zve10_menu import NativeMenu, PROFILE, command, load_inputs
 
 
@@ -166,6 +167,38 @@ class MenuProtocolTests(unittest.TestCase):
         menu = NativeMenu(uart, self.directory / 'serial.log', time.monotonic() + 5)
         with self.assertRaisesRegex(RuntimeError, 'sequence'):
             menu.press('RIGHT')
+
+    def test_qmp_quit_requires_zero_exit_even_after_read_disconnect(self):
+        qmp = object.__new__(Qmp)
+        qmp.request = Mock(side_effect=QmpDisconnected('peer closed'))
+        process = Mock()
+        process.wait.return_value = 0
+        self.assertEqual(qmp.quit(process), 0)
+        qmp.request.assert_called_once_with('quit')
+        process.wait.return_value = 7
+        with self.assertRaisesRegex(RuntimeError, 'nonzero status: 7'):
+            qmp.quit(process)
+
+    def test_qmp_quit_preserves_protocol_and_send_failures(self):
+        qmp = object.__new__(Qmp)
+        for error in (RuntimeError('QMP error'), ConnectionResetError('send failed')):
+            with self.subTest(error=type(error).__name__):
+                qmp.request = Mock(side_effect=error)
+                process = Mock()
+                with self.assertRaises(type(error)):
+                    qmp.quit(process)
+                process.wait.assert_not_called()
+
+    def test_qmp_read_reports_eof_and_reset_separately_from_protocol_errors(self):
+        qmp = object.__new__(Qmp)
+        qmp.deadline = time.monotonic() + 10
+        qmp.socket, qmp.stream = Mock(), Mock()
+        for response in (b'', ConnectionResetError('peer reset')):
+            with self.subTest(response=response):
+                qmp.stream.readline.side_effect = response if isinstance(response, Exception) else None
+                qmp.stream.readline.return_value = response
+                with self.assertRaises(QmpDisconnected):
+                    qmp.read()
 
     def test_non_loopback_qmp_refused_before_connect(self):
         with self.assertRaisesRegex(ValueError, 'loopback'):
