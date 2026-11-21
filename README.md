@@ -144,7 +144,7 @@ Legend: `🟢 Verified` · `🟡 Partial / Opt-in` · `⚪ Open Boundary` · `�
 
 | Mod | What it does | Status |
 | :--- | :--- | :--- |
-| **[MenuTouchFull (`MTF2`)](mods/menu_touch_full/README.md)** | Full-menu touch navigation: tabs, page dots, swipe paging, row select/open, popup scroll & apply | v1 verified on `ILCE-6400` ([E0520](docs/evidence/0520-mtf2-full-menu-touch-verified-on-a6400.md)); v2 tab taps and swipes verified from the [native guest touch queue](docs/evidence/mods/2026-11-19-firmware-qualification.md#native-touch-follow-up) |
+| **[MenuTouchFull (`MTF2`)](mods/menu_touch_full/README.md)** | Full-menu touch navigation: tabs, page dots, swipe paging, row select/open, popup scroll & apply | v1 verified on `ILCE-6400` ([E0520](docs/evidence/0520-mtf2-full-menu-touch-verified-on-a6400.md)); v2 tab taps and swipes verified from the [native guest touch queue](docs/evidence/mods/2026-11-19-firmware-qualification.md#native-touch-follow-up). **`ZV-E10`**: hardware-verified full main menu + 12-tile Fn menu touch via direct RAM injection ([details](tools/native_camera/zve10/README.md); *Mod Loader is untested on ZV-E10 at the moment*) |
 | **[Arrivederci](mods/arri_isp/arrivederci/README.md)** | ARRI LogC3 Classic tone curve + fitted Q10 color matrix for S-Log3 / S-Gamut3.Cine | Usable in Modset v2 ([E0555](docs/evidence/0555-arrivederci-menu-exit-recompute-and-cc8-refill.md), [E0556](docs/evidence/0556-arrivederci-classic-fitted-matrix.md)); turn OFF before power-off |
 | **ModsTabLook** | Renders the custom `MODS` tab icon artwork (`E0522`) | Auto-enabled in QEMU mod-dev mode ([E0522](docs/evidence/0522-mods-tab-icon-and-uxd-image-container.md)) |
 | **Command items** (`--action`) | A Mods row without ON/OFF: pressing it starts the mod and closes the menu to the shooting screen, like the ZV-E10 "USB Streaming" entry | Loader feature verified in Unicorn and QEMU ([E0592](docs/evidence/0592-mod-loader-command-items-usb-streaming-entry.md)); no UVC streaming mod uses it yet. The QEMU virtual USB host reaches the DWC3 model, but the guest never starts a gadget ([E0593](docs/evidence/0593-qemu-dwc3-virtual-host-and-gadget-start-gap.md)) |
@@ -165,6 +165,48 @@ If you just want to install mods or unlock camera tweaks on your **`ILCE-6400`**
 
 👉 **Full guides:** **[Windows Mod Manager GUI Guide (`docs/MOD_MANAGER_GUI.md`)](docs/MOD_MANAGER_GUI.md)** · **[Detailed Mod & CLI Guide (`mods/README.md`)](mods/README.md)**
 
+### 📷 Sony ZV-E10: MenuTouchFull & Fn Touch Mod (Direct RAM Injection)
+
+A native ARM touch layer ported and verified on physical **Sony ZV-E10** (`WW356015`, FW 2.02 / 2.03, `body_version = 100.110.035`). It hooks `postMousePress` and `postMouseRelease` in `/libObj.so` and dispatches touch events into the camera's internal UI framework.
+
+> [!IMPORTANT]
+> **Mod Loader is currently untested on Sony ZV-E10:** Mod Loader v1 and v2 (SD-card `.mod` loader and the 7th `Mods` menu tab) have not yet been ported or tested on the ZV-E10. At the moment, this touch mod is deployed via **direct volatile RAM injection** into `im.elf` (`libObj.so` RX zero padding) using the camera's USB Senser terminal mode.
+> - **Zero flash writes:** `/dev/nflasha*` is completely untouched.
+> - **100% volatile & reversible:** A camera power cycle restores completely stock firmware behavior.
+
+**Verified Live Hardware Capabilities:**
+- **Main Menu Navigation:**
+  - Tapping tabs 1..5 immediately switches tabs.
+  - Tapping page indicator dots or swiping horizontally pages left/right.
+  - Single tap selects/highlights any menu row.
+  - Double tap opens level-2 dropdown popup dialogues (via native synchronous `openLevel2Popup`).
+- **Popup Dialogues:**
+  - Tapping an item selects and applies the setting, closes the popup, and refreshes the parent menu.
+  - Vertical swiping scrolls multi-item dialogues.
+  - Tapping outside the popup cancels/dismisses it without changes.
+- **Fn (Function) Menu in Live Preview:**
+  - Tapping any of the 12 tiles (2×6 grid) selects that tile using shortest circular path ring navigation (`ViewFnMenu::ProductAction`).
+  - Second tap (or double tap) opens the tile's setting dialogue (`Decide` action).
+  - Tapping upper screen area (`y < 260`) cancels and dismisses the Fn overlay (`KEY_FN`).
+
+**Current Status & Limitations:**
+- **Mod Loader Untested:** Mod Loader is not yet ported for ZV-E10; deployed directly to volatile DRAM over Senser terminal shell.
+- **Fn Continuous Sliders:** Fn tiles that open continuous scrolling slider dialogs (e.g. ISO slider) crash on tap (investigation in progress).
+- **My Menu (Tab 6):** Touch on Tab 6 is unhandled (matching upstream a6400).
+
+**Quick Deploy (via Senser Terminal):**
+```powershell
+# 1. Switch camera to Senser mode (bind libusb-win32 if needed via Zadig)
+python -m tools.research.deploy_zve10_menu_touch --switch-only
+
+# 2. Build payload and request structures (requires Zig or arm-linux-musleabi)
+python -m tools.research.build_zve10_menu_touch
+
+# 3. Upload and perform live DRAM injection into im.elf
+python -m tools.research.deploy_zve10_menu_touch
+```
+Full technical details: [`tools/native_camera/zve10/README.md`](tools/native_camera/zve10/README.md) and [`docs/porting/zv-e10/`](docs/porting/zv-e10/README.md).
+
 ---
 
 ## Multi-Camera Support (`CXD90045` Platform)
@@ -174,9 +216,10 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 | Body | Kernel Group | Status | Notes / Evidence |
 | :--- | :--- | :--- | :--- |
 | **`ILCE-6400`** | `a6400` / `a6600` source | **Verified Execution Target** | Full QEMU & Unicorn L2/L3 execution, physical RAM-only mods |
+| **`ZV-E10`** | Shared build | **Verified Execution Target (RAM)** | Full Main Menu touch + 12-tile Fn menu touch verified on physical hardware (FW 2.02/2.03) via volatile direct DRAM injection into `im.elf`. Mod Loader currently untested on ZV-E10. UVC stack cataloged ([E0321](docs/evidence/0321-zve10-uvc-enablement-manifest.md)) |
 | **`ILCE-6400A`** | `1.01` packaged | **Sourced Reference** | Native `GetModelInfo` (`0032858730`), packaged Jiritsu command map and bounded offline DMM replies ([E0554](docs/evidence/0554-a6400a-v101-jiritsu-command-dispatch.md), [E0525](docs/evidence/0525-a6400a-jiritsu-senser-offline-packets.md), [E0532](docs/evidence/0532-a6400a-dmm-metadata-bounds-and-lifetime.md)) |
 | **`ILCE-6600`** | `a6400` / `a6600` source | **Sourced Reference** | Identical 14,401 kernel function symbols; `0x413b` command delta |
-| **`ZV-E10`**, **`ILCE-7C`** | Shared build | **Sourced Reference** | Identical 14,460 kernel function symbols; `ZV-E10` UVC stack cataloged ([E0321](docs/evidence/0321-zve10-uvc-enablement-manifest.md)) |
+| **`ILCE-7C`** | Shared build | **Sourced Reference** | Identical 14,460 kernel function symbols |
 | **`ILCE-6100`**, **`ILCE-7M3`**, **`ILCE-7RM4A`** | Shared symbol list | **Sourced Reference** | `ILCE-7RM4A` 1.13 gadget-core symbols decoded ([E0570](docs/evidence/0570-ilce-7rm4a-offline-sourced-profile.md)); `GetModelInfo` command binaries byte-identical to a6400A (opcode `0x7A` confirmed offline; SCSI-side routing still needs the camera), read-only probe generalized ([E0645](docs/evidence/0645-ilce-7rm4a-getmodelinfo-extcmd-chain-identical.md)); physical read-only on 1.13: Mass Storage `054C:0D9D`, PC Remote `054C:0D9F`, native `GetModelInfo` `ILCE-7RM4A` after one BUSY ([E0646](docs/evidence/0646-ilce-7rm4a-physical-usb-identity-and-getmodelinfo.md)) |
 
 ---
