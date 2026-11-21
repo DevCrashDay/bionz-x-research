@@ -88,12 +88,33 @@ enter/confirm event (`REF_OP_NEW` `+0x0fd974`, `REF_EV_CTOR` `+0x0fce20`,
 exported symbols), so they need structural identification: disassemble the a6400 site,
 take its constants and shape, and match inside the a6100 `libObj.so`.
 
-## Toolchain blocker for the actual binaries
+## Toolchain (now installed, root-free)
 
-`build_wsl.sh` needs `arm-linux-gnueabi-gcc`/`ld`/`objdump`. **That toolchain is not
-installed on this machine** (`command -v` finds none, `/opt` is empty), so the shim, the
-core and any `.mod` cannot be compiled here as things stand. The layout work above is
-static and complete for M2; producing binaries needs the cross toolchain installed first.
+`scripts/setup_arm_toolchain.sh` installs the cross compiler without root by downloading the
+Ubuntu `*arm-linux-gnueabi` packages and extracting them under `artifacts/toolchain/`, with
+wrapper scripts that supply the sysroot, the gcc-cross directory and the host library path
+the extracted compiler cannot know. Re-running it is a no-op.
+
+Verified end to end on this machine:
+
+```
+bash scripts/setup_arm_toolchain.sh            # 33 packages, ~51 MB, no root
+export PATH="$PWD/artifacts/toolchain/arm-linux-gnueabi/bin:$PATH"
+bash tools/native_camera/mlv2/build_wsl.sh /tmp/mlv2-repro
+```
+
+The a6400 loader builds reproducibly with it:
+
+| Output | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `shim.bin` | 1008 | `bdd1ae95fd7fbfd0a95190d41250055808f2675b03ee28f1e8d026998c28a2a6` |
+| `core.bin` | 8136 (8116 code) | `cd8971b344b66e3560936177d4047be5bf96b0e4f6572cf2682daba40cc9f8ca` |
+| `mlv2_guard_arm` | 692564 | (built) |
+| `mlv2.req` | 1136 | `02dd9b7d2319674d8d4874c067b73dde0ecaf6614830215361c1ae69f91e2e10` |
+
+One step still fails: the SD-boot companion `.so` links against
+`tools/sony_sysroot/lib/libc.so`, which is not present in this checkout. That file is only
+needed for the SD-card boot package, not for the RAM install through the guard.
 
 ## What this milestone adds
 
@@ -112,7 +133,7 @@ static and complete for M2; producing binaries needs the cross toolchain install
 | M3 | `SET_TEXT`/`SET_MODE` | **done**; five `libObj`-local event addresses remain |
 | M3b | structural match of the five `libObj` addresses | next; needs disassembly of the a6400 sites |
 | M4 | rebase `MenuTouchFull` v2 and locate `Arrivederci`'s a6100 tables | per-site mapping + av-cam table discovery |
-| M5 | emulator harness: stage `.mod` files, apply the shim through QMP/gdbstub, ON/OFF receipts | needs the binaries, i.e. the ARM toolchain |
+| M5 | emulator harness: stage `.mod` files, apply the shim through QMP/gdbstub, ON/OFF receipts | needs the binaries, i.e. the ARM toolchain — **now available** |
 
 ## Boundary
 
