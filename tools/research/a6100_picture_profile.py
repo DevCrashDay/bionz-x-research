@@ -15,17 +15,26 @@ pipeline need different fixes:
   pipeline  av-cam.bin carries the PP command and its gamma/colour code
 
 If all six are present, the camera does not hide PP by removing data: the
-remaining gate can only be a runtime decision. The one runtime decision with a
-name is `CmnForUseMultipleViewStatus::setPictureProfileValidInfo(bool)`, a
-single byte store exported by viewUnified2.so. Its producer and its object
-address are not established here, so this tool reports the candidate and patches
-nothing.
+remaining gate is the run-time availability decision
+`CmnForUseMultipleViewStatus::setPictureProfileValidInfo(bool)` in
+viewUnified2.so, computed from the camera's backup/model data.
+
+The unlock this tool implements is the menu-node redirect: the camera resolves
+the Soft Skin node through the dynamic symbol
+`cmnViewSettingNodeRootSoftSkin`, so pointing that `st_value` at
+`cmnViewSettingNodeRootPictureProfile` puts PP in that slot. Two bytes, no code
+change. `unlock-offset` resolves the write to an absolute offset in the
+partition image for the emulator's disposable overlay (`PP_UNLOCK=1`).
 
 Usage:
     python3 -m tools.research.a6100_picture_profile report \
         --dump /path/to/dump --rootfs-image nflasha15.img \
         --defs-dir /path/to/extracted/rootfs \
         --a6400-backup /path/to/a6400/Backup.bin [--json out.json]
+
+    python3 -m tools.research.a6100_picture_profile unlock-offset \
+        --emmc emmc.img --partition-offset 0x2e000000 \
+        --out pp-unlock.bin --json pp-unlock.json
 """
 
 from __future__ import annotations
@@ -33,9 +42,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import struct
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # Files that decide PP availability one layer at a time.
@@ -63,6 +74,22 @@ AVCAM_MARKERS = (b'SET_PICTUREPROFILE[%d', b'CheckSetPictureProfile',
                  b'PP_GammaType', b'PP_ColorMode', b'S-LOG2', b'ITU709')
 
 R_ARM_ABS32 = 2
+
+# 'Unlock' mechanism for this model: the camera resolves the Soft Skin menu node
+# by dynamic symbol, so pointing that symbol at the Picture Profile node puts PP
+# where Soft Skin was. Two bytes of .dynsym st_value; no code changes.
+SOFTSKIN_SYMBOL = 'cmnViewSettingNodeRootSoftSkin'
+STOCK_CAUTION = {
+    # Pulled twice from a healthy ILCE-6100 Ver.1.00 (2026-11-10) and used as
+    # the stock reference. The 2026-11-20 dump carries the same bytes.
+    'jp-1.00': dict(bytes=12078652,
+                    md5='a19110bd3d3dc7c45b4437a0cbba4839',
+                    sha256='a0ed06e720cc77a11b498bb5bf59db27cc5f943cb99bcdf083225e2eb5fde166'),
+    # ILCE-6100A Ver.1.01 update package (a different model/version).
+    '6100a-1.01': dict(bytes=12078712,
+                       md5='b309b4eb1d325393ecd678fbaf75e856',
+                       sha256='18695a08983b037bf6058a2faf8c93f6e56e30665420e13fd933cde7966f6e31'),
+}
 
 
 # ---------------------------------------------------------------- dump hashes
@@ -273,6 +300,89 @@ def provenance(rootfs_image: Path) -> dict:
     return dict(ok=not suspect, files=rows, suspect=suspect)
 
 
+# ---------------------------------------------------------------- unlock (opt-in)
+
+def dynsym_entry(image: bytes, wanted: str) -> dict:
+    sections = elf_sections(image)
+    dynsym = next(s for s in sections if s['name'] == '.dynsym')
+    for index in range(dynsym['size'] // 16):
+        entry_offset = dynsym['offset'] + index * 16
+        name_off, value, size, info, _other, shndx = struct.unpack_from(
+            '<IIIBBH', image, entry_offset)
+        strtab = sections[dynsym['link']]
+        end = image.index(b'\0', strtab['offset'] + name_off)
+        name = image[strtab['offset'] + name_off:end].decode()
+        if name == wanted:
+            return dict(index=index, entry_offset=entry_offset, value=value,
+                        size=size, bind=info >> 4, type=info & 0xf, shndx=shndx)
+    raise KeyError(wanted)
+
+
+def unlock_plan(image: bytes) -> dict:
+    """Plan the Soft Skin -> Picture Profile symbol redirect.
+
+    The camera resolves the Soft Skin menu node through this dynamic symbol, so
+    rewriting its `st_value` makes every importer bind to the Picture Profile
+    node instead. Only bytes inside `st_value` change; size and layout stay.
+    """
+    soft = dynsym_entry(image, SOFTSKIN_SYMBOL)
+    pp = dynsym_entry(image, PP_NODE)
+    if soft['shndx'] == 0 or pp['shndx'] == 0:
+        raise ValueError('both nodes must be defined, not imported')
+    if soft['type'] != 1 or pp['type'] != 1:
+        raise ValueError('both symbols must be OBJECT data symbols')
+    if soft['value'] == pp['value']:
+        raise ValueError('already redirected: Soft Skin resolves to the PP node')
+    offset = soft['entry_offset'] + 4
+    old = image[offset:offset + 4]
+    new = struct.pack('<I', pp['value'])
+    changed = [i for i in range(4) if old[i] != new[i]]
+    if not changed or len(changed) > 2:
+        raise ValueError(f'unexpected st_value delta ({len(changed)} bytes)')
+    return dict(patch_offset=offset, changed_bytes=new[changed[0]:changed[-1] + 1].hex(),
+                old_st_value=hex(soft['value']), new_st_value=hex(pp['value']),
+                softskin_dynsym_index=soft['index'],
+                picture_profile_dynsym_index=pp['index'])
+
+
+def apply_unlock(image: bytes) -> tuple[bytes, dict]:
+    plan = unlock_plan(image)
+    patched = bytearray(image)
+    offset = plan['patch_offset']
+    patched[offset:offset + 4] = struct.pack('<I', int(plan['new_st_value'], 16))
+    return bytes(patched), plan
+
+
+def disk_block_offset(rootfs_image: Path, path: str, file_offset: int) -> dict:
+    """Map a byte inside an ext2 file to its offset in the partition image.
+
+    Parses the inode's block list from `debugfs stat`; the caller must verify
+    the round trip before writing anything.
+    """
+    stats = subprocess.run(['debugfs', '-R', 'stats', str(rootfs_image)],
+                           capture_output=True, text=True, check=True).stdout
+    block_size = None
+    for line in stats.splitlines():
+        if line.strip().startswith('Block size:'):
+            block_size = int(line.split()[-1])
+    if not block_size:
+        raise ValueError('cannot read ext2 block size')
+    stat = subprocess.run(['debugfs', '-R', f'stat {path}', str(rootfs_image)],
+                          capture_output=True, text=True, check=True).stdout
+    body = stat.split('BLOCKS:', 1)[1]
+    logical = {}
+    for first, last, block in re.findall(r'\((\d+)-(\d+)\):(\d+)', body):
+        first, last, block = int(first), int(last), int(block)
+        for i in range(first, last + 1):
+            logical[i] = block + (i - first)
+    index = file_offset // block_size
+    if index not in logical:
+        raise ValueError(f'block {index} of {path} is not in the inode block list')
+    return dict(block_size=block_size, logical_block=index,
+                physical_block=logical[index],
+                image_offset=logical[index] * block_size + file_offset % block_size)
+
+
 # ------------------------------------------------------------------ opt-in flag
 
 VALIDITY_SYMBOL = '_ZN27CmnForUseMultipleViewStatus26setPictureProfileValidInfoEb'
@@ -366,11 +476,26 @@ def report(dump: Path | None, rootfs_image: Path, defs_dir: Path, *,
         result['layers']['settings'] = dict(ok=False, note='Backup.bin not supplied')
 
     result['provenance'] = provenance(rootfs_image)
+    caution_sha = result['inputs']['nodes']['sha256']
+    stock_match = next((name for name, row in STOCK_CAUTION.items()
+                        if row['sha256'] == caution_sha), None)
+    result['provenance']['caution_content'] = dict(sha256=caution_sha, stock=stock_match)
     if result['provenance']['suspect']:
-        result['warnings'].append(
-            'rootfs file(s) written after the stock image date: '
-            + ', '.join(result['provenance']['suspect'])
-            + ' - conclusions about the stock model build are limited')
+        if stock_match and result['provenance']['suspect'] == ['lib/CautionConfig.so']:
+            result['warnings'].append(
+                'CautionConfig.so mtime differs from the stock firmware date, but its '
+                f'bytes are identical to the stock {stock_match} pull; content is stock')
+        else:
+            result['warnings'].append(
+                'rootfs file(s) written after the stock image date: '
+                + ', '.join(result['provenance']['suspect'])
+                + ' - conclusions about the stock model build are limited')
+
+    try:
+        result['unlock'] = dict(found=True, plan=unlock_plan(caution),
+                                stock=stock_match)
+    except (KeyError, ValueError) as exc:
+        result['unlock'] = dict(found=False, reason=str(exc), stock=stock_match)
 
     try:
         setter = validity_setter(view_unified)
@@ -414,7 +539,29 @@ def main(argv: list[str] | None = None) -> int:
     rep.add_argument('--a6400-backup', type=Path)
     rep.add_argument('--json', type=Path)
 
+    unlock = sub.add_parser('unlock-offset',
+                            help='opt-in: resolve the Soft Skin->PP redirect to a disk offset')
+    unlock.add_argument('--rootfs-image', type=Path,
+                        help='ext2 partition image (nflasha15.img)')
+    unlock.add_argument('--emmc', type=Path,
+                        help='whole-disk image; the partition is carved from it')
+    unlock.add_argument('--partition-offset', type=lambda v: int(v, 0), default=0,
+                        help='byte offset of the rootfs partition inside --emmc')
+    unlock.add_argument('--path', default='/lib/CautionConfig.so')
+    unlock.add_argument('--out', type=Path, required=True,
+                        help='4-byte st_value patch to write into a disposable overlay')
+    unlock.add_argument('--json', type=Path)
+
     args = parser.parse_args(argv)
+    if args.command == 'unlock-offset':
+        source = args.emmc or args.rootfs_image
+        if source is None:
+            parser.error('one of --emmc or --rootfs-image is required')
+        result = unlock_offset(source, args.path, args.out, args.json,
+                               args.partition_offset)
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
+
     result = report(args.dump, args.rootfs_image, args.defs_dir,
                     a6400_backup=args.a6400_backup)
     text = json.dumps(result, indent=2, sort_keys=True)
@@ -422,6 +569,60 @@ def main(argv: list[str] | None = None) -> int:
         args.json.write_text(text + '\n')
     print(text)
     return 0 if result['dump']['hash_check']['ok'] else 2
+
+
+def unlock_offset(source: Path, path: str, out: Path, plan_path: Path | None,
+                  partition_offset: int = 0) -> dict:
+    """Resolve the PP redirect to an absolute offset in the partition image.
+
+    With `partition_offset`, `source` is a whole-disk image: the ext2 partition
+    is carved to a temporary file using its own superblock size, and the result
+    stays relative to `source`.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        if partition_offset:
+            with source.open('rb') as stream:
+                stream.seek(partition_offset + 0x400)
+                superblock = stream.read(0x40)
+            if len(superblock) < 0x40:
+                raise ValueError('short read at the ext2 superblock')
+            log_block, = struct.unpack_from('<I', superblock, 0x18)
+            blocks_count, = struct.unpack_from('<I', superblock, 0x04)
+            fs_bytes = blocks_count * (1024 << log_block)
+            view = Path(tmp) / 'rootfs.img'
+            with source.open('rb') as src, view.open('wb') as dst:
+                src.seek(partition_offset)
+                remaining = fs_bytes
+                while remaining:
+                    chunk = src.read(min(16 * 1024 ** 2, remaining))
+                    if not chunk:
+                        raise ValueError('partition image ends before its superblock size')
+                    dst.write(chunk)
+                    remaining -= len(chunk)
+        else:
+            view = source
+        dumped = Path(tmp) / 'CautionConfig.so'
+        subprocess.run(['debugfs', '-R', f'dump {path} {dumped}', str(view)],
+                       check=True, capture_output=True, text=True)
+        image = dumped.read_bytes()
+        patched, plan = apply_unlock(image)
+        where = disk_block_offset(view, path, plan['patch_offset'])
+        with view.open('rb') as stream:
+            stream.seek(where['image_offset'])
+            on_disk = stream.read(4)
+        expected = image[plan['patch_offset']:plan['patch_offset'] + 4]
+        if on_disk != expected:
+            raise ValueError('round trip failed: image bytes do not match the file bytes')
+        patch = patched[plan['patch_offset']:plan['patch_offset'] + 4]
+        out.write_bytes(patch)
+        result = dict(path=path, source=str(source), partition_offset=hex(partition_offset),
+                      stock_sha256=digest(dumped), patch_bytes=patch.hex(),
+                      patch_len=len(patch), **where, **plan)
+        if partition_offset:
+            result['source_offset'] = partition_offset + where['image_offset']
+        if plan_path:
+            plan_path.write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
+        return result
 
 
 if __name__ == '__main__':

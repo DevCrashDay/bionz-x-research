@@ -66,6 +66,17 @@ class TestGateLayers(unittest.TestCase):
             self.assertTrue(layers[name]['ok'], f'{name}: {layers[name]}')
         self.assertEqual(self.report['verdict']['gate'], 'runtime-validity-flag')
 
+    def test_report_carries_the_opt_in_unlock_plan(self):
+        unlock = self.report['unlock']
+        self.assertTrue(unlock['found'], unlock)
+        self.assertEqual(unlock['plan']['new_st_value'], '0xc5d530')
+        self.assertEqual(unlock['stock'], 'jp-1.00')
+
+    def test_provenance_note_says_the_content_is_stock(self):
+        # The dumped file has a 2026-11-19 mtime but matches the stock pull.
+        self.assertEqual(self.report['provenance']['caution_content']['stock'], 'jp-1.00')
+        self.assertTrue(any('content is stock' in w for w in self.report['warnings']))
+
     def test_registry_lists_picture_profile_at_its_item_index(self):
         registry = self.report['layers']['registry']
         self.assertEqual(registry['pp_index'], 251)
@@ -91,6 +102,56 @@ class TestGateLayers(unittest.TestCase):
         self.assertEqual(
             self.report['inputs']['strings']['sha256'],
             'b62c58521eca7b0443c5e570aaf8554ae5b05d94f46940dce7d9bc01a94b2921')
+
+
+class TestUnlock(unittest.TestCase):
+    """The opt-in: Soft Skin menu node redirected to the Picture Profile node."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.path = DEFS / 'lib/CautionConfig.so'
+        if not cls.path.is_file():
+            raise unittest.SkipTest('a6100 CautionConfig.so is not present')
+        cls.stock = cls.path.read_bytes()
+
+    def test_patch_changes_only_the_symbol_value(self):
+        patched, plan = pp.apply_unlock(self.stock)
+        self.assertEqual(plan['patch_offset'], 0x138b4c)
+        self.assertEqual(plan['old_st_value'], '0xc5b5c8')
+        self.assertEqual(plan['new_st_value'], '0xc5d530')
+        self.assertEqual(plan['softskin_dynsym_index'], 49587)
+        changed = [i for i in range(len(self.stock)) if self.stock[i] != patched[i]]
+        self.assertEqual(changed, [0x138b4c, 0x138b4d])
+        self.assertEqual(len(patched), len(self.stock))
+
+    def test_patch_matches_the_reference_patched_file(self):
+        reference = Path('/mnt/c/Users/alex/Desktop/a6100-recovery/a6100-fw-recovery/'
+                         'restore/CautionConfig.so.patched')
+        if not reference.is_file():
+            self.skipTest('reference patched file is not available')
+        patched, _ = pp.apply_unlock(self.stock)
+        self.assertEqual(patched, reference.read_bytes())
+        self.assertEqual(__import__('hashlib').md5(patched).hexdigest(),
+                         'a91f2f2871b5abf6d468cfa9661fc0f0')
+
+    def test_patch_refuses_an_already_redirected_image(self):
+        patched, _ = pp.apply_unlock(self.stock)
+        with self.assertRaises(ValueError):
+            pp.unlock_plan(patched)
+
+    def test_symbol_lookup_rejects_a_missing_node(self):
+        with self.assertRaises(KeyError):
+            pp.dynsym_entry(self.stock, 'cmnViewSettingNodeRootDoesNotExist')
+
+    def test_disk_offset_round_trips(self):
+        if not ROOTFS.is_file():
+            self.skipTest('a6100 rootfs image is not present')
+        _, plan = pp.apply_unlock(self.stock)
+        where = pp.disk_block_offset(ROOTFS, '/lib/CautionConfig.so', plan['patch_offset'])
+        with ROOTFS.open('rb') as stream:
+            stream.seek(where['image_offset'])
+            on_disk = stream.read(4)
+        self.assertEqual(on_disk, self.stock[plan['patch_offset']:plan['patch_offset'] + 4])
 
 
 class TestProvenance(unittest.TestCase):
