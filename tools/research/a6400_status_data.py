@@ -238,8 +238,40 @@ STATUS_SNAPSHOT = StatusSnapshot(
         ),
         tier="OFFLINE PUBLIC UPDATERS + QEMU",
     ),
-    headline="Unicorn L3 Sugilite GPU & 1.5B-insn heap trace | Unicorn nflasha3 main boot | QEMU live-view",
+    headline="Unicorn SIO/GPIO & SYSV/VPH oracle | L3 OSD surface & 20ms wait | a6400A & ZV-E10 touch",
     cards=(
+        EvidenceRef(
+            evidence_id="E0677",
+            path="docs/evidence/0677-unicorn-sio-gpio-oracle.md",
+            date="2026-11-20",
+            title="Unicorn SIO and GPIO from the QEMU oracle",
+            demonstrated=(
+                "A 64000-record QEMU MMIO capture identifies SIO 0xF2405600 and GPIO 0xF2910110. "
+                "Unicorn now returns the oracle status word 0x18000000 and port-1 input 0x32, "
+                "channel 3 replays the hash-checked 384-byte sub-micro extract, "
+                "and ADC unit 1 completes with status 0x101 and released-key results 0x3FF."
+            ),
+            boundary=(
+                "No Unicorn nflasha3 replay in this record, so ObjMic completion and a rear-LCD frame are not shown. "
+                "Rear-control, SD, and lens sub-micro edits stay off."
+            ),
+            tier="OFFLINE UNICORN PERIPHERAL CONTRACT",
+        ),
+        EvidenceRef(
+            evidence_id="E0676",
+            path="docs/evidence/0676-unicorn-sysv-vph-frame-clock.md",
+            date="2026-11-20",
+            title="Unicorn SYSV/VPH frame clock and evsel ext-vd",
+            demonstrated=(
+                "With --qemu-peripherals, Unicorn advances the QEMU SYSV engine frame (IRQ 98), "
+                "60 Hz VPH vsync (IRQ 101/102), and evsel ext-vd (IRQ 83/84) on the 1 MHz instruction tick."
+            ),
+            boundary=(
+                "No captured nflasha3 replay in this record, so ObjMic completion and a rear-LCD frame are not shown. "
+                "CPUs 1-3 stay offline. The evsel late-src phase is not ported."
+            ),
+            tier="OFFLINE UNICORN PERIPHERAL CONTRACT",
+        ),
         EvidenceRef(
             evidence_id="E0664",
             path="docs/evidence/0664-shutter-works-drive-mode-decides.md",
