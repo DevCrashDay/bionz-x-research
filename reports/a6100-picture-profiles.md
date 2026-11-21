@@ -1,55 +1,64 @@
 # a6100 Picture Profiles — status
 
-**Verdict: no data-layer gate found; no unlock applied. One provenance anomaly blocks a
-stock-level answer.** Details: [E9101](../docs/evidence/9101-a6100-picture-profile-gate.md).
+**Verdict: Picture Profile is present in every data layer; the firmware gates it at run
+time via model data. The smallest honest unlock is the documented 2-byte menu-node
+redirect, now implemented as an opt-in emulator overlay and verified byte-for-byte
+against the existing validated patch.** Details:
+[E9101](../docs/evidence/9101-a6100-picture-profile-gate.md).
 
-## What was asked
-
-Make PP1–PP10 and their settings available on the ILCE-6100 by removing or satisfying the
-firmware's own gate, in the emulator first, with evidence.
-
-## What the dump shows
-
-Every layer that could hide Picture Profile on a model carries it on this a6100 image:
+## The gate
 
 | Layer | Result |
 | --- | --- |
-| Menu text (`string_english.uxc`) | byte-identical to the a6400 file that has PP; contains PP1–PP10, S-Log2/3, S-Gamut3, HLG1–3, Cine1–4 |
-| Setting-node classes (`CautionConfig.so`) | 13 `cmnViewSettingNodeRootPictureProfile*` exports |
-| Root registry | PP at index 251 of 416, same index as the a6400 |
-| Menu trees (`viewUnified2.so`) | 21 references to the PP node, 15 to S-Log Display Assist — same counts as the a6400 |
-| Settings (`Backup.bin`, BK4) | 30,762 units, a strict superset of the a6400 (0 missing) |
-| ISP pipeline (`av-cam.bin`) | `SET_PICTUREPROFILE`, `CheckSetPictureProfile`, `PP_GammaType`/`PP_ColorMode`, S-LOG2, ITU709 |
+| Menu text (`string_english.uxc`) | byte-identical to the a6400 file; PP1–PP10, S-Log2/3, S-Gamut3, HLG1–3, Cine1–4 |
+| Node classes (`CautionConfig.so`) | 13 `cmnViewSettingNodeRootPictureProfile*` exports |
+| Root registry | PP at index 251 of 416 (same index as a6400) |
+| Menu trees (`viewUnified2.so`) | 21 PP references, 15 S-Log Display Assist (same counts) |
+| Settings (`Backup.bin`, BK4) | 30,762 units, strict superset of the a6400 (0 missing) |
+| Pipeline (`av-cam.bin`) | `SET_PICTUREPROFILE`, `CheckSetPictureProfile`, `PP_GammaType`, S-LOG2, ITU709 |
 
-So this is neither "menu entry hidden by a flag" nor "pipeline missing": the data is
-complete, and the gate has to be a runtime availability decision. The named candidate is
+Nothing is missing in the data, so the gate is the runtime availability decision:
 `CmnForUseMultipleViewStatus::setPictureProfileValidInfo(bool)` (`viewUnified2.so`
-`0x00413940`, one byte store at `0x0041394C`). Its producer and object address are not
-established, so nothing was patched.
+`0x00413940`), fed from the camera's backup/model data. Writing that model data needs
+Sony service keys, which is a documented blocked route.
 
-## Blocker
+## The unlock (opt-in, default off)
 
-`/lib/CautionConfig.so` in the dumped root filesystem has `mtime 2026-11-19 19:55:03`,
-mode `0644`, while every sibling application file is `2021-04-05`, mode `0555`. The dump
-is from 2026-11-20. The file that decides per-item availability is therefore **not a
-stock file**, and this dump cannot say what a stock a6100 hides. No hash was refreshed and
-no file was rewritten.
+The camera resolves the *Soft Skin* menu node by dynamic symbol, so pointing that symbol
+at the Picture Profile node puts PP in that slot. Two bytes of `.dynsym` `st_value`,
+no code change, no new menu:
 
-## What is in the checkout
+```
+0x138b4c   c8 b5 c5 00  (0xc5b5c8 SoftSkin)  ->  30 d5 c5 00  (0xc5d530 PP node)
+```
 
-- `tools/research/a6100_picture_profile.py` — audit: verifies the dump's stored hashes
-  (reports a mismatch, never fixes it), checks the six layers, reads the identity of the
-  validity setter, and flags rootfs files written after the stock date.
-- `tests/test_a6100_picture_profile.py` — 11 cases: hash mismatch stays a mismatch, all
-  six layers present, PP at registry index 251, 21/15 menu references, settings superset,
-  shared string resource, non-stock file flagged, setter body and its refusal path.
-- Boot receipt: a6100 boots on QEMU to eMMC tuning and VPH scanout, killed by the 60 s
-  timeout at guest time 3.78 s. Default boot path untouched.
+`PP_UNLOCK=1` writes exactly those bytes into the run's **disposable qcow2 overlay**
+(`qemu-a6400/run.sh`, same pattern as `REAR_LCD_DIAGNOSTIC`). The dump, `emmc.img` and
+`/setting` are never written; a stock run is unaffected.
 
-## Next
+Proof:
 
-1. A pre-2026-11-19 `CautionConfig.so` to separate the model from the modification.
-2. A runtime trace for the validity byte once the guest passes the av-cam step-32 wait.
-3. A one-byte opt-in validity patch only after 1–2, with the default path unchanged.
+- generated patch is **byte-identical** to the previously validated
+  `CautionConfig.so.patched` (md5 `a91f2f28…`), only offsets `0x138b4c`/`0x138b4d` change;
+- disk mapping round-trips (the four bytes at image offset 44,060,492 / eMMC 815,812,428
+  equal the file's st_value bytes);
+- unlock boot readback: `30 d5 c5 00` at 815,812,428 in the overlay;
+- boot unchanged: 2,057 vs 2,058 normalized serial lines, the only difference is one log
+  line carrying a different runtime address.
 
-Nothing here needs a physical camera write.
+Not proven: the rendered PP screen. The emulator does not reach the menu in 60 s (av-cam
+step-32 wait), so this is stated as a boundary, not as a screenshot claim.
+
+## Provenance note
+
+The dump's `/lib/CautionConfig.so` has a 2026-11-19 mtime (siblings are 2021-04-05), but
+its bytes match the 2026-11-10 double-pulled stock backup (md5 `a19110bd…`). The file was
+rewritten with stock content; the availability table is not a modified one.
+
+## Files
+
+- `tools/research/a6100_picture_profile.py` — audit + `unlock-offset` planner.
+- `tests/test_a6100_picture_profile.py` — 18 cases (hash integrity, six layers, registry
+  and menu indices, settings superset, provenance, unlock bytes/refusal/round-trip).
+- `qemu-a6400/run.sh` — `PP_UNLOCK=1` opt-in.
+- Evidence: `docs/evidence/9101-a6100-picture-profile-gate.md`.
