@@ -57,8 +57,8 @@
     ]
   },
   "source_sha256": {
-    "tools/research/qemu_zve10_menu.py": "5e2f18b82a99def1407f86282a1d3153828e9dba53cdc6f97ed7c95221bbb7a5",
-    "tools/research/qemu_boot_probe.py": "04e7bccfc04e68e47320f21497968b0353351198202f98ab57d1bdcc8d422748",
+    "tools/research/qemu_zve10_menu.py": "8dc462c0813d291bf6a0e888e0e1f67d8e4e9f0ecb941907c1f7277d10cf3c9e",
+    "tools/research/qemu_boot_probe.py": "8bb85163daef3fbe8e7c239b20c048b230935cab4748fbfec38f2594865ebeb2",
     "qemu-a6400/qemu-overlay/hw/arm/sony_a6400.c": "d5ec1ec58b0afce36fb6530605f33555f93f3bd722f5e6147d0946379babbe6e",
     "qemu-a6400/qemu-overlay/hw/misc/cxd90014_vph.c": "899458fe36941ea97ad481e2b0f6783348d3e3aab4ef540bf9e8bca7b546ca9e"
   },
@@ -71,10 +71,10 @@
     "package": ""
   },
   "ready": {
-    "frame": 28,
+    "frame": 27,
     "pid": 102,
     "ui_tid": 181,
-    "view": 1836488,
+    "view": 1918768,
     "title_sets": 0,
     "native_glyph_images": 13
   },
@@ -94,7 +94,7 @@
       "tid": 181,
       "overlay": 0,
       "native_action": 4,
-      "completed_frame": 35,
+      "completed_frame": 33,
       "key": "RIGHT",
       "frame": {
         "framebuffer": "0x22bb2000",

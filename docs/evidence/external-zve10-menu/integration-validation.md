@@ -82,10 +82,19 @@ addresses host transport backpressure without changing guest behavior or
 retrying ambiguous QMP requests.
 
 The final direct-buffer native replay with continuous UART draining passed all
-six opted-in tests in 102.549 seconds: five constructed boot-layout tests and
+six opted-in tests in 114.577 seconds: five constructed boot-layout tests and
 one original-menu acceptance replay. The latter matched the complete initial
 RGB oracle and page-2 title oracle, the independent scanout check, `NE_STOPPED`,
 and QEMU return zero. The final screenshots above come from that accepted run.
+
+The first Linux CI build compiled QEMU and passed all boot-byte assertions,
+but two successful-layout tests failed while waiting for `quit` replies.
+The [pinned QMP contract](https://github.com/qemu/qemu/blob/005c61c0ef6f6ae615283440b4bb7be51b2c6ddd/qapi/control.json#L160)
+permits termination before the reply is delivered. The explicit quit helper
+therefore accepts a read-side EOF/reset only after the command was sent and
+requires process exit zero. Send errors, malformed/error replies, timeouts and
+nonzero exits still fail. Ordinary QMP requests retain strict disconnect errors.
+Constructed tests verify these distinctions; no hardware assertion was relaxed.
 
 ## Validation and coverage
 
@@ -98,8 +107,8 @@ their logs remain local.
 
 A separate full-suite invocation collects Python garbage after each test to
 bound retained Unicorn allocations. It changes no test assertion or skip rule;
-its executed results are recorded in the pull request alongside the ordinary
-command's failures. This collection policy is a validation harness adjustment,
+the final run passed 2,280 tests with 204 skips in 84.734 seconds. The ordinary
+command's allocation failures remain recorded separately. This collection policy is a validation harness adjustment,
 not an emulator or repository-test change. It is reproducible from the root:
 
 ```python
@@ -116,10 +125,15 @@ result = unittest.TextTestRunner(resultclass=CollectedResult).run(suite)
 raise SystemExit(not result.wasSuccessful())
 ```
 
-Linux native coverage is supplied by the separate CI workflow and is
-unvalidated until that workflow runs successfully. No WSL distribution is
-installed on this host. The Windows symlink-escape test is skipped when the
-host cannot create symlinks; Linux CI can exercise that case.
+The [Linux native CI run](https://github.com/qn06142/bionz-x-research/actions/runs/44880484336)
+built pinned QEMU and passed 22 tests in 0.715 seconds, with one expected skip
+for the private-input menu replay. It validated source commit
+`5cf8248d0b223ae06cd19073f012d55f4c8dc185`, including the QMP quit fix, both boot
+layouts, refusal paths, continuous UART draining and symlink-escape refusal.
+No private firmware was supplied to CI. The later documentation/receipt update
+does not change runtime sources. No WSL distribution is installed on the local
+Windows host. Its symlink-escape test was skipped because of host privileges;
+the corresponding Linux test passed.
 
 Prepared images are private prerequisites. This increment does not supply a
 complete upstream adapter builder, promote the ZV-E10 body target, or establish
