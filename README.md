@@ -224,11 +224,25 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 
 ---
 
+## Local ILCE-6400A firmware-dump research
+
+The local 1.01 research retains two verified captures: [60 MiB from `nflasha5`](docs/evidence/0517-a6400a-first-actual-nflasha5-capture.md) and [2 MiB from normal-mode MSC LUN 1](docs/evidence/0518-a6400a-readonly-msc-lun-capture-and-flash-boundary.md). The binaries stay in ignored local storage; the evidence records give their paths and SHA-256 hashes. LUN 1's backing partition is unverified.
+
+The historical [expanded-scope review](docs/evidence/0519-a6400a-expanded-bootstrap-review-and-full-dump-boundary.md) verified the existing captures but obtained no new partition bytes. A complete firmware dump remains unqualified. See the [local a6400A evidence series](docs/CURRENT_STATE.md#local-ilce-6400a-firmware-dump-research) for the full history.
+
+The [E0643 supervised worker follow-up](docs/evidence/0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md#5-supervised-ilce-6400a-temporary-worker-follow-up) implements single-slot 512-KiB RAM chunk transfers and preserves three failed startup receipts. Actual shell output exposes overlapping rootfs/ext2 mounts; RAM backing and partition acquisition remain unqualified. Owned files were removed, USBSTOR restored and native responsiveness verified after battery removal. No new raw partition bytes are claimed.
+
+The later [safe RAM qualification](docs/evidence/0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md#6-safe-ram-workspace-qualification) identifies the existing candidate directories as nflasha7/ext2 and physically verifies a separate 2-MiB private tmpfs with nodev/nosuid/noexec. Unmount, owned-file removal, original USBSTOR and post-battery native responsiveness are verified. Pattern transfers remain blocked below the unchanged 8-MiB memory floor; no firmware partition bytes were acquired.
+
+The [2026-11-21 native-reader follow-ups](docs/evidence/0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md#8-read-only-cache-reclamation-atomic-ipc-and-all-17-allowed-partitions) reclaim unmapped boot/asset page cache via read-only `POSIX_FADV_DONTNEED` (`MemFree` `8.5 -> 24.7 MiB` without lowering the 8-MiB guard), publish responses via atomic `rename`, and complete **all 17 allowed nonzero `nflasha*` partitions (`1,354,694,656` bytes: `nflashaB0`, `B1`, `1..7`, `10..13`, `15..18`)** with independent SHA-256 verification (`nflasha5` matches [E0517](docs/evidence/0517-a6400a-first-actual-nflasha5-capture.md) bit-for-bit). Owned files/tmpfs removal, `USBSTOR` restoration, owner battery-removal recovery, and native postflight are verified. Excluded `/dev/nflasha23` and whole-device `/dev/nflasha` remain omitted, and mounted extents (including `nflasha6`) are live snapshots rather than a factory-pristine whole-eMMC backup.
+
+---
+
 ## Live Status Telemetry
 
-Recorded integration baseline: **2091 tests**, with 88 skip records and no failures/errors ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. The [late black-screen capture](docs/evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md), [LIRO RAM section analysis](docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md), [CamCore contributor score](docs/evidence/0637-camcore-f301-contributor-boot-score.md), [USB mode gate](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md), and [first firmware-driven live-view frame](docs/evidence/0591-qemu-a6400-first-live-view-frame.md) are separate findings. Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
+Upstream recorded offline suite: **2091 tests**, with 88 skip records and no failures/errors in its integrated checkout ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. The [late black-screen capture](docs/evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md), [LIRO RAM section analysis](docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md), [CamCore contributor score](docs/evidence/0637-camcore-f301-contributor-boot-score.md), [USB mode gate](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md), and [first firmware-driven live-view frame](docs/evidence/0591-qemu-a6400-first-live-view-frame.md) are separate findings. Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=472908163cb1)
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=6423c4348a89)
 
 ![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
 
