@@ -221,22 +221,54 @@ STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
     as_of="2026-11-20",
     latest=EvidenceRef(
-        evidence_id="E0657",
-        path="docs/evidence/0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md",
+        evidence_id="E0659",
+        path="docs/evidence/0659-unicorn-sio-gpio-oracle.md",
         date="2026-11-20",
-        title="Unicorn L3 allocator ownership, GLES shared init, Sugilite GPU and viewRootPowerSw OSD",
+        title="Unicorn SIO and GPIO from the QEMU oracle",
         demonstrated=(
-            "Unmodified im.elf runs to 1.50B insns (120 threads, 0 ownership errors without 0x50 padding); "
-            "sugilite_open 4B + rm_rqueue_init 128 KiB init, 24 Sugilite GPU/IRQ 76 jobs and OSD A/B verified."
+            "A 64000-record QEMU MMIO capture identifies SIO 0xF2405600 and GPIO 0xF2910110. "
+            "Unicorn now returns the oracle status word 0x18000000 and port-1 input 0x32, "
+            "channel 3 replays the hash-checked 384-byte sub-micro extract, "
+            "and ADC unit 1 completes with status 0x101 and released-key results 0x3FF."
         ),
         boundary=(
-            "viewRootPowerSw.uxc presents transparent 640x480 RGBA4444 OSD A/B frames because DefRootView "
-            "CheckerBootState/CheckerBootType await external av-cam.bin/UPM producers; E0530 stop preserved."
+            "No Unicorn nflasha3 replay in this record, so ObjMic completion and a rear-LCD frame are not shown. "
+            "Rear-control, SD, and lens sub-micro edits stay off."
         ),
-        tier="OFFLINE ORIGINAL L3 PROCESS + SUGILITE GPU",
+        tier="OFFLINE UNICORN PERIPHERAL CONTRACT",
     ),
-    headline="Unicorn L3 Sugilite GPU & 1.5B-insn heap trace | Unicorn nflasha3 main boot | QEMU live-view",
+    headline="Unicorn SIO/GPIO oracle | Unicorn SYSV/VPH frame clock | Unicorn nflasha3 main boot",
     cards=(
+        EvidenceRef(
+            evidence_id="E0658",
+            path="docs/evidence/0658-unicorn-sysv-vph-frame-clock.md",
+            date="2026-11-20",
+            title="Unicorn SYSV/VPH frame clock and evsel ext-vd",
+            demonstrated=(
+                "With --qemu-peripherals, Unicorn advances the QEMU SYSV engine frame (IRQ 98), "
+                "60 Hz VPH vsync (IRQ 101/102), and evsel ext-vd (IRQ 83/84) on the 1 MHz instruction tick."
+            ),
+            boundary=(
+                "No captured nflasha3 replay in this record, so ObjMic completion and a rear-LCD frame are not shown. "
+                "CPUs 1-3 stay offline. The evsel late-src phase is not ported."
+            ),
+            tier="OFFLINE UNICORN PERIPHERAL CONTRACT",
+        ),
+        EvidenceRef(
+            evidence_id="E0657",
+            path="docs/evidence/0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md",
+            date="2026-11-20",
+            title="Unicorn L3 allocator ownership, GLES shared init, Sugilite GPU and viewRootPowerSw OSD",
+            demonstrated=(
+                "Unmodified im.elf runs to 1.50B insns (120 threads, 0 ownership errors without 0x50 padding); "
+                "sugilite_open 4B + rm_rqueue_init 128 KiB init, 24 Sugilite GPU/IRQ 76 jobs and OSD A/B verified."
+            ),
+            boundary=(
+                "viewRootPowerSw.uxc presents transparent 640x480 RGBA4444 OSD A/B frames because DefRootView "
+                "CheckerBootState/CheckerBootType await external av-cam.bin/UPM producers; E0530 stop preserved."
+            ),
+            tier="OFFLINE ORIGINAL L3 PROCESS + SUGILITE GPU",
+        ),
         EvidenceRef(
             evidence_id="E0656",
             path="docs/evidence/0656-unicorn-main-firmware-boot.md",

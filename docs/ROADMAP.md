@@ -107,8 +107,13 @@ building on [E0533](evidence/0533-unicorn-native-thumb-userspace-continuation.md
 under `UnicornMachine` (`--mmio stop`, read-only `emmc.img`) through stock
 `/sbin/init`, 9 partition mounts, 39 `.ko` modules, `LIRO` `entry_pre`/`entry_main`,
 `im.elf` `DMP_2D_Initialize : 0`, and interactive `/bin/ash` (`uname -a`,
-`/proc/cpuinfo`, `mount`, `/proc/modules`) past 2.8B instructions. Next: single-core
-execution leaves `av-cam` CPUs 1–3 offline and no Unicorn GUI frame is claimed.
+`/proc/cpuinfo`, `mount`, `/proc/modules`) past 2.8B instructions.
+[E0658](evidence/0658-unicorn-sysv-vph-frame-clock.md) ports the QEMU SYSV/VPH
+frame clock and evsel `ext-vd` path onto that machine.
+[E0659](evidence/0659-unicorn-sio-gpio-oracle.md) adds SIO channel-3 start/done
+and GPIO port-1 input `0x32` from a QEMU MMIO capture. Next: replay captured
+`nflasha3` against those contracts. Single-core execution still leaves `av-cam`
+CPUs 1–3 offline, and no Unicorn GUI frame is claimed.
 
 Earlier no-peripheral QEMU startup (2026-11-17, [E0527](evidence/0527-qemu-task43-initialization-flag-wait.md)):
 two captured-profile boots identify Task 43's first display-initialization wait

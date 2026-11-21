@@ -32,6 +32,8 @@ Central navigation map for the Sony BIONZ X (`CXD90045`) universal emulator and 
 | [VALIDATION.md](VALIDATION.md) | Differential validation and fidelity rules |
 | [GLES TGID completion and shared-memory boundary](evidence/0530-gles-tgid-completion-and-shared-memory-boundary.md) | Original completion/reset and recovery branches; guarded software-shared versus GPU mappings, repeated real-process stop and no claimed frame |
 | [Unicorn L3 allocator, GLES init & Sugilite GPU](evidence/0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md) | Thumb-2 stale-`ITSTATE` root cause (`1.50B` insns, `0` ownership errors without padding), `sugilite_open` 4-byte + `rm_rqueue_init` 128 KiB init, `24` Sugilite GPU/IRQ 76 jobs, and transparent `viewRootPowerSw.uxc` OSD A/B boundary |
+| [Unicorn SIO and GPIO from the QEMU oracle](evidence/0659-unicorn-sio-gpio-oracle.md) | Channel-3 start/done and GPIO port-1 `0x32`, taken from a 64k-record QEMU MMIO capture |
+| [Unicorn SYSV/VPH frame clock](evidence/0658-unicorn-sysv-vph-frame-clock.md) | Opt-in port of the QEMU engine-frame clock, panel vsync, and evsel `ext-vd` path that unblocked `ObjMic` on QEMU |
 
 ## 3. UVC / PTP & Feature Workstreams
 
