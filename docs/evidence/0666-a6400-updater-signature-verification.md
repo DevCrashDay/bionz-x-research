@@ -1,4 +1,4 @@
-# E0593 — Updater firmware signature: how the camera checks it and whether custom firmware can be pushed (ILCE-6400)
+# E0666 — Updater firmware signature: how the camera checks it and whether custom firmware can be pushed (ILCE-6400)
 
 Date: 2026-11-21. Offline binary analysis plus one live camera experiment
 (ILCE-6400, firmware v2.00). The experiment replaced the updater initrd on
