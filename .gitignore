@@ -101,3 +101,5 @@ android-client-ref/.gradle/
 
 # Private Custom OS repository (separate nested Git repo)
 /custom_os/
+
+/qemu-a6400/zve10-menu.inputs.local.json

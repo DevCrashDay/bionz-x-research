@@ -9,6 +9,17 @@ Current consolidated state: [README research status](../../README.md) (through *
 2026-11-21) and [UVC/PTP status and next steps](../UVC_PTP_STATUS.md) (through **E0494**,
 2026-11-13).
 
+## External contributor receipts
+
+These records preserve external observations and their reproducibility limits.
+They are not numbered upstream milestones and do not advance the a6400 status
+snapshot or its recorded test count.
+
+- [ZV-E10 adapted-menu receipt, 2026-11-21](external-zve10-menu/README.md):
+  original English menu pixels under an explicit AP-only adapter; selected-frame
+  publication, init diagnostic ASID failure, local test receipts and unresolved
+  stock `upm.ko` boundary. No upstream runtime integration or stock-menu boot claim.
+
 ## Latest records
 
 | ID | Date | Claim |
