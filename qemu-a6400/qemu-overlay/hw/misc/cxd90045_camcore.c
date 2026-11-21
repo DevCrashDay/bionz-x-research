@@ -37,6 +37,9 @@
  *                        model, all Z0.  The readers copy the word to memory
  *                        or test one status bit; +0x2548/+0x2554 are written
  *                        by other code but read by that copy getter.
+ *   0xF3020000 (1 KiB window) L0090: 0xF3020800..0xF3020BFF after the
+ *                        0x800-byte AIF model; 89 write-only offsets (Z0)
+ *                        and one RMW word +0xB80 (RF).  See the table.
  *
  * The per-block rule tables come from the L0026 spec
  * (loop/scratch/L0026/spec.md, 70/70 reading PCs verified by its red team)
@@ -282,6 +285,118 @@ static const CamCoreRule camcore_rules_f291[] = {
     { 0x5010, CAM_ZERO, 0xffffffff, "never written; 2 reads, no CPU reader (rwatch all 4 vCPUs)" },
 };
 
+/*
+ * 0xF3020000 sub-window 0xF3020800..0xF3020BFF (block-relative 0x800..0xBFF).
+ * The AIF model at 0xF3020000 (AIF_MMIO_SIZE 0x800) ends at 0xF30207FF, so
+ * these 1 KiB are still owned by the board catch-all and the certified
+ * baseline 120 s boot logs 90 distinct (kind, offset) pairs there:
+ *   qemu-system-arm sha256 3152fafb39161a92dd3d050bf11b5ada97c46943d35cdb51e0c04e8f7c72aa76
+ *   qemu-d.log       sha256 e0708c3d01342dfec4213db24f637925e478c757672ed2e27ceff2f279e915db
+ *   loop/scratch/L0090/window-pairs.txt
+ * 89 offsets are write-only (37 writes each for most; +0xB10 74, +0xB18/+0xB20 1,
+ * +0xB84/+0xB88 162) and take Z0: no read exists, so the baseline catch-all zero
+ * is what the firmware sees.  One offset, +0xB80, is an RMW word: all 74 reads
+ * are immediately followed by a write to the same offset, so it is RF and the
+ * rule comment names the two reading load PCs (runtime read watchpoint, Z3, on
+ * PA 0xF3020B80).  No value is invented and every retired offset has its own
+ * entry; an unlisted offset in this window still logs as unmodelled.
+ *
+ * PCs are Thumb load instructions; the read watchpoint stopped on the load
+ * itself (bytes 1A 68 = ldr r3,[r3,#0] at both PCs).
+ */
+static const CamCoreRule camcore_rules_f302[] = {
+    { 0x808, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x80C, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x810, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x814, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x818, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x81C, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x820, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x824, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x828, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x82C, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x830, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x834, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x838, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x83C, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x840, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x844, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x850, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x854, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x858, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x85C, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x860, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x864, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x868, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x86C, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x870, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x874, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x878, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x87C, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x880, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x884, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x888, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x88C, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x890, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x894, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x898, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x89C, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8A0, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8A4, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8A8, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8AC, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8B0, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8B4, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8B8, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8BC, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8C0, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8C8, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8CC, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8D0, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8D4, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8D8, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8DC, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8E0, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8E4, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8E8, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8EC, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8F0, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8F4, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8F8, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x8FC, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x900, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x904, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x908, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x90C, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x910, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x914, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x920, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0x924, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0xA00, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0xA04, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0xA08, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0xA0C, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0xA14, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0xA18, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0xA1C, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0xA20, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0xB00, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0xB10, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 74 writes, 0 reads" },
+    { 0xB18, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 1 write, 0 reads" },
+    { 0xB20, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 1 write, 0 reads" },
+    { 0xB28, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0xB2C, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0xB80, CAM_RF,   0xffffffff, "RMW: 74 reads, each followed by a write; "
+                                    "ldr r3,[r3] at 0x63784ab4/0x63784a74 (rsp Z3 PA 0xF3020B80)" },
+    { 0xB84, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 162 writes, 0 reads" },
+    { 0xB88, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 162 writes, 0 reads" },
+    { 0xB90, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0xB94, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0xB98, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0xBA0, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+    { 0xBA4, CAM_ZERO, 0xffffffff, "write-only in L0090 boot: 37 writes, 0 reads" },
+};
+
 struct CamCoreState {
     SysBusDevice parent_obj;
     MemoryRegion mr;
@@ -401,6 +516,10 @@ static void camcore_realize(DeviceState *dev, Error **errp)
     case 0xF2910000ULL:
         s->rules = camcore_rules_f291;
         s->nrules = ARRAY_SIZE(camcore_rules_f291);
+        break;
+    case 0xF3020000ULL:
+        s->rules = camcore_rules_f302;
+        s->nrules = ARRAY_SIZE(camcore_rules_f302);
         break;
     default:
         /* 0xF3010000 (the original L0027 instance) and any other base. */
