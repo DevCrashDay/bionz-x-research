@@ -160,6 +160,31 @@ The three functions and the data slot were located precisely: they fall inside l
 mapping (`0x05d18000 + offset`) and, for the slot, inside its RW mapping (file offset
 `0x1369984`). That is where the remaining RE work is.
 
+## Arrivederci on the a6100: what the data says (no port claimed)
+
+Reconnaissance for the first real mod, done read-only:
+
+- `Arrivederci.mod` embeds both blocks: the stock EC record at file `0x7d4` (192 B) and the
+  ARRI payload at `0x894` (192 B, different).
+- The a6100 `av-cam.bin` contains that stock 192-byte block **verbatim** at file
+  `0x88d6bc` → VA `0x63e536bc`, **PA `0x03e536bc`** (the a6400 table is at `0x03e5363c`,
+  i.e. +0x80 in this build).
+- A first `/dev/mem` read from the guest at that PA returned exactly the stock block. A
+  later read returned different contents (`0000 0071 …`), so the EC record is rewritten at
+  runtime depending on the active gamma/PP. A static address alone is therefore not enough
+  for a reliable mod.
+- The CC matrix at the a6400 address is **all zeros in the image** (it is computed at run
+  time), so it cannot be found by pattern. The relative-delta candidate
+  (`0x03e536bc + 0x5F7B98 = 0x0444b254`) read back a descending table
+  (`10, 9, 8, 7, 6, 5, …`), not a Q10 matrix. The a6100 matrix address is still unknown.
+- A `printf … | dd of=/dev/mem` write of the ARRI block did not take effect (the readback
+  was unchanged). Cause not established (busybox `printf` escapes or a strict `/devmem`
+  are both possible), so no write is claimed.
+
+Consequence: Arrivederci's a6100 port needs a runtime method, not static guessing — e.g.
+`pmemsave` the av-cam region through QMP and locate the matrix by its Q10 row sums
+(≈1024 per row), then confirm the EC record's live location the same way.
+
 ## Remaining work — updated
 
 | Step | Content | State |
@@ -167,10 +192,10 @@ mapping (`0x05d18000 + offset`) and, for the slot, inside its RW mapping (file o
 | M2 | shim window + guard preimages | **done** (§M2) |
 | M3 | `SET_TEXT`/`SET_MODE` | **done**; five `libObj`-local event addresses remain |
 | M3b | structural match of the five `libObj` addresses | next; needs disassembly of the a6400 sites |
-| M4 | rebase `MenuTouchFull` v2 and locate `Arrivederci`'s a6100 tables | per-site mapping + av-cam table discovery |
+| M4 | rebase `MenuTouchFull` v2 and locate `Arrivederci`'s a6100 tables | EC record address known (PA `0x03e536bc`), but it is rewritten at runtime; matrix address unknown (needs a Q10 row-sum scan of guest RAM); `MenuTouchFull` hooks still need their libObj sites |
 | M5 | emulator harness: stage `.mod` files, install the guard from the guest shell, ON/OFF receipts | toolchain **available**; guest shell **available**; needs the a6100 guard build (M3b + tab table + anchor) |
 | M3c | tab rectangle table: identify the live layout table (6 candidates) instead of guessing | runtime observation in the emulator |
-| M4 | rebase `MenuTouchFull` v2 and locate `Arrivederci`'s a6100 tables | per-site mapping + av-cam table discovery |
+| M4 | rebase `MenuTouchFull` v2 and locate `Arrivederci`'s a6100 tables | EC record address known (PA `0x03e536bc`), but it is rewritten at runtime; matrix address unknown (needs a Q10 row-sum scan of guest RAM); `MenuTouchFull` hooks still need their libObj sites |
 
 ## Boundary
 
