@@ -9,6 +9,10 @@ scope = """
 Original Sony user-space processes (interpreter, linker, libc/NPTL, UIPC/OSAL, DMM, timers, GRM, GLES/Sugilite) executed under InterpreterProbe with explicit guest contracts."""
 evidence_span = "see record index"
 reviewed = "2026-11-22"
+deep_reviewed = [
+  "E0001-E0008",
+  "E0015-E0020",
+]
 records = [
   "E0001-E0008",
   "E0015-E0028",
@@ -93,12 +97,44 @@ kind = "problem"
 name = "L3 display stays transparent"
 summary = "The first OSD A/B frames presented by unmodified im.elf are transparent because DefRootView waits for external av-cam / sub-micro producers."
 
+[[entity]]
+id = "address.high-vector-page"
+kind = "address"
+name = "ARM high vector page (kuser helpers)"
+address = "0xffff0f60"
+aliases = ["0xffff0000..0xffff1000", "kuser helpers", "__kuser_memory_barrier", "__kuser_cmpxchg"]
+summary = "Architecture helper page. The 160-byte template in vmlinux.bin at 0x388fe0 defines __kuser_cmpxchg64 at 0xffff0f60, __kuser_memory_barrier at 0xffff0fa0, __kuser_cmpxchg at 0xffff0fc0, __kuser_get_tls at 0xffff0fe0, a software TLS slot at 0xffff0ff0 and helper version 5 at 0xffff0ffc."
+
+[[entity]]
+id = "function.im-main-entry"
+kind = "function"
+name = "im.elf main entry (0x9140, Thumb 0x9141)"
+address = "0x9140"
+inventory = ["firmware.elf:nflasha15_unpacked/bin/im.elf"]
+summary = "Application entry reached from ld-2.11.2.so at 2,073,233 instructions. Task 94 registers through /dev/uipc; the run stops at inherited stdio fstat64 on fd 1 at 2,107,153 instructions."
+
+[[entity]]
+id = "function.app-system-init"
+kind = "function"
+name = "Application_System_Init (libObj.so 0x84320d, Thumb)"
+address = "0x84320d"
+aliases = ["appFw.so / Application_System_Init", "IMDB entry 123"]
+inventory = ["firmware.elf:nflasha15_unpacked/lib/libObj.so"]
+summary = "Initializer selected by IMDB entry 123 (selector halfword 0x07fb). Calls osal_create_thread at 0x843256 and osal_set_cpu at 0x84325e, references AppConfig.so at 0x84324a, and is the original module-initialization path that manual factories bypass."
+
+[[entity]]
+id = "module.devno-ko"
+kind = "module"
+name = "devno.ko device-number table"
+summary = "Kernel module whose udif_devnodes symbol holds 88 12-byte records. Name pointers use section-backed ARM ABS32 relocations; kind, major, first minor and count are inferred from the table pattern."
+
 [[claim]]
 id = "C01"
 entities = ["tool.interpreter-probe", "lib.loader-libc"]
 status = "verified-offline"
 text = "The original interpreter executes to its first syscall; guarded brk, image-backed kernel identity and a read-only guest filesystem carry it into original library search and header reads."
 evidence = ["E0003", "E0004", "E0005", "E0006", "E0007"]
+note = "The filesystem results are snapshot-scoped: E0008 shows init can overlay /etc at runtime, so these missing-path answers are not validated camera responses."
 
 [[claim]]
 id = "C02"
@@ -106,6 +142,7 @@ entities = ["lib.loader-libc"]
 status = "verified-offline"
 text = "Guarded ARM EABI mmap2 and dynamic-linker library loading work; kuser helpers at 0xFFFF0FA0..0xFFFF0FFC, hardware TLS switching and shared-library initialization run original code."
 evidence = ["E0015", "E0016", "E0026"]
+note = "E0016's template extends below this range: __kuser_cmpxchg64 is at 0xffff0f60 and the version word is at 0xffff0ffc."
 
 [[claim]]
 id = "C03"
@@ -113,6 +150,7 @@ entities = ["process.im-elf", "dev.uipc-osal"]
 status = "verified-offline"
 text = "im.elf's main entry uses the /dev/uipc IPC contract; stdio, UIPC callbacks, sys_clone threads, NPTL multithreading and a cooperative scheduler bring up its infrastructure threads."
 evidence = ["E0017", "E0018", "E0019", "E0027"]
+note = "E0026 later found a main-thread TLS restore defect in the cooperative switch model; the threading result is a historical observation, not faithful NPTL context."
 
 [[claim]]
 id = "C04"
@@ -306,6 +344,121 @@ status = "verified-offline"
 text = "After CreateFramebuffer the labelled single-pool run idles on a timer wait instead of reaching OSD."
 evidence = ["E9003"]
 
+[[claim]]
+id = "C28"
+entities = ["lib.loader-libc", "lib.libobj"]
+status = "verified-offline"
+text = "The bounded loader had discarded the implicit REL addend for R_ARM_ABS32 and R_ARM_GLOB_DAT (22,286 ABS32 entries in libObj.so and 69,983 in viewUnified2.so); it now preserves addends and Thumb state, maps the page-aligned PT_LOAD span instead of assuming zero-based segments, and rolls back a failed load. It is not a complete dynamic linker."
+evidence = ["E0001"]
+
+[[claim]]
+id = "C29"
+entities = ["process.im-elf", "function.app-system-init"]
+status = "verified-offline"
+text = "init main calls run_bg_process on /usr/bin/bootin.elf at 0x9b54/0x9b56; bootin selects commands such as 'im.elf s &' and 'im.elf g &' at 0x9910/0x991a, so the normal camera argv is not established. im.elf's loader at 0xb200 tests IMDB halfword 0x0e, dlopens /usr/lib/libObj.so at 0xb21c, reads the symbol-name pointer at table offset 0x14 and calls the resolved function at 0xb254; the 197-entry table's entry 123 selects Application_System_Init at libObj.so 0x84320d (Thumb)."
+evidence = ["E0002"]
+
+[[claim]]
+id = "C30"
+entities = ["lib.loader-libc", "process.im-elf"]
+status = "verified-offline"
+text = "The bundled extraction drops symlink nodes, so the Windows tree is not a faithful guest root. A read-only ext2 manifest recovered 1,439 paths, 120 symlinks (including /lib/ld-linux.so.3 -> ld-2.11.2.so and /lib/libc.so.6 -> libc-2.11.2.so) and all 14 static candidates for im.elf, its interpreter and DT_NEEDED closure under declared /lib and /usr/lib assumptions. It is a namespace model, not a runnable sysroot."
+evidence = ["E0002"]
+
+[[claim]]
+id = "C31"
+entities = ["tool.interpreter-probe", "lib.loader-libc"]
+status = "verified-offline"
+text = "The unmodified ld-2.11.2.so enters at 0x40000791 with im.elf and runs 1,183 instructions to svc #0 at 0x40010b14 (r7=45, brk). The brk contract answers brk(0) with initial break 0x15000 and stops at uname after 2,222 instructions; the image-backed UTS record at vmlinux.bin 0x3c5a90 (release 3.0.27_nl-rt106+) is copied after exactly seven release reads and stops at access('/etc/ld.so.preload') after 3,091 instructions."
+evidence = ["E0003", "E0004", "E0005"]
+
+[[claim]]
+id = "C32"
+entities = ["lib.loader-libc", "tool.interpreter-probe"]
+status = "verified-offline"
+text = "The read-only namespace returns ENOENT for /etc/ld.so.preload, /etc/ld.so.cache and absent search directories, then stops at stat64('/lib') after 5,078 instructions. Ext2 metadata (1,024-byte blocks, 128-byte inodes) reaches the first original library read, /usr/lib/libjemalloc_ds.so.1 (512 bytes, inode 14216), and stops at guarded st_dev at 0x40004b9e after 6,493 instructions."
+evidence = ["E0006", "E0007"]
+
+[[claim]]
+id = "C33"
+entities = ["lib.loader-libc"]
+status = "verified-offline"
+text = "init contains 22 20-byte mount records at 0x13308 (440 bytes) and attempts /dev/nflasha10 -> /etc vfat with flags 0xc0ed0490, so snapshot ENOENT under /etc is not runtime truth. --respect-runtime-mounts stops at /etc after 3,091 instructions; no runtime device identity or st_dev is selected."
+evidence = ["E0008"]
+
+[[claim]]
+id = "C34"
+entities = ["module.devno-ko"]
+status = "inference"
+text = "udif_devnodes spans 1,056 bytes (88 records of 12 bytes). The inferred block-device meanings are nflasha major 252 minors 0-31, nflashaB0 252:126, nflashaB1 252:127 and dnflasha 252:128-159; a partition filename does not select the mounted device or establish the suffix-to-minor rule."
+evidence = ["E0008"]
+
+[[claim]]
+id = "C35"
+entities = ["lib.loader-libc", "address.high-vector-page"]
+status = "verified-offline"
+text = "With verified /lib st_dev 0x0000fc07 and /usr st_dev 0x0000fc0f the linker's (st_dev, st_ino) deduplication passes, and mmap2/mprotect/munmap contracts open, read, map and close all 12 DT_NEEDED libraries (libjemalloc_ds.so.1 through librt-2.11.2.so), advancing to 56,230 instructions and stopping on the unmapped high-vector page at 0xffff0fa0."
+evidence = ["E0015"]
+
+[[claim]]
+id = "C36"
+entities = ["address.high-vector-page", "lib.loader-libc"]
+status = "verified-offline"
+text = "The 160-byte high-vector helper template extracted from vmlinux.bin at 0x388fe0 (SHA-256 f9e6a6128970c915c1b372dbeb16ebed77e032b9be042e21f1540c466d5f4297) defines __kuser_cmpxchg64 at 0xffff0f60, __kuser_memory_barrier at 0xffff0fa0, __kuser_cmpxchg at 0xffff0fc0, __kuser_get_tls at 0xffff0fe0, a software TLS slot at 0xffff0ff0 and helper version 5 at 0xffff0ffc. The 0xffff0fa0 stop is the memory barrier, not cmpxchg."
+evidence = ["E0016"]
+
+[[claim]]
+id = "C37"
+entities = ["lib.loader-libc", "dev.uipc-osal"]
+status = "verified-offline"
+text = "sys_arm_set_tls (0xf0005) with TLS 0x503204c0 at 145,539 instructions updates CP15 C13 and the 0xffff0ff0 slot; the linker applies mprotect(0x4001f000, 0x1000, PROT_READ) to its GNU_RELRO data at 1,997,182 instructions; after all 12 constructors it stops opening /dev/uipc O_RDWR at 2,029,074 instructions (PC 0x5008bc3c, r7=5)."
+evidence = ["E0016"]
+
+[[claim]]
+id = "C38"
+entities = ["dev.uipc-osal", "function.im-main-entry"]
+status = "verified-offline"
+text = "/dev/uipc's ioctl ABI is cmd 16 (0x80000010) connect returning a 1 MiB pool, 256 KiB vpool and 32 KiB fblock; cmd 10 (0x8000000a) valloc_msg_wait; cmd 5 (0x80000005) snd_sync_msg; cmd 11 (0x8000000b) free_msg. The 1 MiB pool maps at 0x50330000..0x50430000. ld-2.11.2.so transfers to im.elf's Thumb entry 0x9141 at 2,073,233 instructions; Task 94 registers through queue 0x8f013a with queues 0x3e014d and 0x94016a, and the run stops at fstat64(fd 1) after 2,107,153 instructions."
+evidence = ["E0017"]
+
+[[claim]]
+id = "C39"
+entities = ["function.im-main-entry", "dev.uipc-osal"]
+status = "verified-offline"
+text = "Standard descriptors 0-2 are backed by /dev/console (inode 118, mode 8576, rdev 0x501, uid 0, gid 5); TCGETS returns -ENOTTY, and write/writev are captured. Queue callbacks register at 0x94016a -> 0x9635, 0 -> 0x50031d35 and 0x940270 -> 0x95f7; Task 94 completes phases 0-4, and sys_clone at 2,218,147 instructions uses flags 0x3d0f00, child stack 0x50c7ef98 and parent_tid 0x50c7f4c8."
+evidence = ["E0018"]
+
+[[claim]]
+id = "C40"
+entities = ["process.im-elf", "dev.uipc-osal"]
+status = "verified-offline"
+text = "Under the E0019 cooperative scheduler, sys_clone creates TIDs 1001-1003 with isolated registers and futex wait/wake implements the osal waitable-thread barrier; THREAD_INFRA0-2 run and exit, and the main thread stops at UIPC ioctl 0x80000001 on semaphore 0x83037a after 2,367,687 instructions."
+evidence = ["E0019"]
+note = "E0026 later found that this cooperative switch model failed to restore the main thread's TLS; the threaded instruction counts are historical observations, not faithful NPTL context."
+
+[[claim]]
+id = "C41"
+entities = ["dev.uipc-osal", "process.im-elf"]
+status = "verified-offline"
+text = "The UIPC binary semaphore commands 0x80000000-0x80000002 let Task 94 acquire semaphore 0x83037a immediately; a fourth thread (TID 1004) spawns; Task 94 sends to Task 92 queue 0x00920021; empty rcv_msg_tmo returns -EAGAIN translated to 0xfffffc00; with no events the app nanosleeps 1 s and ran 8,777,210+ instructions over 17,000+ cycles without faults or unhandled boundaries."
+evidence = ["E0020"]
+
+[[claim]]
+id = "C42"
+entities = ["tool.interpreter-probe", "lib.libobj"]
+status = "verified-offline"
+text = "The IT-state failures at 0x40004e4c (E0015) and 0x50259c24 (E0018) were treated with per-address CPSR clears; E0657 later identified Unicorn 2.1.4 carrying stale Thumb-2 ITSTATE across block entries as the systematic cause and added an architectural block-entry guard."
+evidence = ["E0015", "E0018", "E0657"]
+
+[[claim]]
+id = "R04"
+entities = ["address.high-vector-page"]
+status = "retracted"
+text = "The unmapped helper at 0xffff0fa0 is __kuser_cmpxchg, invoked during pthread and TLS initialization."
+evidence = ["E0015"]
+superseded_by = "C36"
+note = "E0016's extracted template makes 0xffff0fa0 __kuser_memory_barrier (dmb sy; bx lr) and puts __kuser_cmpxchg at 0xffff0fc0. The regression-baseline rows in E0016-E0020 copy E0015's label."
+
 [[frontier]]
 id = "F01"
 title = "Advance DefRootView past the transparent root view"
@@ -313,3 +466,9 @@ state = "open"
 entities = ["problem.l3-display", "process.im-elf"]
 evidence = ["E0657"]
 next = "Qualify the external av-cam.bin / sub-micro UPM (0x920572 / 0x920021) and ObjPower (0x0059000E) producers so CheckerBootState / CheckerBootType can advance, without injecting replies."
+
+[[drift]]
+doc = "docs/ROADMAP.md"
+section = "L3 user-space execution progress"
+observed = "Before this slice, called 0xffff0fa0 __kuser_cmpxchg."
+current = "E0016: 0xffff0fa0 is __kuser_memory_barrier; __kuser_cmpxchg is 0xffff0fc0. Corrected in this PR."

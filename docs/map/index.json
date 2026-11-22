@@ -530,7 +530,11 @@
         "C17",
         "C18",
         "C23",
-        "C25"
+        "C25",
+        "C29",
+        "C30",
+        "C40",
+        "C41"
       ],
       "inactive_claims": []
     },
@@ -543,7 +547,10 @@
       "anchor": "l3-userspace.md#tool-interpreter-probe",
       "active_claims": [
         "C01",
-        "C20"
+        "C20",
+        "C31",
+        "C32",
+        "C42"
       ],
       "inactive_claims": []
     },
@@ -558,7 +565,15 @@
         "C01",
         "C02",
         "C16",
-        "C21"
+        "C21",
+        "C28",
+        "C30",
+        "C31",
+        "C32",
+        "C33",
+        "C35",
+        "C36",
+        "C37"
       ],
       "inactive_claims": []
     },
@@ -571,7 +586,9 @@
       "anchor": "l3-userspace.md#lib-libobj",
       "active_claims": [
         "C11",
-        "C15"
+        "C15",
+        "C28",
+        "C42"
       ],
       "inactive_claims": [
         "R01",
@@ -591,7 +608,12 @@
         "C09",
         "C23",
         "C24",
-        "C26"
+        "C26",
+        "C37",
+        "C38",
+        "C39",
+        "C40",
+        "C41"
       ],
       "inactive_claims": []
     },
@@ -662,6 +684,66 @@
         "C12",
         "C13",
         "C27"
+      ],
+      "inactive_claims": []
+    },
+    "address.high-vector-page": {
+      "area": "l3-userspace",
+      "name": "ARM high vector page (kuser helpers)",
+      "kind": "address",
+      "address": "0xffff0f60",
+      "aliases": [
+        "0xffff0000..0xffff1000",
+        "kuser helpers",
+        "__kuser_memory_barrier",
+        "__kuser_cmpxchg"
+      ],
+      "anchor": "l3-userspace.md#address-high-vector-page",
+      "active_claims": [
+        "C35",
+        "C36"
+      ],
+      "inactive_claims": [
+        "R04"
+      ]
+    },
+    "function.im-main-entry": {
+      "area": "l3-userspace",
+      "name": "im.elf main entry (0x9140, Thumb 0x9141)",
+      "kind": "function",
+      "address": "0x9140",
+      "aliases": [],
+      "anchor": "l3-userspace.md#function-im-main-entry",
+      "active_claims": [
+        "C38",
+        "C39"
+      ],
+      "inactive_claims": []
+    },
+    "function.app-system-init": {
+      "area": "l3-userspace",
+      "name": "Application_System_Init (libObj.so 0x84320d, Thumb)",
+      "kind": "function",
+      "address": "0x84320d",
+      "aliases": [
+        "appFw.so / Application_System_Init",
+        "IMDB entry 123"
+      ],
+      "anchor": "l3-userspace.md#function-app-system-init",
+      "active_claims": [
+        "C29"
+      ],
+      "inactive_claims": []
+    },
+    "module.devno-ko": {
+      "area": "l3-userspace",
+      "name": "devno.ko device-number table",
+      "kind": "module",
+      "address": null,
+      "aliases": [],
+      "anchor": "l3-userspace.md#module-devno-ko",
+      "active_claims": [
+        "C34"
       ],
       "inactive_claims": []
     },
@@ -1631,8 +1713,11 @@
     "0x602b253c": "fn.do-control-status",
     "0x602b2c68": "fn.dwc3-ep0-interrupt",
     "0x602b94a4": "fn.setup-req",
+    "0x84320d": "function.app-system-init",
+    "0x9140": "function.im-main-entry",
     "0xF1000000": "dev.gpes-bar",
     "0xF2915000": "soc.miscreg-efuse",
+    "0xffff0f60": "address.high-vector-page",
     "dwc+0x2d8": "field.dwc-2d8"
   },
   "evidence": {
@@ -1661,6 +1746,13 @@
         "id": "C16",
         "file": "0001-platform-and-loader.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C28",
+        "file": "0001-platform-and-loader.md",
+        "status": "verified-offline"
       }
     ],
     "E0002": [
@@ -1668,6 +1760,20 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C16",
+        "file": "0002-original-process-startup.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C29",
+        "file": "0002-original-process-startup.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C30",
         "file": "0002-original-process-startup.md",
         "status": "verified-offline"
       }
@@ -1679,6 +1785,13 @@
         "id": "C01",
         "file": "0003-original-interpreter-boundary.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C31",
+        "file": "0003-original-interpreter-boundary.md",
+        "status": "verified-offline"
       }
     ],
     "E0004": [
@@ -1686,6 +1799,13 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C01",
+        "file": "0004-guest-brk-contract.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C31",
         "file": "0004-guest-brk-contract.md",
         "status": "verified-offline"
       }
@@ -1697,6 +1817,13 @@
         "id": "C01",
         "file": "0005-guarded-kernel-identity.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C31",
+        "file": "0005-guarded-kernel-identity.md",
+        "status": "verified-offline"
       }
     ],
     "E0006": [
@@ -1704,6 +1831,13 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C01",
+        "file": "0006-read-only-guest-filesystem.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C32",
         "file": "0006-read-only-guest-filesystem.md",
         "status": "verified-offline"
       }
@@ -1715,9 +1849,30 @@
         "id": "C01",
         "file": "0007-guarded-inode-metadata.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C32",
+        "file": "0007-guarded-inode-metadata.md",
+        "status": "verified-offline"
       }
     ],
     "E0008": [
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C33",
+        "file": "0008-runtime-mount-boundaries.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C34",
+        "file": "0008-runtime-mount-boundaries.md",
+        "status": "inference"
+      },
       {
         "area": "storage-sd-backup",
         "kind": "claim",
@@ -1787,6 +1942,27 @@
         "id": "C02",
         "file": "0015-guarded-mmap2-and-library-load.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C35",
+        "file": "0015-guarded-mmap2-and-library-load.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C42",
+        "file": "0015-guarded-mmap2-and-library-load.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "R04",
+        "file": "0015-guarded-mmap2-and-library-load.md",
+        "status": "retracted"
       }
     ],
     "E0016": [
@@ -1794,6 +1970,20 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C02",
+        "file": "0016-kuser-helpers-and-shared-library-init.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C36",
+        "file": "0016-kuser-helpers-and-shared-library-init.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C37",
         "file": "0016-kuser-helpers-and-shared-library-init.md",
         "status": "verified-offline"
       }
@@ -1805,6 +1995,13 @@
         "id": "C03",
         "file": "0017-application-entry-and-uipc-contract.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C38",
+        "file": "0017-application-entry-and-uipc-contract.md",
+        "status": "verified-offline"
       }
     ],
     "E0018": [
@@ -1812,6 +2009,20 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C03",
+        "file": "0018-standard-io-and-uipc-callbacks.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C39",
+        "file": "0018-standard-io-and-uipc-callbacks.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C42",
         "file": "0018-standard-io-and-uipc-callbacks.md",
         "status": "verified-offline"
       }
@@ -1823,6 +2034,13 @@
         "id": "C03",
         "file": "0019-multithreading-and-sys-clone.md",
         "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C40",
+        "file": "0019-multithreading-and-sys-clone.md",
+        "status": "verified-offline"
       }
     ],
     "E0020": [
@@ -1830,6 +2048,13 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C04",
+        "file": "0020-uipc-semaphores-and-event-loop.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C41",
         "file": "0020-uipc-semaphores-and-event-loop.md",
         "status": "verified-offline"
       }
@@ -9413,6 +9638,13 @@
         "area": "l3-userspace",
         "kind": "claim",
         "id": "C12",
+        "file": "0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md",
+        "status": "verified-offline"
+      },
+      {
+        "area": "l3-userspace",
+        "kind": "claim",
+        "id": "C42",
         "file": "0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md",
         "status": "verified-offline"
       },

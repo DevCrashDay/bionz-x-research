@@ -243,7 +243,7 @@ The [2026-11-21 native-reader follow-ups](docs/evidence/0643-cxd90045-miscreg-ef
 
 The dashboard shows how much of each firmware inventory the [knowledge map](docs/map/README.md) describes, graded by the strongest current claim (verified, decoded, open frontier). It is generated from `docs/map/` with `python -m tools.research.render_research_status --write` and is not a firmware compatibility percentage: unmapped items are not yet summarised, not unknown. All evidence records are indexed across 15 [map areas](docs/map/README.md#areas). Suite history: [test-growth chart](docs/images/test-growth.svg).
 
-![Knowledge map coverage by firmware inventory](docs/images/research-status.svg?v=07ca7ac05e53)
+![Knowledge map coverage by firmware inventory](docs/images/research-status.svg?v=399a9e9ff4d9)
 
 ---
 

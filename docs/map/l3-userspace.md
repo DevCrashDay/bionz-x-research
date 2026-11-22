@@ -4,7 +4,7 @@
 
 - **Scope:** Original Sony user-space processes (interpreter, linker, libc/NPTL, UIPC/OSAL, DMM, timers, GRM, GLES/Sugilite) executed under InterpreterProbe with explicit guest contracts.
 - **Evidence span:** see record index; last reviewed 2026-11-22.
-- **Deep review:** 0 of 81 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
+- **Deep review:** 14 of 81 records read in full and checked claim by claim ([curation plan](CURATION_PLAN.md)); the rest are curated from titles, lead paragraphs and consolidated documents.
 - **Status legend:** PHYSICAL = observed on the camera/host; OFFLINE = disassembly, Unicorn or static proof; INFERENCE = argued from evidence, not observed directly; RETRACTED/REFUTED = do not rely on, kept to prevent re-derivation.
 
 The evidence records are authoritative; follow the links before acting on a claim.
@@ -16,6 +16,14 @@ The evidence records are authoritative; follow the links before acting on a clai
 - **State:** `open`
 - **Next:** Qualify the external av-cam.bin / sub-micro UPM (0x920572 / 0x920021) and ObjPower (0x0059000E) producers so CheckerBootState / CheckerBootType can advance, without injecting replies.
 - **Evidence:** [E0657](../evidence/0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md)
+
+## Address lookup
+
+| Address | Entity |
+| --- | --- |
+| `0x84320d` | [Application_System_Init (libObj.so 0x84320d, Thumb)](#function-app-system-init) |
+| `0x9140` | [im.elf main entry (0x9140, Thumb 0x9141)](#function-im-main-entry) |
+| `0xffff0f60` | [ARM high vector page (kuser helpers)](#address-high-vector-page) |
 
 ## Entities
 
@@ -29,7 +37,7 @@ Aliases: `PID 149`, `im.elf debug s g r u l i a lazy-global`
 
 Current knowledge:
 
-- **C03** `OFFLINE` im.elf's main entry uses the /dev/uipc IPC contract; stdio, UIPC callbacks, sys_clone threads, NPTL multithreading and a cooperative scheduler bring up its infrastructure threads. ([E0017](../evidence/0017-application-entry-and-uipc-contract.md), [E0018](../evidence/0018-standard-io-and-uipc-callbacks.md), [E0019](../evidence/0019-multithreading-and-sys-clone.md), [E0027](../evidence/0027-original-clone-return-and-phase-survey.md))
+- **C03** `OFFLINE` im.elf's main entry uses the /dev/uipc IPC contract; stdio, UIPC callbacks, sys_clone threads, NPTL multithreading and a cooperative scheduler bring up its infrastructure threads. ([E0017](../evidence/0017-application-entry-and-uipc-contract.md), [E0018](../evidence/0018-standard-io-and-uipc-callbacks.md), [E0019](../evidence/0019-multithreading-and-sys-clone.md), [E0027](../evidence/0027-original-clone-return-and-phase-survey.md)) *Note: E0026 later found a main-thread TLS restore defect in the cooperative switch model; the threading result is a historical observation, not faithful NPTL context.*
 - **C08** `PHYSICAL` On the camera im.elf is PID 149 with argv 'im.elf debug s g r u l i a lazy-global'; clone-derived GLES identity and /dev/stream2 follow from the observed startup. ([E0301](../evidence/0301-uipc-lifecycle-camera-argv-and-checkpoint-retry.md), [E0302](../evidence/0302-gles-identity-stream2-and-memory-boundary.md))
 - **C09** `OFFLINE` With a modelled positive UIPC receive timeout the app leaves a 19M-instruction poll loop for a real wait and, at 308.6M instructions, is service-idle waiting for producers. ([E0308](../evidence/0308-uipc-timeout-blocking-and-real-wait.md), [E0309](../evidence/0309-blocked-uipc-dependency-map.md))
 - **C11** `OFFLINE` Every former heap assertion was caused by Unicorn 2.1.4 carrying stale Thumb-2 ITSTATE across IT-block branches; with the fix, unmodified im.elf runs 1.50B instructions and 120 threads with 0 heap ownership errors and no 0x4C->0x50 padding. ([E0657](../evidence/0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md))
@@ -38,6 +46,10 @@ Current knowledge:
 - **C18** `OFFLINE` Package H reaches the stack-guard entropy boundary; original urandom dispatch and a guarded entropy read pass it; the OpenSSL SIGILL capability probe meets a /tmp boundary. ([E0023](../evidence/0023-package-h-entropy-boundary.md), [E0024](../evidence/0024-urandom-dispatch-and-read-boundary.md), [E0033](../evidence/0033-sigill-capability-probe-and-tmp-boundary.md))
 - **C23** `OFFLINE` An authentic standby LCD and a 125M fast-hooks milestone came with the THREAD_INFRA0 synchronous dispatch architecture; the authentic UIPC OSAL header and MonDrv WBI log buffer reach 143.74M instructions; /proc/modules, FBResourceManager and the MediaDetect polling boundary follow, and the THREAD_INFRA1 poll is MonDrv output-queue back-pressure. ([E0083](../evidence/0083-authentic-standby-lcd-and-infra0-worker-pipeline.md), [E0095](../evidence/0095-uipc-osal-header-mondrv-log-and-143m-milestone.md), [E0096](../evidence/0096-proc-modules-fbresourcemanager-and-mediadetect-poll.md), [E0097](../evidence/0097-mediadetect-poll-is-mondrv-output-backpressure.md))
 - **C25** `PHYSICAL` Read-only dumps of the MPR partition (erased-state ioctl identity), nflasha1 vfat (observed /mnt mount/umount, updater-state read) and the nflasha2 /setting namespace carry the replay past /dev/nflasha4 to the app's idle/poll state. ([E0305](../evidence/0305-mpr-readonly-dump-and-erased-state-ioctl.md), [E0306](../evidence/0306-nflasha1-vfat-mount-and-updater-state.md), [E0307](../evidence/0307-nflasha2-setting-namespace-uipc-unregister-and-idle-state.md))
+- **C29** `OFFLINE` init main calls run_bg_process on /usr/bin/bootin.elf at 0x9b54/0x9b56; bootin selects commands such as 'im.elf s &' and 'im.elf g &' at 0x9910/0x991a, so the normal camera argv is not established. im.elf's loader at 0xb200 tests IMDB halfword 0x0e, dlopens /usr/lib/libObj.so at 0xb21c, reads the symbol-name pointer at table offset 0x14 and calls the resolved function at 0xb254; the 197-entry table's entry 123 selects Application_System_Init at libObj.so 0x84320d (Thumb). ([E0002](../evidence/0002-original-process-startup.md))
+- **C30** `OFFLINE` The bundled extraction drops symlink nodes, so the Windows tree is not a faithful guest root. A read-only ext2 manifest recovered 1,439 paths, 120 symlinks (including /lib/ld-linux.so.3 -> ld-2.11.2.so and /lib/libc.so.6 -> libc-2.11.2.so) and all 14 static candidates for im.elf, its interpreter and DT_NEEDED closure under declared /lib and /usr/lib assumptions. It is a namespace model, not a runnable sysroot. ([E0002](../evidence/0002-original-process-startup.md))
+- **C40** `OFFLINE` Under the E0019 cooperative scheduler, sys_clone creates TIDs 1001-1003 with isolated registers and futex wait/wake implements the osal waitable-thread barrier; THREAD_INFRA0-2 run and exit, and the main thread stops at UIPC ioctl 0x80000001 on semaphore 0x83037a after 2,367,687 instructions. ([E0019](../evidence/0019-multithreading-and-sys-clone.md)) *Note: E0026 later found that this cooperative switch model failed to restore the main thread's TLS; the threaded instruction counts are historical observations, not faithful NPTL context.*
+- **C41** `OFFLINE` The UIPC binary semaphore commands 0x80000000-0x80000002 let Task 94 acquire semaphore 0x83037a immediately; a fourth thread (TID 1004) spawns; Task 94 sends to Task 92 queue 0x00920021; empty rcv_msg_tmo returns -EAGAIN translated to 0xfffffc00; with no events the app nanosleeps 1 s and ran 8,777,210+ instructions over 17,000+ cycles without faults or unhandled boundaries. ([E0020](../evidence/0020-uipc-semaphores-and-event-loop.md))
 
 ### <a id="tool-interpreter-probe"></a>InterpreterProbe (L3 user-space executor)
 
@@ -47,8 +59,11 @@ Bounded Unicorn user-space executor with explicit, opt-in guest contracts (sysca
 
 Current knowledge:
 
-- **C01** `OFFLINE` The original interpreter executes to its first syscall; guarded brk, image-backed kernel identity and a read-only guest filesystem carry it into original library search and header reads. ([E0003](../evidence/0003-original-interpreter-boundary.md), [E0004](../evidence/0004-guest-brk-contract.md), [E0005](../evidence/0005-guarded-kernel-identity.md), [E0006](../evidence/0006-read-only-guest-filesystem.md), [E0007](../evidence/0007-guarded-inode-metadata.md))
+- **C01** `OFFLINE` The original interpreter executes to its first syscall; guarded brk, image-backed kernel identity and a read-only guest filesystem carry it into original library search and header reads. ([E0003](../evidence/0003-original-interpreter-boundary.md), [E0004](../evidence/0004-guest-brk-contract.md), [E0005](../evidence/0005-guarded-kernel-identity.md), [E0006](../evidence/0006-read-only-guest-filesystem.md), [E0007](../evidence/0007-guarded-inode-metadata.md)) *Note: The filesystem results are snapshot-scoped: E0008 shows init can overlay /etc at runtime, so these missing-path answers are not validated camera responses.*
 - **C20** `OFFLINE` A bounded dependency planner and reusable REA evidence support call-chain work; REA deep analysis is unavailable for the ARM libObj on this host, and the 20 ms constant has six libObj sites. ([E0039](../evidence/0039-dependency-planner-and-evidence-cache.md), [E9005](../evidence/9005-rea-provider-limit-and-20ms-sites.md))
+- **C31** `OFFLINE` The unmodified ld-2.11.2.so enters at 0x40000791 with im.elf and runs 1,183 instructions to svc #0 at 0x40010b14 (r7=45, brk). The brk contract answers brk(0) with initial break 0x15000 and stops at uname after 2,222 instructions; the image-backed UTS record at vmlinux.bin 0x3c5a90 (release 3.0.27_nl-rt106+) is copied after exactly seven release reads and stops at access('/etc/ld.so.preload') after 3,091 instructions. ([E0003](../evidence/0003-original-interpreter-boundary.md), [E0004](../evidence/0004-guest-brk-contract.md), [E0005](../evidence/0005-guarded-kernel-identity.md))
+- **C32** `OFFLINE` The read-only namespace returns ENOENT for /etc/ld.so.preload, /etc/ld.so.cache and absent search directories, then stops at stat64('/lib') after 5,078 instructions. Ext2 metadata (1,024-byte blocks, 128-byte inodes) reaches the first original library read, /usr/lib/libjemalloc_ds.so.1 (512 bytes, inode 14216), and stops at guarded st_dev at 0x40004b9e after 6,493 instructions. ([E0006](../evidence/0006-read-only-guest-filesystem.md), [E0007](../evidence/0007-guarded-inode-metadata.md))
+- **C42** `OFFLINE` The IT-state failures at 0x40004e4c (E0015) and 0x50259c24 (E0018) were treated with per-address CPSR clears; E0657 later identified Unicorn 2.1.4 carrying stale Thumb-2 ITSTATE across block entries as the systematic cause and added an architectural block-entry guard. ([E0015](../evidence/0015-guarded-mmap2-and-library-load.md), [E0018](../evidence/0018-standard-io-and-uipc-callbacks.md), [E0657](../evidence/0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md))
 
 ### <a id="lib-loader-libc"></a>ld-2.11.2.so and libc-2.11.2.so
 
@@ -58,10 +73,18 @@ Original dynamic linker and glibc 2.11.2. Their brk, mmap2, kuser-helper, TLS, N
 
 Current knowledge:
 
-- **C01** `OFFLINE` The original interpreter executes to its first syscall; guarded brk, image-backed kernel identity and a read-only guest filesystem carry it into original library search and header reads. ([E0003](../evidence/0003-original-interpreter-boundary.md), [E0004](../evidence/0004-guest-brk-contract.md), [E0005](../evidence/0005-guarded-kernel-identity.md), [E0006](../evidence/0006-read-only-guest-filesystem.md), [E0007](../evidence/0007-guarded-inode-metadata.md))
-- **C02** `OFFLINE` Guarded ARM EABI mmap2 and dynamic-linker library loading work; kuser helpers at 0xFFFF0FA0..0xFFFF0FFC, hardware TLS switching and shared-library initialization run original code. ([E0015](../evidence/0015-guarded-mmap2-and-library-load.md), [E0016](../evidence/0016-kuser-helpers-and-shared-library-init.md), [E0026](../evidence/0026-thread-tls-and-stack-discard.md))
+- **C01** `OFFLINE` The original interpreter executes to its first syscall; guarded brk, image-backed kernel identity and a read-only guest filesystem carry it into original library search and header reads. ([E0003](../evidence/0003-original-interpreter-boundary.md), [E0004](../evidence/0004-guest-brk-contract.md), [E0005](../evidence/0005-guarded-kernel-identity.md), [E0006](../evidence/0006-read-only-guest-filesystem.md), [E0007](../evidence/0007-guarded-inode-metadata.md)) *Note: The filesystem results are snapshot-scoped: E0008 shows init can overlay /etc at runtime, so these missing-path answers are not validated camera responses.*
+- **C02** `OFFLINE` Guarded ARM EABI mmap2 and dynamic-linker library loading work; kuser helpers at 0xFFFF0FA0..0xFFFF0FFC, hardware TLS switching and shared-library initialization run original code. ([E0015](../evidence/0015-guarded-mmap2-and-library-load.md), [E0016](../evidence/0016-kuser-helpers-and-shared-library-init.md), [E0026](../evidence/0026-thread-tls-and-stack-discard.md)) *Note: E0016's template extends below this range: __kuser_cmpxchg64 is at 0xffff0f60 and the version word is at 0xffff0ffc.*
 - **C16** `OFFLINE` Platform and loader facts were extracted from the firmware: 474 ARM ELF files parse without errors; original process startup lacks filesystem metadata until guarded inode metadata and the original module request are modelled. ([E0001](../evidence/0001-platform-and-loader.md), [E0002](../evidence/0002-original-process-startup.md), [E0028](../evidence/0028-readonly-inode-metadata-and-module-request.md))
 - **C21** `OFFLINE` Original GRM open requires DMM and its returned handle; callback locking requires kernel thread state; the original client constructor reaches page-size, sysconf and pthread initialization; the trace allocator reaches UIPC runtime state. ([E0046](../evidence/0046-original-grm-open-and-dmm-handle.md), [E0051](../evidence/0051-original-grm-mutex-thread-state-boundary.md), [E0052](../evidence/0052-original-client-constructor-and-page-size-dependency.md), [E0053](../evidence/0053-original-loader-to-sysconf-constructor-chain.md), [E0054](../evidence/0054-original-pthread-constructor-return-and-trace-ipc.md), [E0055](../evidence/0055-original-trace-uipc-allocator-runtime-state.md))
+- **C28** `OFFLINE` The bounded loader had discarded the implicit REL addend for R_ARM_ABS32 and R_ARM_GLOB_DAT (22,286 ABS32 entries in libObj.so and 69,983 in viewUnified2.so); it now preserves addends and Thumb state, maps the page-aligned PT_LOAD span instead of assuming zero-based segments, and rolls back a failed load. It is not a complete dynamic linker. ([E0001](../evidence/0001-platform-and-loader.md))
+- **C30** `OFFLINE` The bundled extraction drops symlink nodes, so the Windows tree is not a faithful guest root. A read-only ext2 manifest recovered 1,439 paths, 120 symlinks (including /lib/ld-linux.so.3 -> ld-2.11.2.so and /lib/libc.so.6 -> libc-2.11.2.so) and all 14 static candidates for im.elf, its interpreter and DT_NEEDED closure under declared /lib and /usr/lib assumptions. It is a namespace model, not a runnable sysroot. ([E0002](../evidence/0002-original-process-startup.md))
+- **C31** `OFFLINE` The unmodified ld-2.11.2.so enters at 0x40000791 with im.elf and runs 1,183 instructions to svc #0 at 0x40010b14 (r7=45, brk). The brk contract answers brk(0) with initial break 0x15000 and stops at uname after 2,222 instructions; the image-backed UTS record at vmlinux.bin 0x3c5a90 (release 3.0.27_nl-rt106+) is copied after exactly seven release reads and stops at access('/etc/ld.so.preload') after 3,091 instructions. ([E0003](../evidence/0003-original-interpreter-boundary.md), [E0004](../evidence/0004-guest-brk-contract.md), [E0005](../evidence/0005-guarded-kernel-identity.md))
+- **C32** `OFFLINE` The read-only namespace returns ENOENT for /etc/ld.so.preload, /etc/ld.so.cache and absent search directories, then stops at stat64('/lib') after 5,078 instructions. Ext2 metadata (1,024-byte blocks, 128-byte inodes) reaches the first original library read, /usr/lib/libjemalloc_ds.so.1 (512 bytes, inode 14216), and stops at guarded st_dev at 0x40004b9e after 6,493 instructions. ([E0006](../evidence/0006-read-only-guest-filesystem.md), [E0007](../evidence/0007-guarded-inode-metadata.md))
+- **C33** `OFFLINE` init contains 22 20-byte mount records at 0x13308 (440 bytes) and attempts /dev/nflasha10 -> /etc vfat with flags 0xc0ed0490, so snapshot ENOENT under /etc is not runtime truth. --respect-runtime-mounts stops at /etc after 3,091 instructions; no runtime device identity or st_dev is selected. ([E0008](../evidence/0008-runtime-mount-boundaries.md))
+- **C35** `OFFLINE` With verified /lib st_dev 0x0000fc07 and /usr st_dev 0x0000fc0f the linker's (st_dev, st_ino) deduplication passes, and mmap2/mprotect/munmap contracts open, read, map and close all 12 DT_NEEDED libraries (libjemalloc_ds.so.1 through librt-2.11.2.so), advancing to 56,230 instructions and stopping on the unmapped high-vector page at 0xffff0fa0. ([E0015](../evidence/0015-guarded-mmap2-and-library-load.md))
+- **C36** `OFFLINE` The 160-byte high-vector helper template extracted from vmlinux.bin at 0x388fe0 (SHA-256 f9e6a6128970c915c1b372dbeb16ebed77e032b9be042e21f1540c466d5f4297) defines __kuser_cmpxchg64 at 0xffff0f60, __kuser_memory_barrier at 0xffff0fa0, __kuser_cmpxchg at 0xffff0fc0, __kuser_get_tls at 0xffff0fe0, a software TLS slot at 0xffff0ff0 and helper version 5 at 0xffff0ffc. The 0xffff0fa0 stop is the memory barrier, not cmpxchg. ([E0016](../evidence/0016-kuser-helpers-and-shared-library-init.md))
+- **C37** `OFFLINE` sys_arm_set_tls (0xf0005) with TLS 0x503204c0 at 145,539 instructions updates CP15 C13 and the 0xffff0ff0 slot; the linker applies mprotect(0x4001f000, 0x1000, PROT_READ) to its GNU_RELRO data at 1,997,182 instructions; after all 12 constructors it stops opening /dev/uipc O_RDWR at 2,029,074 instructions (PC 0x5008bc3c, r7=5). ([E0016](../evidence/0016-kuser-helpers-and-shared-library-init.md))
 
 ### <a id="lib-libobj"></a>libObj.so (application object library)
 
@@ -73,6 +96,8 @@ Current knowledge:
 
 - **C11** `OFFLINE` Every former heap assertion was caused by Unicorn 2.1.4 carrying stale Thumb-2 ITSTATE across IT-block branches; with the fix, unmodified im.elf runs 1.50B instructions and 120 threads with 0 heap ownership errors and no 0x4C->0x50 padding. ([E0657](../evidence/0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md))
 - **C15** `OFFLINE` The isolated original log-block constructor writes only through offset 0x48 and fits libc's 0x4C usable extent; the opt-in 0x50 request padding is a trial, not an allocator correction. ([E0526](../evidence/0526-stella-allocator-size-isolation-and-padding-trial.md))
+- **C28** `OFFLINE` The bounded loader had discarded the implicit REL addend for R_ARM_ABS32 and R_ARM_GLOB_DAT (22,286 ABS32 entries in libObj.so and 69,983 in viewUnified2.so); it now preserves addends and Thumb state, maps the page-aligned PT_LOAD span instead of assuming zero-based segments, and rolls back a failed load. It is not a complete dynamic linker. ([E0001](../evidence/0001-platform-and-loader.md))
+- **C42** `OFFLINE` The IT-state failures at 0x40004e4c (E0015) and 0x50259c24 (E0018) were treated with per-address CPSR clears; E0657 later identified Unicorn 2.1.4 carrying stale Thumb-2 ITSTATE across block entries as the systematic cause and added an architectural block-entry guard. ([E0015](../evidence/0015-guarded-mmap2-and-library-load.md), [E0018](../evidence/0018-standard-io-and-uipc-callbacks.md), [E0657](../evidence/0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md))
 
 Do not rely on:
 
@@ -87,12 +112,17 @@ Kernel UIPC character device plus libosal_uipc user-space queues, semaphores and
 
 Current knowledge:
 
-- **C03** `OFFLINE` im.elf's main entry uses the /dev/uipc IPC contract; stdio, UIPC callbacks, sys_clone threads, NPTL multithreading and a cooperative scheduler bring up its infrastructure threads. ([E0017](../evidence/0017-application-entry-and-uipc-contract.md), [E0018](../evidence/0018-standard-io-and-uipc-callbacks.md), [E0019](../evidence/0019-multithreading-and-sys-clone.md), [E0027](../evidence/0027-original-clone-return-and-phase-survey.md))
+- **C03** `OFFLINE` im.elf's main entry uses the /dev/uipc IPC contract; stdio, UIPC callbacks, sys_clone threads, NPTL multithreading and a cooperative scheduler bring up its infrastructure threads. ([E0017](../evidence/0017-application-entry-and-uipc-contract.md), [E0018](../evidence/0018-standard-io-and-uipc-callbacks.md), [E0019](../evidence/0019-multithreading-and-sys-clone.md), [E0027](../evidence/0027-original-clone-return-and-phase-survey.md)) *Note: E0026 later found a main-thread TLS restore defect in the cooperative switch model; the threading result is a historical observation, not faithful NPTL context.*
 - **C04** `OFFLINE` UIPC semaphores and message queues drive a 1 Hz application event-loop heartbeat; System V IPC semaphores are needed later for steady-state rendering. ([E0020](../evidence/0020-uipc-semaphores-and-event-loop.md), [E0080](../evidence/0080-sysv-sem-madvise-and-110m-steady-state-rendering.md))
 - **C09** `OFFLINE` With a modelled positive UIPC receive timeout the app leaves a 19M-instruction poll loop for a real wait and, at 308.6M instructions, is service-idle waiting for producers. ([E0308](../evidence/0308-uipc-timeout-blocking-and-real-wait.md), [E0309](../evidence/0309-blocked-uipc-dependency-map.md))
 - **C23** `OFFLINE` An authentic standby LCD and a 125M fast-hooks milestone came with the THREAD_INFRA0 synchronous dispatch architecture; the authentic UIPC OSAL header and MonDrv WBI log buffer reach 143.74M instructions; /proc/modules, FBResourceManager and the MediaDetect polling boundary follow, and the THREAD_INFRA1 poll is MonDrv output-queue back-pressure. ([E0083](../evidence/0083-authentic-standby-lcd-and-infra0-worker-pipeline.md), [E0095](../evidence/0095-uipc-osal-header-mondrv-log-and-143m-milestone.md), [E0096](../evidence/0096-proc-modules-fbresourcemanager-and-mediadetect-poll.md), [E0097](../evidence/0097-mediadetect-poll-is-mondrv-output-backpressure.md))
 - **C24** `OFFLINE` Original UIPC proxy threads start and consume a VBUS notification. ([E0300](../evidence/0300-uipc-proxy-start-and-vbus-callback.md))
 - **C26** `OFFLINE` The first UsbControl wake is wake-only; two evidence-backed model contracts lead to the GRM wait; a blocking GPES wait deadlock and a teardown-only writer bound the remaining GRM contracts. ([E0311](../evidence/0311-usbcontrol-wake-only-gles-models-and-grm-wait.md), [E0312](../evidence/0312-blocking-gpes-wait-deadlock-and-teardown-writer.md))
+- **C37** `OFFLINE` sys_arm_set_tls (0xf0005) with TLS 0x503204c0 at 145,539 instructions updates CP15 C13 and the 0xffff0ff0 slot; the linker applies mprotect(0x4001f000, 0x1000, PROT_READ) to its GNU_RELRO data at 1,997,182 instructions; after all 12 constructors it stops opening /dev/uipc O_RDWR at 2,029,074 instructions (PC 0x5008bc3c, r7=5). ([E0016](../evidence/0016-kuser-helpers-and-shared-library-init.md))
+- **C38** `OFFLINE` /dev/uipc's ioctl ABI is cmd 16 (0x80000010) connect returning a 1 MiB pool, 256 KiB vpool and 32 KiB fblock; cmd 10 (0x8000000a) valloc_msg_wait; cmd 5 (0x80000005) snd_sync_msg; cmd 11 (0x8000000b) free_msg. The 1 MiB pool maps at 0x50330000..0x50430000. ld-2.11.2.so transfers to im.elf's Thumb entry 0x9141 at 2,073,233 instructions; Task 94 registers through queue 0x8f013a with queues 0x3e014d and 0x94016a, and the run stops at fstat64(fd 1) after 2,107,153 instructions. ([E0017](../evidence/0017-application-entry-and-uipc-contract.md))
+- **C39** `OFFLINE` Standard descriptors 0-2 are backed by /dev/console (inode 118, mode 8576, rdev 0x501, uid 0, gid 5); TCGETS returns -ENOTTY, and write/writev are captured. Queue callbacks register at 0x94016a -> 0x9635, 0 -> 0x50031d35 and 0x940270 -> 0x95f7; Task 94 completes phases 0-4, and sys_clone at 2,218,147 instructions uses flags 0x3d0f00, child stack 0x50c7ef98 and parent_tid 0x50c7f4c8. ([E0018](../evidence/0018-standard-io-and-uipc-callbacks.md))
+- **C40** `OFFLINE` Under the E0019 cooperative scheduler, sys_clone creates TIDs 1001-1003 with isolated registers and futex wait/wake implements the osal waitable-thread barrier; THREAD_INFRA0-2 run and exit, and the main thread stops at UIPC ioctl 0x80000001 on semaphore 0x83037a after 2,367,687 instructions. ([E0019](../evidence/0019-multithreading-and-sys-clone.md)) *Note: E0026 later found that this cooperative switch model failed to restore the main thread's TLS; the threaded instruction counts are historical observations, not faithful NPTL context.*
+- **C41** `OFFLINE` The UIPC binary semaphore commands 0x80000000-0x80000002 let Task 94 acquire semaphore 0x83037a immediately; a fourth thread (TID 1004) spawns; Task 94 sends to Task 92 queue 0x00920021; empty rcv_msg_tmo returns -EAGAIN translated to 0xfffffc00; with no events the app nanosleeps 1 s and ran 8,777,210+ instructions over 17,000+ cycles without faults or unhandled boundaries. ([E0020](../evidence/0020-uipc-semaphores-and-event-loop.md))
 
 ### <a id="dev-dmm-grm"></a>DMM / GRM memory managers
 
@@ -154,26 +184,76 @@ Current knowledge:
 - **C13** `OFFLINE` Appframework CreateFramebuffer(640,480) is a GRM-MA open for DMM unit 0x4092e; captured unit 0x4092e is OSD A/B and an opt-in mapping opens the authentic 640x480 surface. The post-CreateFramebuffer wait is a fixed 20 ms sleep-poll, not a render loop. ([E9001](../evidence/9001-l3-grm-osd-unit-4092e-refusal-and-newselect-timer-fix.md), [E9002](../evidence/9002-grm-pool-policy-reconcile-and-glcommon-createframebuffer.md), [E9004](../evidence/9004-glcommon-wait-is-20ms-sleep-not-render.md), [E9006](../evidence/9006-captured-dmm-unit-4092e-authentic-osd-surface.md))
 - **C27** `OFFLINE` After CreateFramebuffer the labelled single-pool run idles on a timer wait instead of reaching OSD. ([E9003](../evidence/9003-glcommon-post-createframebuffer-timer-wait.md))
 
+### <a id="address-high-vector-page"></a>ARM high vector page (kuser helpers)
+
+`address.high-vector-page` | address | address `0xffff0f60`
+
+Architecture helper page. The 160-byte template in vmlinux.bin at 0x388fe0 defines __kuser_cmpxchg64 at 0xffff0f60, __kuser_memory_barrier at 0xffff0fa0, __kuser_cmpxchg at 0xffff0fc0, __kuser_get_tls at 0xffff0fe0, a software TLS slot at 0xffff0ff0 and helper version 5 at 0xffff0ffc.
+
+Aliases: `0xffff0000..0xffff1000`, `kuser helpers`, `__kuser_memory_barrier`, `__kuser_cmpxchg`
+
+Current knowledge:
+
+- **C35** `OFFLINE` With verified /lib st_dev 0x0000fc07 and /usr st_dev 0x0000fc0f the linker's (st_dev, st_ino) deduplication passes, and mmap2/mprotect/munmap contracts open, read, map and close all 12 DT_NEEDED libraries (libjemalloc_ds.so.1 through librt-2.11.2.so), advancing to 56,230 instructions and stopping on the unmapped high-vector page at 0xffff0fa0. ([E0015](../evidence/0015-guarded-mmap2-and-library-load.md))
+- **C36** `OFFLINE` The 160-byte high-vector helper template extracted from vmlinux.bin at 0x388fe0 (SHA-256 f9e6a6128970c915c1b372dbeb16ebed77e032b9be042e21f1540c466d5f4297) defines __kuser_cmpxchg64 at 0xffff0f60, __kuser_memory_barrier at 0xffff0fa0, __kuser_cmpxchg at 0xffff0fc0, __kuser_get_tls at 0xffff0fe0, a software TLS slot at 0xffff0ff0 and helper version 5 at 0xffff0ffc. The 0xffff0fa0 stop is the memory barrier, not cmpxchg. ([E0016](../evidence/0016-kuser-helpers-and-shared-library-init.md))
+
+Do not rely on:
+
+- ~~The unmapped helper at 0xffff0fa0 is __kuser_cmpxchg, invoked during pthread and TLS initialization.~~ **R04** `RETRACTED` ([E0015](../evidence/0015-guarded-mmap2-and-library-load.md)); see C36: The 160-byte high-vector helper template extracted from vmlinux.bin at 0x388fe0 (SHA-256 f9e6a6128970c915c1b372dbeb16ebed77e032b9be042e21f1540c466d5f4297) defines __kuser_cmpxchg64 at 0xffff0f60, __kuser_memory_barrier at 0xffff0fa0, __kuser_cmpxchg at 0xffff0fc0, __kuser_get_tls at 0xffff0fe0, a software TLS slot at 0xffff0ff0 and helper version 5 at 0xffff0ffc. The 0xffff0fa0 stop is the memory barrier, not cmpxchg. *Note: E0016's extracted template makes 0xffff0fa0 __kuser_memory_barrier (dmb sy; bx lr) and puts __kuser_cmpxchg at 0xffff0fc0. The regression-baseline rows in E0016-E0020 copy E0015's label.*
+
+### <a id="function-im-main-entry"></a>im.elf main entry (0x9140, Thumb 0x9141)
+
+`function.im-main-entry` | function | address `0x9140` | inventory `firmware.elf:nflasha15_unpacked/bin/im.elf`
+
+Application entry reached from ld-2.11.2.so at 2,073,233 instructions. Task 94 registers through /dev/uipc; the run stops at inherited stdio fstat64 on fd 1 at 2,107,153 instructions.
+
+Current knowledge:
+
+- **C38** `OFFLINE` /dev/uipc's ioctl ABI is cmd 16 (0x80000010) connect returning a 1 MiB pool, 256 KiB vpool and 32 KiB fblock; cmd 10 (0x8000000a) valloc_msg_wait; cmd 5 (0x80000005) snd_sync_msg; cmd 11 (0x8000000b) free_msg. The 1 MiB pool maps at 0x50330000..0x50430000. ld-2.11.2.so transfers to im.elf's Thumb entry 0x9141 at 2,073,233 instructions; Task 94 registers through queue 0x8f013a with queues 0x3e014d and 0x94016a, and the run stops at fstat64(fd 1) after 2,107,153 instructions. ([E0017](../evidence/0017-application-entry-and-uipc-contract.md))
+- **C39** `OFFLINE` Standard descriptors 0-2 are backed by /dev/console (inode 118, mode 8576, rdev 0x501, uid 0, gid 5); TCGETS returns -ENOTTY, and write/writev are captured. Queue callbacks register at 0x94016a -> 0x9635, 0 -> 0x50031d35 and 0x940270 -> 0x95f7; Task 94 completes phases 0-4, and sys_clone at 2,218,147 instructions uses flags 0x3d0f00, child stack 0x50c7ef98 and parent_tid 0x50c7f4c8. ([E0018](../evidence/0018-standard-io-and-uipc-callbacks.md))
+
+### <a id="function-app-system-init"></a>Application_System_Init (libObj.so 0x84320d, Thumb)
+
+`function.app-system-init` | function | address `0x84320d` | inventory `firmware.elf:nflasha15_unpacked/lib/libObj.so`
+
+Initializer selected by IMDB entry 123 (selector halfword 0x07fb). Calls osal_create_thread at 0x843256 and osal_set_cpu at 0x84325e, references AppConfig.so at 0x84324a, and is the original module-initialization path that manual factories bypass.
+
+Aliases: `appFw.so / Application_System_Init`, `IMDB entry 123`
+
+Current knowledge:
+
+- **C29** `OFFLINE` init main calls run_bg_process on /usr/bin/bootin.elf at 0x9b54/0x9b56; bootin selects commands such as 'im.elf s &' and 'im.elf g &' at 0x9910/0x991a, so the normal camera argv is not established. im.elf's loader at 0xb200 tests IMDB halfword 0x0e, dlopens /usr/lib/libObj.so at 0xb21c, reads the symbol-name pointer at table offset 0x14 and calls the resolved function at 0xb254; the 197-entry table's entry 123 selects Application_System_Init at libObj.so 0x84320d (Thumb). ([E0002](../evidence/0002-original-process-startup.md))
+
+### <a id="module-devno-ko"></a>devno.ko device-number table
+
+`module.devno-ko` | module
+
+Kernel module whose udif_devnodes symbol holds 88 12-byte records. Name pointers use section-backed ARM ABS32 relocations; kind, major, first minor and count are inferred from the table pattern.
+
+Current knowledge:
+
+- **C34** `INFERENCE` udif_devnodes spans 1,056 bytes (88 records of 12 bytes). The inferred block-device meanings are nflasha major 252 minors 0-31, nflashaB0 252:126, nflashaB1 252:127 and dnflasha 252:128-159; a partition filename does not select the mounted device or establish the suffix-to-minor rule. ([E0008](../evidence/0008-runtime-mount-boundaries.md))
+
 ## Record index (81 files)
 
 Extracted from the files themselves: title, first date, and up to two lines that mention a correction, retraction or supersession. Every file under `docs/evidence/` belongs to at least one area.
 
 | Record | Date | Title | Deep | Correction notes |
 | --- | --- | --- | --- | --- |
-| [E0001](../evidence/0001-platform-and-loader.md) | 2026-10-18 | Extracted platform and loader findings |  | Loader defect and correction / Reference for the formulas and REL JUMP_SLOT exception: [Arm ELF ABI, relocation table and dynamic relocations](https://github.com/ARM-software/abi-aa/blob/main/aaelf32/aaelf32.rst). The correction is not a complete dyna |
-| [E0002](../evidence/0002-original-process-startup.md) | 2026-10-18 | Original process startup and missing filesystem metadata |  |  |
-| [E0003](../evidence/0003-original-interpreter-boundary.md) | 2026-10-18 | Original interpreter executes to its first syscall |  |  |
-| [E0004](../evidence/0004-guest-brk-contract.md) | 2026-10-18 | Guest heap contract and the next original-linker boundary |  |  |
-| [E0005](../evidence/0005-guarded-kernel-identity.md) | 2026-10-18 | Image-backed kernel identity and the first filesystem request |  |  |
-| [E0006](../evidence/0006-read-only-guest-filesystem.md) | 2026-10-18 | Read-only guest filesystem and original library search |  |  |
-| [E0007](../evidence/0007-guarded-inode-metadata.md) | 2026-10-18 | Original library header read with guarded inode metadata |  |  |
-| [E0008](../evidence/0008-runtime-mount-boundaries.md) | 2026-10-18 | Runtime mount evidence and an earlier fidelity boundary |  |  |
-| [E0015](../evidence/0015-guarded-mmap2-and-library-load.md) | 2026-10-18 | Guarded ARM EABI mmap2, dynamic linker library loading, and kernel helper boundary |  |  |
-| [E0016](../evidence/0016-kuser-helpers-and-shared-library-init.md) | 2026-10-18 | ARM Linux High Vectors (Kuser) Helpers, TLS, and Shared Library Initialization |  |  |
-| [E0017](../evidence/0017-application-entry-and-uipc-contract.md) | 2026-10-18 | Main Application Entry Point and /dev/uipc IPC Contract |  |  |
-| [E0018](../evidence/0018-standard-io-and-uipc-callbacks.md) | 2026-10-18 | Standard I/O Contract, UIPC Callbacks, and Thread Creation (sys_clone) |  |  |
-| [E0019](../evidence/0019-multithreading-and-sys-clone.md) | 2026-10-18 | Linux ARM NPTL Multithreading, Cooperative Scheduler, and Infrastructure Threads |  |  |
-| [E0020](../evidence/0020-uipc-semaphores-and-event-loop.md) | 2026-10-18 | UIPC Semaphores, Message Queues, and 1 Hz Application Event Loop Heartbeat |  |  |
+| [E0001](../evidence/0001-platform-and-loader.md) | 2026-10-18 | Extracted platform and loader findings | yes | Loader defect and correction / Reference for the formulas and REL JUMP_SLOT exception: [Arm ELF ABI, relocation table and dynamic relocations](https://github.com/ARM-software/abi-aa/blob/main/aaelf32/aaelf32.rst). The correction is not a complete dyna |
+| [E0002](../evidence/0002-original-process-startup.md) | 2026-10-18 | Original process startup and missing filesystem metadata | yes |  |
+| [E0003](../evidence/0003-original-interpreter-boundary.md) | 2026-10-18 | Original interpreter executes to its first syscall | yes |  |
+| [E0004](../evidence/0004-guest-brk-contract.md) | 2026-10-18 | Guest heap contract and the next original-linker boundary | yes |  |
+| [E0005](../evidence/0005-guarded-kernel-identity.md) | 2026-10-18 | Image-backed kernel identity and the first filesystem request | yes |  |
+| [E0006](../evidence/0006-read-only-guest-filesystem.md) | 2026-10-18 | Read-only guest filesystem and original library search | yes |  |
+| [E0007](../evidence/0007-guarded-inode-metadata.md) | 2026-10-18 | Original library header read with guarded inode metadata | yes |  |
+| [E0008](../evidence/0008-runtime-mount-boundaries.md) | 2026-10-18 | Runtime mount evidence and an earlier fidelity boundary | yes |  |
+| [E0015](../evidence/0015-guarded-mmap2-and-library-load.md) | 2026-10-18 | Guarded ARM EABI mmap2, dynamic linker library loading, and kernel helper boundary | yes |  |
+| [E0016](../evidence/0016-kuser-helpers-and-shared-library-init.md) | 2026-10-18 | ARM Linux High Vectors (Kuser) Helpers, TLS, and Shared Library Initialization | yes |  |
+| [E0017](../evidence/0017-application-entry-and-uipc-contract.md) | 2026-10-18 | Main Application Entry Point and /dev/uipc IPC Contract | yes |  |
+| [E0018](../evidence/0018-standard-io-and-uipc-callbacks.md) | 2026-10-18 | Standard I/O Contract, UIPC Callbacks, and Thread Creation (sys_clone) | yes |  |
+| [E0019](../evidence/0019-multithreading-and-sys-clone.md) | 2026-10-18 | Linux ARM NPTL Multithreading, Cooperative Scheduler, and Infrastructure Threads | yes |  |
+| [E0020](../evidence/0020-uipc-semaphores-and-event-loop.md) | 2026-10-18 | UIPC Semaphores, Message Queues, and 1 Hz Application Event Loop Heartbeat | yes |  |
 | [E0021](../evidence/0021-event-dispatch-and-display-subsystem.md) |  | Event Dispatch and Display Subsystem Discovery |  |  |
 | [E0022](../evidence/0022-task94-boot-events-and-plugin-subsystems.md) |  | Task 94 Boot Events, Dynamic ID Contract, and Camera Subsystem Activation |  |  |
 | [E0023](../evidence/0023-package-h-entropy-boundary.md) |  | Package H Reaches the Stack-Guard Entropy Boundary |  | The `threads` policy, original argv `/usr/bin/im.elf`, deterministic process-entry inputs and static filesystem snapshot remain experimental. The runtime `/etc` overlay is unsupplied; this run does not use the conservati / Status visualization accounting correction: replaced instruction counts as completion units with one bounded-run milestone, and marked unverified Task 94 phases/display steps incomplete. Chart percentages are local resea |
@@ -241,3 +321,9 @@ Extracted from the files themselves: title, first date, and up to two lines that
 | [E9004](../evidence/9004-glcommon-wait-is-20ms-sleep-not-render.md) | 2026-11-21 | The post-CreateFramebuffer wait is a 20 ms sleep-poll, not a render loop |  |  |
 | [E9005](../evidence/9005-rea-provider-limit-and-20ms-sites.md) | 2026-11-21 | REA deep analysis is unavailable for the ARM libObj on this host; the 20 ms constant has six libObj sites |  |  |
 | [E9006](../evidence/9006-captured-dmm-unit-4092e-authentic-osd-surface.md) | 2026-11-21 | Captured DMM unit 0x4092e is OSD A/B; an opt-in mapping opens the authentic 640x480 surface |  |  |
+
+## Documentation drift
+
+| Document | Section | Says | Current |
+| --- | --- | --- | --- |
+| [docs/ROADMAP.md](../../docs/ROADMAP.md) | L3 user-space execution progress | Before this slice, called 0xffff0fa0 __kuser_cmpxchg. | E0016: 0xffff0fa0 is __kuser_memory_barrier; __kuser_cmpxchg is 0xffff0fc0. Corrected in this PR. |
