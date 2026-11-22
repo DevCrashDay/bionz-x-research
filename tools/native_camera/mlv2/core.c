@@ -22,9 +22,10 @@
 #include "../mods_tab_look_layout.h"
 
 #define CTX_MAGIC    0x58544332u  /* "2CTX" */
-#define CTX_VERSION  2u
-#define MAX_MODS     12u
-#define MAX_PAGES    2u
+#define CTX_VERSION  3u
+#define MAX_MODS     16u
+#define MAX_PAGES    3u
+#define MAX_FOLDERS  4u
 #define KIND_V1      1u
 #define KIND_V2      2u
 
@@ -48,7 +49,8 @@ typedef struct {
 
 typedef struct {
     char     name[32];
-    char     path[64];
+    char     path[80];
+    char     folder[24];
     uint32_t fnv;
     uint8_t  kind, enabled, invalid, flags;
     uint8_t  hook_count, present, stale, off_called;
@@ -83,6 +85,11 @@ typedef struct {
     Mod      keep[MAX_MODS];   /* merge output (kept off the UI thread stack) */
     Mod      tmp;
     uint32_t scan_count;
+    uint8_t  scan_buf[512];
+    uint32_t folder_count, view_count;
+    char     folder_names[MAX_FOLDERS][24];
+    int16_t  view_map[MAX_MODS];
+    uint8_t  in_folder;
     void **original_children;
     int32_t original_child_count;
 } Ctx;
@@ -401,24 +408,47 @@ static int parse_mod(const char *path, Mod *m) {
     return 1;
 }
 
-static void scan_dir(Ctx *c, const char *dir) {
+static void scan_mods_in(Ctx *c, const char *dir, const char *folder) {
     int dfd = ml_open(dir, ML_O_RDONLY | ML_O_DIRECTORY);
     if (dfd < 0) return;
-    uint8_t buf[512];
+    char sub_paths[MAX_FOLDERS][80];
+    char sub_names[MAX_FOLDERS][24];
+    uint32_t nsub = 0;
     int n;
-    while ((n = ml_getdents64(dfd, buf, sizeof(buf))) > 0 && c->scan_count < MAX_MODS) {
+    while ((n = ml_getdents64(dfd, c->scan_buf, sizeof(c->scan_buf))) > 0 && c->scan_count < MAX_MODS) {
         for (int pos = 0; pos < n && c->scan_count < MAX_MODS;) {
-            struct dirent64 *d = (struct dirent64 *)(buf + pos);
+            struct dirent64 *d = (struct dirent64 *)(c->scan_buf + pos);
             pos += d->reclen;
-            if (!ends_with_mod(d->name)) continue;
-            char path[64];
+            if (d->name[0] == '.') continue;
+            char path[80];
             join(path, sizeof(path), dir, d->name);
+            if (!folder && d->type == 4u && !ends_with_mod(d->name)) {
+                if (nsub < MAX_FOLDERS) {
+                    ml_memcpy(sub_paths[nsub], path, sizeof(sub_paths[nsub]));
+                    ml_memset(sub_names[nsub], 0, sizeof(sub_names[nsub]));
+                    for (uint32_t k = 0; k < 23u && d->name[k]; k++) sub_names[nsub][k] = d->name[k];
+                    nsub++;
+                }
+                continue;
+            }
+            if (!ends_with_mod(d->name)) continue;
             if (already_listed(c, path)) continue;   /* first folder wins for a given file name */
-            if (parse_mod(path, &c->scan[c->scan_count])) c->scan_count++;
+            Mod *m = &c->scan[c->scan_count];
+            if (parse_mod(path, m)) {
+                ml_memset(m->folder, 0, sizeof(m->folder));
+                if (folder) {
+                    for (uint32_t k = 0; k < 23u && folder[k]; k++) m->folder[k] = folder[k];
+                }
+                c->scan_count++;
+            }
         }
     }
     ml_close(dfd);
+    for (uint32_t s = 0; s < nsub && c->scan_count < MAX_MODS; s++)
+        scan_mods_in(c, sub_paths[s], sub_names[s]);
 }
+
+static void scan_dir(Ctx *c, const char *dir) { scan_mods_in(c, dir, 0); }
 
 /* Rescan every folder and merge: enabled mods always stay; disabled ones follow the files. */
 static void rescan(Ctx *c) {
@@ -482,17 +512,45 @@ static void rescan(Ctx *c) {
 }
 
 /* ---------------- menu tree ---------------- */
+static void rebuild_view(Ctx *c) {
+    c->folder_count = 0;
+    for (uint32_t i = 0; i < c->mod_count; i++) {
+        const char *f = c->mods[i].folder;
+        if (!f[0]) continue;
+        int seen = 0;
+        for (uint32_t k = 0; k < c->folder_count; k++)
+            if (!ml_strcmp(c->folder_names[k], f)) seen = 1;
+        if (!seen && c->folder_count < MAX_FOLDERS)
+            ml_memcpy(c->folder_names[c->folder_count++], f, 24u);
+    }
+    if (c->in_folder > c->folder_count) c->in_folder = 0;
+    uint32_t n = 0;
+    if (!c->in_folder) {
+        for (uint32_t f = 0; f < c->folder_count && n < MAX_MODS; f++)
+            c->view_map[n++] = (int16_t)(-(int16_t)(f + 2u));
+        for (uint32_t i = 0; i < c->mod_count && n < MAX_MODS; i++)
+            if (!c->mods[i].folder[0]) c->view_map[n++] = (int16_t)i;
+    } else {
+        const char *fname = c->folder_names[c->in_folder - 1u];
+        c->view_map[n++] = -1;   /* < Back */
+        for (uint32_t i = 0; i < c->mod_count && n < MAX_MODS; i++)
+            if (!ml_strcmp(c->mods[i].folder, fname)) c->view_map[n++] = (int16_t)i;
+    }
+    c->view_count = n;
+}
+
 static void build_tree(Ctx *c) {
-    uint32_t n_items = c->mod_count ? c->mod_count : 1u;
-    uint32_t n_pages = n_items > 6u ? 2u : 1u;
+    uint32_t n_items = c->view_count ? c->view_count : 1u;
+    uint32_t n_pages = n_items > 12u ? 3u : (n_items > 6u ? 2u : 1u);
     c->page_count = n_pages;
     for (uint32_t i = 0; i < n_items && i < MAX_MODS; i++) {
-        uint32_t pos1 = i - (i >= 6u ? 6u : 0u) + 1u;
+        uint32_t pg_idx = i >= 12u ? 2u : (i >= 6u ? 1u : 0u);
+        uint32_t pos1 = i - pg_idx * 6u + 1u;
         Node *it = &c->items[i];
         it->vtable = c->vtable;
         it->children = c->opt_ptrs;
         it->child_count = 2;
-        it->parent = &c->pages[i >= 6u ? 1u : 0u];
+        it->parent = &c->pages[pg_idx];
         it->layer_depth = 4;
         it->selected_idx = 1;
         it->s1c = it->s20 = pos1;
@@ -575,7 +633,9 @@ static uint32_t core_before_set_root(uint32_t menu, uint32_t root_addr) {
         vtable_bind(c);
     }
     process_reload(c);
+    c->in_folder = 0;
     rescan(c);
+    rebuild_view(c);
     for (uint32_t i = 0; i < c->mod_count; i++) {
         Mod *m = &c->mods[i];
         if (m->present != 3) continue;
@@ -641,6 +701,39 @@ static int post_menu_key(void) {
     return 1;
 }
 
+static void refresh_rows(Ctx *c, uint32_t menu) {
+    if (!menu || *(volatile uint32_t *)(menu + 0x1f0u) != 7u) return;
+    typedef void (*set_text_t)(void *, const char *);
+    set_text_t set_text = (set_text_t)VIEW(MLV2_SET_TEXT);
+    set_text((void *)(menu + 0x5470u), c->in_folder ? c->folder_names[c->in_folder - 1u] : "Mods");
+    uint32_t page = *(volatile uint32_t *)(menu + 0x1f4u);
+    if (!page) page = 1;
+    uint32_t base = (page - 1u) * 6u;
+    for (uint32_t r = 0; r < 6u; r++) {
+        uint32_t btn = menu + 0x9350u + r * 0x1118u, idx = base + r;
+        if (idx < c->view_count) {
+            int16_t v = c->view_map[idx];
+            if (v == -1) {
+                set_text((void *)(btn + 0x7c8u), "< Back");
+                set_text((void *)(btn + 0xb60u), "");
+            } else if (v <= -2) {
+                const char *fname = c->folder_names[(uint32_t)(-v - 2)];
+                const char *val = ">";
+                for (uint32_t i = 0; i < c->mod_count; i++)
+                    if (c->mods[i].enabled && !ml_strcmp(c->mods[i].folder, fname)) { val = c->mods[i].name; break; }
+                set_text((void *)(btn + 0x7c8u), fname);
+                set_text((void *)(btn + 0xb60u), val);
+            } else {
+                set_text((void *)(btn + 0x7c8u), c->mods[v].name);
+                set_text((void *)(btn + 0xb60u), state_text(&c->mods[v]));
+            }
+        } else {
+            set_text((void *)(btn + 0x7c8u), (!r && !c->view_count) ? "No mods found" : "");
+            set_text((void *)(btn + 0xb60u), "");
+        }
+    }
+}
+
 static void core_after_refresh(uint32_t menu) {
     Ctx *c = ctx_get();
     if (!c) return;
@@ -651,23 +744,7 @@ static void core_after_refresh(uint32_t menu) {
         c->root_children[6] = &c->tab_node;
         c->orig_root->child_count = 7;
     }
-    if (*(volatile uint32_t *)(menu + 0x1f0u) != 7u) return;
-    typedef void (*set_text_t)(void *, const char *);
-    set_text_t set_text = (set_text_t)VIEW(MLV2_SET_TEXT);
-    set_text((void *)(menu + 0x5470u), "Mods");
-    uint32_t page = *(volatile uint32_t *)(menu + 0x1f4u);
-    if (!page) page = 1;
-    uint32_t base = (page - 1u) * 6u;
-    for (uint32_t r = 0; r < 6u; r++) {
-        uint32_t btn = menu + 0x9350u + r * 0x1118u, idx = base + r;
-        if (idx < c->mod_count) {
-            set_text((void *)(btn + 0x7c8u), c->mods[idx].name);
-            set_text((void *)(btn + 0xb60u), state_text(&c->mods[idx]));
-        } else if (!r && !c->mod_count) {
-            set_text((void *)(btn + 0x7c8u), "No mods found");
-            set_text((void *)(btn + 0xb60u), "");
-        }
-    }
+    refresh_rows(c, menu);
 }
 
 /* ---------------- loading and toggling ---------------- */
@@ -851,6 +928,7 @@ static void reload_mod(Ctx *c, const char *name) {
     if (!reload_targets_ok(m, n)) { reload_result("reload_err_target", 0); return; }
     toggle(m);
     if (m->enabled || !targets_original(m)) { reload_result("reload_err_off", m->addr); return; }
+    ml_memcpy(n->folder, m->folder, sizeof(n->folder));
     ml_memcpy(m, n, sizeof(Mod));
     if (!targets_original(m)) { m->invalid = 1; reload_result("reload_err_target", 1); return; }
     enable_loaded(m);
@@ -886,15 +964,27 @@ static int core_before_enter(uint32_t menu, uint32_t leaf) {
     if (disabled) return 0;
     uint32_t idx = 0;
     while (idx < MAX_MODS && (uint32_t)&c->items[idx] != leaf) idx++;
-    if (idx >= c->mod_count) return 0;
-    Mod *m = &c->mods[idx];
+    if (idx >= c->view_count) return 0;
+    int16_t v = c->view_map[idx];
+    if (v < 0) {
+        c->in_folder = (v == -1) ? 0u : (uint8_t)(-v - 1);
+        *(volatile uint32_t *)(menu + 0x1f4u) = 1u;
+        rebuild_view(c);
+        build_tree(c);
+        refresh_rows(c, menu);
+        return 0;
+    }
+    Mod *m = &c->mods[v];
+    if (!m->enabled && m->folder[0]) {
+        for (uint32_t i = 0; i < c->mod_count; i++)
+            if (&c->mods[i] != m && c->mods[i].enabled && !ml_strcmp(c->mods[i].folder, m->folder))
+                toggle(&c->mods[i]);
+    }
     int was_on = m->enabled;
     toggle(m);
     if (is_action(m) && !was_on && m->enabled)
         ml_log(post_menu_key() ? "action_close" : "action_close_unavailable", m->addr);
-    typedef void (*set_text_t)(void *, const char *);
-    uint32_t row = idx >= 6u ? idx - 6u : idx;
-    ((set_text_t)VIEW(MLV2_SET_TEXT))((void *)(menu + 0x9350u + row * 0x1118u + 0xb60u), state_text(m));
+    refresh_rows(c, menu);
     return 0;
 }
 
