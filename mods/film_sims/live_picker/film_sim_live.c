@@ -151,31 +151,39 @@ static void write_table(int fd, uint32_t pa, int n, int sz, const void *src) {
     } else {
         for (int i = 0; i < n; i++) ((volatile uint16_t *)dst)[i] = ((const uint16_t *)src)[i];
     }
+    __asm__ volatile("dsb" ::: "memory");
     sc3(91, m, 4096, 0);
+}
+
+static void write_refadr_bytes(int fd, const uint8_t *lut) {
+    uint32_t pa = REFADR0_PA;
+    uint32_t base = pa & ~0xfffu;
+    uint32_t off = pa & 0xfffu;
+    uint32_t first = 4096u - off;
+    if (first > 1215u) first = 1215u;
+    long m0 = sc6(192, 0, 4096, 3, 1, fd, (long)(base >> 12));
+    if (m0 < 0 && m0 > -4096) return;
+    for (uint32_t i = 0; i < first; i++) ((volatile uint8_t *)(m0 + off))[i] = lut ? lut[i] : 0u;
+    __asm__ volatile("dsb" ::: "memory");
+    sc3(91, m0, 4096, 0);
+    if (first < 1215u) {
+        long m1 = sc6(192, 0, 4096, 3, 1, fd, (long)((base + 4096u) >> 12));
+        if (m1 < 0 && m1 > -4096) return;
+        for (uint32_t i = first; i < 1215u; i++) ((volatile uint8_t *)m1)[i - first] = lut ? lut[i] : 0u;
+        __asm__ volatile("dsb" ::: "memory");
+        sc3(91, m1, 4096, 0);
+    }
 }
 
 static void write_refadr(int fd, int on, const uint8_t *lut) {
     static const uint16_t cc_enable = 0x0000u;
-    static const uint16_t cc_disable = 0x0001u;
+    static const uint16_t cc_bypass = 0xffffu;
     if (on && lut) {
-        uint32_t pa = REFADR0_PA;
-        uint32_t base = pa & ~0xfffu;
-        uint32_t off = pa & 0xfffu;
-        uint32_t first = 4096u - off;
-        if (first > 1215u) first = 1215u;
-        long m0 = sc6(192, 0, 4096, 3, 1, fd, (long)(base >> 12));
-        if (m0 < 0 && m0 > -4096) return;
-        for (uint32_t i = 0; i < first; i++) ((volatile uint8_t *)(m0 + off))[i] = lut[i];
-        sc3(91, m0, 4096, 0);
-        if (first < 1215u) {
-            long m1 = sc6(192, 0, 4096, 3, 1, fd, (long)((base + 4096u) >> 12));
-            if (m1 < 0 && m1 > -4096) return;
-            for (uint32_t i = first; i < 1215u; i++) ((volatile uint8_t *)m1)[i - first] = lut[i];
-            sc3(91, m1, 4096, 0);
-        }
+        write_refadr_bytes(fd, lut);
         write_table(fd, CC_TUNING_PA, 1, 2, &cc_enable);
     } else {
-        write_table(fd, CC_TUNING_PA, 1, 2, &cc_disable);
+        write_table(fd, CC_TUNING_PA, 1, 2, &cc_bypass);
+        write_refadr_bytes(fd, 0);
     }
 }
 
@@ -388,13 +396,13 @@ void live_life(int on) {
         s->armed = 1u;
         s->skip_first_menu = 1u;
         s->swallow_enter_rel = 0u;
-        s->idx = 1u; /* Start on first film sim (ACROS B&W) */
+        s->idx = 1u; /* Start on first film sim (Classic Chrome) */
         find_osd_maps(s);
         apply_preset(s->idx);
         draw_banner(s);
         __sync_synchronize();
         s->magic = LIVE_MAGIC;
-        log_line("live_on", s->idx);
+        log_line("live_on", (s->idx << 16) | (uint32_t)(LIVE_LUT_IDX[s->idx] >= 0 ? 1u : 0u));
     } else {
         s->armed = 0u;
         __sync_synchronize();

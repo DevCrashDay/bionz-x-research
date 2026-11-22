@@ -244,6 +244,56 @@ PRESETS: dict[str, FilmSimParams] = {
         blue_cyan=0.00,
         warmth=0.00,
     ),
+    "Portra 400": FilmSimParams(
+        name="Portra 400",
+        shadow_toe=-0.04,
+        mid_contrast=1.06,
+        crossover=0.25,
+        highlight_rolloff=0.52,
+        black_fade=6,
+        white_ceiling=1016,
+        saturation=0.94,
+        red_amber=0.06,
+        green_olive=0.12,
+        blue_cyan=0.08,
+        warmth=0.03,
+        highlight_cb=-3.0,
+        highlight_cr=2.0,
+    ),
+    "Gold 200": FilmSimParams(
+        name="Gold 200",
+        shadow_toe=-0.08,
+        mid_contrast=1.12,
+        crossover=0.26,
+        highlight_rolloff=0.38,
+        black_fade=10,
+        white_ceiling=1018,
+        saturation=1.06,
+        red_amber=0.14,
+        green_olive=0.08,
+        blue_cyan=0.06,
+        warmth=0.055,
+        highlight_cb=-5.0,
+        highlight_cr=3.0,
+    ),
+    "Vision3 800T": FilmSimParams(
+        name="Vision3 800T",
+        shadow_toe=-0.16,
+        mid_contrast=1.18,
+        crossover=0.27,
+        highlight_rolloff=0.50,
+        black_fade=12,
+        white_ceiling=1008,
+        saturation=0.95,
+        red_amber=0.15,
+        green_olive=0.06,
+        blue_cyan=0.16,
+        warmth=-0.035,
+        shadow_cb=5.0,
+        shadow_cr=-3.0,
+        highlight_cb=-5.0,
+        highlight_cr=4.0,
+    ),
     "Stock (Reset)": FilmSimParams(
         name="Stock Standard",
         shadow_toe=0.0,
@@ -259,6 +309,16 @@ PRESETS: dict[str, FilmSimParams] = {
         warmth=0.0,
     ),
 }
+
+LIVE_PICKER_ORDER: tuple[str, ...] = (
+    "Classic Chrome",
+    "Classic Neg",
+    "Portra 400",
+    "Gold 200",
+    "Vision3 800T",
+    "ETERNA",
+    "ACROS B&W",
+)
 
 
 def has_3dlut_params(p: FilmSimParams) -> bool:
@@ -583,17 +643,63 @@ def _fmt(vals: list[int], as_hex: bool = False) -> str:
     return ",".join(hex(v) if as_hex else str(v) for v in vals)
 
 
-def emit_header(out_header: Path, stock: dict[str, list[int]], p: FilmSimParams,
-                target: str = "a6100") -> None:
-    prof = get_target(target)
+def resolve_isp_tables(
+    p: FilmSimParams,
+    stock: dict[str, list[int]],
+    pipeline: str = "full",
+    cube: Any = None,
+) -> tuple[list[int], list[int], list[int], list[int], list[int], bytes | None, dict[str, Any] | None]:
+    """Resolve EC/FC gamma, A0/A1/B2 Q10 matrices, and optional 1215-byte RefAdr[0]."""
+    if cube is None and is_stock_params(p):
+        return (
+            list(stock["ec_stock"]),
+            list(stock["fc_stock"]),
+            list(stock["a0_stock"]),
+            list(stock["a1_stock"]),
+            list(stock["b2_stock"]),
+            None,
+            None,
+        )
+    if cube is not None or pipeline == "full":
+        try:
+            from mods.film_sims.film_recipes_3d import RECIPES_3D, build_recipe_cube
+            from mods.film_sims.lut_bridge import fit_cube_to_isp
+        except ModuleNotFoundError as exc:
+            if cube is not None or exc.name != "numpy":
+                raise
+        else:
+            target_cube = cube if cube is not None else (
+                build_recipe_cube(p.name) if p.name in RECIPES_3D else None
+            )
+            if target_cube is not None:
+                fitted = fit_cube_to_isp(target_cube, stock, name=p.name)
+                return (
+                    fitted.ec_sim,
+                    fitted.fc_sim,
+                    fitted.a0_sim,
+                    fitted.a1_sim,
+                    fitted.b2_sim,
+                    fitted.refadr_bytes,
+                    fitted.report,
+                )
+
     ec_sim, fc_sim = compute_curves(stock, p)
     a0_sim = compute_q10_matrix(stock["a0_stock"], p)
     a1_sim = compute_q10_matrix(stock["a1_stock"], p)
     b2_sim = compute_q10_matrix(stock["b2_stock"], p)
+    lut_bytes = build_3dlut_1215(p) if has_3dlut_params(p) else None
+    return ec_sim, fc_sim, a0_sim, a1_sim, b2_sim, lut_bytes, None
+
+
+def emit_header(out_header: Path, stock: dict[str, list[int]], p: FilmSimParams,
+                target: str = "a6100", pipeline: str = "full", cube: Any = None) -> dict[str, Any] | None:
+    prof = get_target(target)
+    ec_sim, fc_sim, a0_sim, a1_sim, b2_sim, lut_bytes, fit_report = resolve_isp_tables(
+        p, stock, pipeline=pipeline, cube=cube
+    )
     slug = _slug(p.name)
     lut_block = ""
-    if has_3dlut_params(p):
-        lut_bytes = build_3dlut_1215(p)
+    if lut_bytes is not None:
         hex_b = ",".join(f"0x{b:02x}" for b in lut_bytes)
         lut_block = (
             "#define REFADR_ENABLED 1\n"
@@ -624,6 +730,7 @@ def emit_header(out_header: Path, stock: dict[str, list[int]], p: FilmSimParams,
         + lut_block
     )
     out_header.write_text(hdr, encoding="utf-8")
+    return fit_report
 
 
 def _to_wsl_path(win_or_posix: Path) -> str:
@@ -637,7 +744,8 @@ def _to_wsl_path(win_or_posix: Path) -> str:
 
 
 def build_mod(p: FilmSimParams, out_dir: Path | None = None,
-              target: str = "a6100", stock: dict[str, list[int]] | None = None) -> dict[str, Any]:
+              target: str = "a6100", stock: dict[str, list[int]] | None = None,
+              pipeline: str = "full", cube: Any = None) -> dict[str, Any]:
     prof = get_target(target)
     if stock is None:
         stock = load_stock_tables(target=target)
@@ -646,8 +754,10 @@ def build_mod(p: FilmSimParams, out_dir: Path | None = None,
     if out_dir is None:
         out_dir = prof.default_out_root / slug
     out_dir.mkdir(parents=True, exist_ok=True)
-    emit_header(out_dir / "film_sim_data.h", stock, p, target=target)
-    recipe = {**p.to_dict(), "target": prof.key}
+    fit_report = emit_header(out_dir / "film_sim_data.h", stock, p, target=target, pipeline=pipeline, cube=cube)
+    recipe = {**p.to_dict(), "target": prof.key, "pipeline": "cube" if cube is not None else pipeline}
+    if fit_report is not None:
+        recipe["fit_report"] = fit_report
     (out_dir / "recipe.json").write_text(json.dumps(recipe, indent=2), encoding="utf-8")
 
     import shlex
@@ -798,28 +908,75 @@ def read_camera_logs(slug: str, target: str = "a6100") -> str:
         return dbg.request(OP_EXEC, cmd.encode())["payload"].decode(errors="replace")
 
 
+def _pa_block_for_header(target: str, multi_target: bool) -> str:
+    if not multi_target:
+        prof = get_target(target)
+        return (
+            f"#define EC_GAMMA_PA 0x{prof.ec_gamma_pa:08x}u\n"
+            f"#define FC_GAMMA_PA 0x{prof.fc_gamma_pa:08x}u\n"
+            f"#define COLOR_A0_PA 0x{prof.color_a0_pa:08x}u\n"
+            f"#define COLOR_A1_PA 0x{prof.color_a1_pa:08x}u\n"
+            f"#define COLOR_B2_PA 0x{prof.color_b2_pa:08x}u\n"
+            f"#define CC_TUNING_PA 0x{prof.cc_tuning_pa:08x}u\n"
+            f"#define REFADR0_PA 0x{prof.refadr0_pa:08x}u\n"
+        )
+    a64 = get_target("a6400")
+    a61 = get_target("a6100")
+    return (
+        "#if defined(TARGET_A6400)\n"
+        f"#define EC_GAMMA_PA 0x{a64.ec_gamma_pa:08x}u\n"
+        f"#define FC_GAMMA_PA 0x{a64.fc_gamma_pa:08x}u\n"
+        f"#define COLOR_A0_PA 0x{a64.color_a0_pa:08x}u\n"
+        f"#define COLOR_A1_PA 0x{a64.color_a1_pa:08x}u\n"
+        f"#define COLOR_B2_PA 0x{a64.color_b2_pa:08x}u\n"
+        f"#define CC_TUNING_PA 0x{a64.cc_tuning_pa:08x}u\n"
+        f"#define REFADR0_PA 0x{a64.refadr0_pa:08x}u\n"
+        "#elif defined(TARGET_A6400_V1)\n"
+        "#define EC_GAMMA_PA 0x03e3e6ccu\n"
+        "#define FC_GAMMA_PA 0x03e784f0u\n"
+        "#define COLOR_A0_PA 0x0442d968u\n"
+        "#define COLOR_A1_PA 0x0442d97au\n"
+        "#define COLOR_B2_PA 0x0442e88cu\n"
+        "#define CC_TUNING_PA 0x0442d8c2u\n"
+        "#define REFADR0_PA 0x04490025u\n"
+        "#else\n"
+        f"#define EC_GAMMA_PA 0x{a61.ec_gamma_pa:08x}u\n"
+        f"#define FC_GAMMA_PA 0x{a61.fc_gamma_pa:08x}u\n"
+        f"#define COLOR_A0_PA 0x{a61.color_a0_pa:08x}u\n"
+        f"#define COLOR_A1_PA 0x{a61.color_a1_pa:08x}u\n"
+        f"#define COLOR_B2_PA 0x{a61.color_b2_pa:08x}u\n"
+        f"#define CC_TUNING_PA 0x{a61.cc_tuning_pa:08x}u\n"
+        f"#define REFADR0_PA 0x{a61.refadr0_pa:08x}u\n"
+        "#endif\n"
+    )
+
+
 def emit_live_picker_header(out_header: Path, stock: dict[str, list[int]] | None = None,
                             presets: list[FilmSimParams] | None = None,
-                            target: str = "a6100") -> Path:
-    """Emit film_sim_live_data.h bundling Stock (0) + all presets for FilmSimLive.mod."""
+                            target: str = "a6100",
+                            pipeline: str = "full",
+                            multi_target: bool = False) -> Path:
+    """Emit film_sim_live_data.h bundling Stock (0) + presets for FilmSimLive.mod."""
     prof = get_target(target)
     if stock is None:
         stock = load_stock_tables(target=target)
     if presets is None:
-        presets = [p for p in PRESETS.values() if not is_stock_params(p)]
+        presets = [PRESETS[n] for n in LIVE_PICKER_ORDER]
 
     names = ["Stock (Off)"] + [p.name[:15] for p in presets]
     ecs, fcs, a0s, a1s, b2s, luts, lut_idxs = [], [], [], [], [], [], [-1]
     for p in presets:
-        ec_sim, fc_sim = compute_curves(stock, p)
+        ec_sim, fc_sim, a0_sim, a1_sim, b2_sim, lut_bytes, _ = resolve_isp_tables(
+            p, stock, pipeline=pipeline
+        )
         ecs.append("{" + _fmt(ec_sim, True) + "}")
         fcs.append("{" + _fmt(fc_sim, False) + "}")
-        a0s.append("{" + _fmt(compute_q10_matrix(stock["a0_stock"], p), False) + "}")
-        a1s.append("{" + _fmt(compute_q10_matrix(stock["a1_stock"], p), False) + "}")
-        b2s.append("{" + _fmt(compute_q10_matrix(stock["b2_stock"], p), False) + "}")
-        if has_3dlut_params(p):
+        a0s.append("{" + _fmt(a0_sim, False) + "}")
+        a1s.append("{" + _fmt(a1_sim, False) + "}")
+        b2s.append("{" + _fmt(b2_sim, False) + "}")
+        if lut_bytes is not None:
             lut_idxs.append(len(luts))
-            luts.append("{" + ",".join(f"0x{b:02x}" for b in build_3dlut_1215(p)) + "}")
+            luts.append("{" + ",".join(f"0x{b:02x}" for b in lut_bytes) + "}")
         else:
             lut_idxs.append(-1)
 
@@ -829,17 +986,12 @@ def emit_live_picker_header(out_header: Path, stock: dict[str, list[int]] | None
         + (",".join(luts) if luts else "{0}")
         + "};\n"
     )
+    pa_block = _pa_block_for_header(target, multi_target)
     hdr = (
         f"/* Auto-generated by mods/film_sims/studio_core.py for FilmSimLive.mod ({prof.label}) */\n"
         "#include <stdint.h>\n\n"
-        f"#define EC_GAMMA_PA 0x{prof.ec_gamma_pa:08x}u\n"
-        f"#define FC_GAMMA_PA 0x{prof.fc_gamma_pa:08x}u\n"
-        f"#define COLOR_A0_PA 0x{prof.color_a0_pa:08x}u\n"
-        f"#define COLOR_A1_PA 0x{prof.color_a1_pa:08x}u\n"
-        f"#define COLOR_B2_PA 0x{prof.color_b2_pa:08x}u\n"
-        f"#define CC_TUNING_PA 0x{prof.cc_tuning_pa:08x}u\n"
-        f"#define REFADR0_PA 0x{prof.refadr0_pa:08x}u\n"
-        f"#define LIVE_N_PRESETS {len(names)}u\n\n"
+        + pa_block
+        + f"#define LIVE_N_PRESETS {len(names)}u\n\n"
         f"const char LIVE_NAMES[{len(names)}][16] = {{{name_rows}}};\n"
         f"const int8_t LIVE_LUT_IDX[{len(names)}] = {{{_fmt(lut_idxs, False)}}};\n\n"
         f"const uint32_t EC_GAMMA_STOCK[96] = {{{_fmt(stock['ec_stock'], True)}}};\n"
@@ -862,19 +1014,43 @@ def emit_live_picker_header(out_header: Path, stock: dict[str, list[int]] | None
 def main() -> None:
     ap = argparse.ArgumentParser(description="Build BIONZ X Film Sim .mod files or live-picker headers.")
     ap.add_argument("--target", choices=tuple(TARGETS), default="a6100")
+    ap.add_argument("--pipeline", choices=("full", "legacy"), default="full",
+                    help="full: 3D-fitted EC/FC + Q10 + 5x9x9 RefAdr[0]; legacy: parametric sliders")
     ap.add_argument("--emit-live-header", type=Path, help="Write film_sim_live_data.h to PATH")
+    ap.add_argument("--multi-target", action="store_true",
+                    help="Emit #ifdef TARGET_A6400 / TARGET_A6400_V1 / a6100 PA block in live header")
     ap.add_argument("--build", metavar="PRESET", help="Build SMOD v2 .mod for PRESET name")
-    ap.add_argument("--out", type=Path, help="Output directory for --build")
+    ap.add_argument("--cube", type=Path, help="Fit a 3D .cube LUT file into a standalone SMOD v2 .mod")
+    ap.add_argument("--name", help="Display name for --cube mod (default: cube title or filename)")
+    ap.add_argument("--out", type=Path, help="Output directory for --build or --cube")
     args = ap.parse_args()
     if args.emit_live_header:
-        out = emit_live_picker_header(args.emit_live_header, target=args.target)
-        print(f"Wrote {out} for {args.target}")
+        out = emit_live_picker_header(
+            args.emit_live_header,
+            target=args.target,
+            pipeline=args.pipeline,
+            multi_target=args.multi_target,
+        )
+        print(f"Wrote {out} for {args.target} (pipeline={args.pipeline})")
+    if args.cube:
+        from lut_core.cube import load_cube
+
+        cube_obj = load_cube(args.cube)
+        mod_name = (args.name or cube_obj.title or args.cube.stem)[:31]
+        res = build_mod(
+            FilmSimParams(name=mod_name),
+            out_dir=args.out,
+            target=args.target,
+            pipeline="full",
+            cube=cube_obj,
+        )
+        print(json.dumps(res, indent=2))
     if args.build:
         if args.build not in PRESETS:
             raise SystemExit(f"Unknown preset {args.build!r}; choices: {', '.join(PRESETS)}")
-        res = build_mod(PRESETS[args.build], out_dir=args.out, target=args.target)
+        res = build_mod(PRESETS[args.build], out_dir=args.out, target=args.target, pipeline=args.pipeline)
         print(json.dumps(res, indent=2))
-    if not args.emit_live_header and not args.build:
+    if not args.emit_live_header and not args.build and not args.cube:
         ap.print_help()
 
 
