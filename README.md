@@ -121,7 +121,7 @@ Legend: `🟢 Verified` · `🟡 Partial / Opt-in` · `⚪ Open Boundary` · `�
 
 ### Parallel Offline Contract Follow-Ups
 
-- **Native Unicorn updater & main firmware:** [E0653](docs/evidence/0653-unicorn-updater-child-cow-and-hwcap.md) verifies `nflasha1` continuation past the post-`uname` child/COW fault and D16 `AT_HWCAP` parity (`0x0000E0D7`). [E0656](docs/evidence/0656-unicorn-main-firmware-boot.md) boots captured `nflasha3` main firmware on `UnicornMachine` (`--mmio stop`, read-only `emmc.img`) through stock `/sbin/init`, 9 partition mounts, 39 `.ko` modules, `LIRO` `entry_main`, `im.elf` `DMP_2D_Initialize : 0`, and `/bin/ash` (`uname -a`, `/proc/cpuinfo`, `mount`, `/proc/modules`); single-core execution leaves `av-cam` CPUs 1–3 offline and claims no Unicorn GUI frame.
+- **Native Unicorn updater & main firmware:** [E0653](docs/evidence/0653-unicorn-updater-child-cow-and-hwcap.md) verifies `nflasha1` continuation past the post-`uname` child/COW fault and D16 `AT_HWCAP` parity (`0x0000E0D7`). [E0656](docs/evidence/0656-unicorn-main-firmware-boot.md) boots captured `nflasha3` main firmware on `UnicornMachine` (`--mmio stop`, read-only `emmc.img`) through stock `/sbin/init`, 9 partition mounts, 39 `.ko` modules, `LIRO` `entry_main`, `im.elf` `DMP_2D_Initialize : 0`, and `/bin/ash` (`uname -a`, `/proc/cpuinfo`, `mount`, `/proc/modules`); single-core execution leaves `av-cam` CPUs 1–3 offline and claims no Unicorn GUI frame. [E0676](docs/evidence/0676-unicorn-sysv-vph-frame-clock.md) adds the opt-in QEMU SYSV/VPH frame clock and evsel `ext-vd` path on that same machine. [E0677](docs/evidence/0677-unicorn-sio-gpio-oracle.md) adds the oracle-backed SIO channel-3 start/done path, GPIO port-1 input `0x32`, and ADC done with released-key results `0x3FF`. A captured-firmware replay that passes the `ObjMic` wait is still open.
 - **USB delivery versus startup:** [E0524](docs/evidence/0524-original-local-osal-setconfig-route.md) executes isolated synchronous-to-asynchronous SETCONFIG delivery with balanced fixture ownership; startup state 0 does not handle that event. [E0534](docs/evidence/0534-original-process-usb-gadget-registration-and-otg-boundary.md) uses the process's own heap and reaches states `1 -> 5 -> 6 -> 7`, but `created=0` at OTG `SET_MODE`. No event or hardware acknowledgement is fabricated.
 - **Allocator and GPU corrections:** [E0526](docs/evidence/0526-stella-allocator-size-isolation-and-padding-trial.md) shows that the isolated log constructor fits its `0x4C` request; padding is not a verified fix. [E0530](docs/evidence/0530-gles-tgid-completion-and-shared-memory-boundary.md) verifies TGID completion/reset and distinguishes 128 KiB software-shared memory from the GPU BAR. [E0657](docs/evidence/0657-unicorn-l3-allocator-gles-init-and-sugilite-gpu.md) traces all former L3 heap aborts to Unicorn 2.1.4 Thumb-2 stale-`ITSTATE` skips (`1.50B` instructions, `0` ownership errors without padding), recovers `sugilite_open` 4-byte + `rm_rqueue_init` 128 KiB shared initialization, and verifies `24` Sugilite GPU jobs + `24` IRQ 76 completions presenting `viewRootPowerSw.uxc`'s transparent `640×480` OSD A/B root frames (`DefRootView` `CheckerBootState`/`CheckerBootType` await RTOS `av-cam.bin` producers).
 - **A6400A service packets:** [E0525](docs/evidence/0525-a6400a-jiritsu-senser-offline-packets.md) maps all 18 Jiritsu commands and seven repeatable packet fixtures. Opt-in [E0532](docs/evidence/0532-a6400a-dmm-metadata-bounds-and-lifetime.md) adds bounded single-extent DMM metadata/lifetime and an eighth synthetic reply. USB, authentication, filesystem operations and authentic allocation remain unsupported; the profile stays `reference`.
@@ -224,11 +224,54 @@ Registered profiles live in [`src/a6400/targets/`](src/a6400/targets/catalog.py)
 
 ---
 
+## Local ILCE-6400A firmware-dump research
+
+The local 1.01 research retains two verified captures: [60 MiB from `nflasha5`](docs/evidence/0673-a6400a-first-actual-nflasha5-capture.md) and [2 MiB from normal-mode MSC LUN 1](docs/evidence/0674-a6400a-readonly-msc-lun-capture-and-flash-boundary.md). The binaries stay in ignored local storage; the evidence records give their paths and SHA-256 hashes. LUN 1's backing partition is unverified.
+
+The historical [expanded-scope review](docs/evidence/0675-a6400a-expanded-bootstrap-review-and-full-dump-boundary.md) verified the existing captures but obtained no new partition bytes. A complete firmware dump remains unqualified. See the [local a6400A evidence series](docs/CURRENT_STATE.md#local-ilce-6400a-firmware-dump-research) for the full history.
+
+The [E0643 supervised worker follow-up](docs/evidence/0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md#5-supervised-ilce-6400a-temporary-worker-follow-up) implements single-slot 512-KiB RAM chunk transfers and preserves three failed startup receipts. Actual shell output exposes overlapping rootfs/ext2 mounts; RAM backing and partition acquisition remain unqualified. Owned files were removed, USBSTOR restored and native responsiveness verified after battery removal. No new raw partition bytes are claimed.
+
+The later [safe RAM qualification](docs/evidence/0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md#6-safe-ram-workspace-qualification) identifies the existing candidate directories as nflasha7/ext2 and physically verifies a separate 2-MiB private tmpfs with nodev/nosuid/noexec. Unmount, owned-file removal, original USBSTOR and post-battery native responsiveness are verified. Pattern transfers remain blocked below the unchanged 8-MiB memory floor; no firmware partition bytes were acquired.
+
+The [2026-11-21 native-reader follow-ups](docs/evidence/0643-cxd90045-miscreg-efuse-and-a6400a-jiritsu-chunk-planner.md#8-read-only-cache-reclamation-atomic-ipc-and-all-17-allowed-partitions) reclaim unmapped boot/asset page cache via read-only `POSIX_FADV_DONTNEED` (`MemFree` `8.5 -> 24.7 MiB` without lowering the 8-MiB guard), publish responses via atomic `rename`, and complete **all 17 allowed nonzero `nflasha*` partitions (`1,354,694,656` bytes: `nflashaB0`, `B1`, `1..7`, `10..13`, `15..18`)** with independent SHA-256 verification (`nflasha5` matches [E0673](docs/evidence/0673-a6400a-first-actual-nflasha5-capture.md) bit-for-bit). Owned files/tmpfs removal, `USBSTOR` restoration, owner battery-removal recovery, and native postflight are verified. Excluded `/dev/nflasha23` and whole-device `/dev/nflasha` remain omitted, and mounted extents (including `nflasha6`) are live snapshots rather than a factory-pristine whole-eMMC backup.
+
+---
+
 ## Live Status Telemetry
 
-Recorded integration baseline: **2091 tests**, with 88 skip records and no failures/errors ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. The [late black-screen capture](docs/evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md), [LIRO RAM section analysis](docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md), [CamCore contributor score](docs/evidence/0637-camcore-f301-contributor-boot-score.md), [USB mode gate](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md), and [first firmware-driven live-view frame](docs/evidence/0591-qemu-a6400-first-live-view-frame.md) are separate findings. Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
+Upstream recorded offline suite: **2091 tests**, with 88 skip records and no failures/errors in its integrated checkout ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. The [late black-screen capture](docs/evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md), [LIRO RAM section analysis](docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md), [CamCore contributor score](docs/evidence/0637-camcore-f301-contributor-boot-score.md), [USB mode gate](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md), and [first firmware-driven live-view frame](docs/evidence/0591-qemu-a6400-first-live-view-frame.md) are separate findings. Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
 
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=472908163cb1)
+[E9001](docs/evidence/9001-l3-grm-osd-unit-4092e-refusal-and-newselect-timer-fix.md)
+traces `Appframework`'s `CreateFramebuffer(640,480)` to a GRM-MA open for DMM
+unit `0x4092e`: `captured-e0044` refuses it (`-9`, with no captured base or
+handle) and the guest aborts, while checkpoint restore no longer fabricates a
+`sys__newselect` deadline.
+[E9002](docs/evidence/9002-grm-pool-policy-reconcile-and-glcommon-createframebuffer.md)
+fixes checkpoint resume so `--grm-pools` cannot be silently ignored (the
+restored policy is recorded, conflicts fail closed) and records that the
+labelled legacy single-pool boot passes `CreateFramebuffer(640,480)` without
+establishing the `0x4092e` unit mapping.
+[E9003](docs/evidence/9003-glcommon-post-createframebuffer-timer-wait.md) shows
+the next stop is a timer-paced wait: `Appframework` polls `0x00910042` and
+`0x00910041` until `--uipc-timer-service emulated` removes the poll storm, after
+which it idles without loading OSD or `viewUnified2`.
+[E9004](docs/evidence/9004-glcommon-wait-is-20ms-sleep-not-render.md) shows that
+wait is a fixed 20 ms sleep (19,815 us measured), and the 32 MiB surface is
+byte-identical across about 220 ticks: the app is waiting, not rendering.
+[E9005](docs/evidence/9005-rea-provider-limit-and-20ms-sites.md) records that REA
+cannot deep-analyze this ARM ELF on the current Windows host; a direct scan
+finds six 20,000 us sites in `libObj`, only one of which was seen in the early
+wait window.
+[E9006](docs/evidence/9006-captured-dmm-unit-4092e-authentic-osd-surface.md)
+maps unit `0x4092e` to its captured OSD A extent (`0x23A80000`, `0x96000`):
+the app allocates it, maps `/dev/stream` there, writes the full 614,400-byte
+frame (currently a black clear) and loads `viewUnified2.so`.
+
+- **[E0676](docs/evidence/0676-unicorn-sysv-vph-frame-clock.md) / [E0677](docs/evidence/0677-unicorn-sio-gpio-oracle.md)** add opt-in QEMU SYSV/VPH/evsel frame clock and oracle-backed SIO ch3, GPIO `0x32`, and ADC `0x3FF` peripheral models to `UnicornMachine`.
+- **UVC / 5 GHz Wi-Fi Streaming & CinemaHUD tooling:** adds offline-tested UVC-PTP adapter (`uvc_ptp_adapter.c`), Run B26 pre-arm harness (`tools/research/run_b26_uvc_prearm.py`), BCM4339 5 GHz Wi-Fi liveview bootstrap/daemon/client (`tools/native_camera/wifi_5ghz_bootstrap.sh`, `camera-daemon/src/wifi_stream.c`, `tools/research/wifi_uvc_client.py`), and CinemaHUD updates.
+
+![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=40d765f82087)
 
 ![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
 

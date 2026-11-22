@@ -183,7 +183,7 @@ class EvidenceRef:
 
 @dataclass(frozen=True)
 class SuiteRecord:
-    """The recorded full-suite result this documentation refresh is pinned to."""
+    """A dated passing full-suite record, which may precede the latest milestone."""
 
     test_count: int
     recorded_at: str
@@ -221,23 +221,57 @@ STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
     as_of="2026-11-21",
     latest=EvidenceRef(
-        evidence_id="E0665",
-        path="docs/evidence/0665-qemu-boots-from-the-public-updater.md",
+        evidence_id="E9006",
+        path="docs/evidence/9006-captured-dmm-unit-4092e-authentic-osd-surface.md",
         date="2026-11-21",
-        title="QEMU reaches the a6400 shooting screen and the step-32 wait without a camera capture",
+        title="Captured DMM unit 0x4092e is OSD A/B; an opt-in mapping opens the authentic 640x480 surface",
         demonstrated=(
-            "qemu_packaged_inputs builds a byte-identical emmc.img and powered sub-micro frames from "
-            "Sony's public a6400 updater; stock firmware draws its P-mode OSD and stops at the packaged "
-            "step-32 wait (module 3 0x0326, request 0x032E, Ydet counter 0), read by QMP xp alone."
+            "The preserved nflasha5 DMM table has two 0x4092e records (indices 28 and 32) whose extents are "
+            "OSD A/B: 0x23A80000 and 0x23B16000, size 0x96000, extent id 0x62, handles 0x041C/0x0420. "
+            "An opt-in policy returns the first record; the app allocates the full extent, "
+            "maps /dev/stream to physical 0x23A80000 and writes all 614,400 bytes. viewUnified2.so is loaded."
         ),
         boundary=(
-            "ulogio.bin still comes from the ZV-E10 updater; bars leads to an x02 request set, not E0591's "
-            "step 42; no bars picture on console; zero-filled partitions are not camera content."
+            "The surface is zero at 200M, so the full write is a clear/black frame; UI content and the draw "
+            "trigger are not established. The captured table is a preserved image, not live camera state. "
+            "No camera access."
         ),
         tier="OFFLINE PUBLIC UPDATERS + QEMU",
     ),
-    headline="Unicorn L3 Sugilite GPU & 1.5B-insn heap trace | Unicorn nflasha3 main boot | QEMU live-view",
+    headline="Unicorn SIO/GPIO & SYSV/VPH oracle | L3 OSD surface & 20ms wait | a6400A & ZV-E10 touch",
     cards=(
+        EvidenceRef(
+            evidence_id="E0677",
+            path="docs/evidence/0677-unicorn-sio-gpio-oracle.md",
+            date="2026-11-20",
+            title="Unicorn SIO and GPIO from the QEMU oracle",
+            demonstrated=(
+                "A 64000-record QEMU MMIO capture identifies SIO 0xF2405600 and GPIO 0xF2910110. "
+                "Unicorn now returns the oracle status word 0x18000000 and port-1 input 0x32, "
+                "channel 3 replays the hash-checked 384-byte sub-micro extract, "
+                "and ADC unit 1 completes with status 0x101 and released-key results 0x3FF."
+            ),
+            boundary=(
+                "No Unicorn nflasha3 replay in this record, so ObjMic completion and a rear-LCD frame are not shown. "
+                "Rear-control, SD, and lens sub-micro edits stay off."
+            ),
+            tier="OFFLINE UNICORN PERIPHERAL CONTRACT",
+        ),
+        EvidenceRef(
+            evidence_id="E0676",
+            path="docs/evidence/0676-unicorn-sysv-vph-frame-clock.md",
+            date="2026-11-20",
+            title="Unicorn SYSV/VPH frame clock and evsel ext-vd",
+            demonstrated=(
+                "With --qemu-peripherals, Unicorn advances the QEMU SYSV engine frame (IRQ 98), "
+                "60 Hz VPH vsync (IRQ 101/102), and evsel ext-vd (IRQ 83/84) on the 1 MHz instruction tick."
+            ),
+            boundary=(
+                "No captured nflasha3 replay in this record, so ObjMic completion and a rear-LCD frame are not shown. "
+                "CPUs 1-3 stay offline. The evsel late-src phase is not ported."
+            ),
+            tier="OFFLINE UNICORN PERIPHERAL CONTRACT",
+        ),
         EvidenceRef(
             evidence_id="E0664",
             path="docs/evidence/0664-shutter-works-drive-mode-decides.md",
@@ -626,6 +660,22 @@ STATUS_SNAPSHOT = StatusSnapshot(
                 "record remains the dated E0523 baseline."
             ),
             tier="OFFLINE ORIGINAL INSTRUCTIONS + CHECKED FIXTURES",
+        ),
+        EvidenceRef(
+            evidence_id="E0675",
+            path="docs/evidence/0675-a6400a-expanded-bootstrap-review-and-full-dump-boundary.md",
+            date="2026-11-16",
+            title="Local a6400A capture integrity and expanded-scope review",
+            demonstrated=(
+                "The local E0673 60 MiB nflasha5 and E0674 2 MiB MSC LUN 1 captures matched "
+                "their recorded host hashes. E0675 reverified native identity and postflight "
+                "without acquiring any new bytes."
+            ),
+            boundary=(
+                "LUN backing is unverified. Neither a general partition reader nor a qualified "
+                "temporary bootstrap or complete firmware capture exists in this record."
+            ),
+            tier="LOCAL READ-ONLY PHYSICAL + OFFLINE REVIEW",
         ),
         EvidenceRef(
             evidence_id="E0509",
