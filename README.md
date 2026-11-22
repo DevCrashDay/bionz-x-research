@@ -241,40 +241,9 @@ The [2026-11-21 native-reader follow-ups](docs/evidence/0643-cxd90045-miscreg-ef
 
 ## Live Status Telemetry
 
-Upstream recorded offline suite: **2091 tests**, with 88 skip records and no failures/errors in its integrated checkout ([rebase validation and limits](docs/TOOLCHAIN.md#upstream-rebase-integration-2026-11-18)). Skips are not passes. The [late black-screen capture](docs/evidence/0652-qemu-a6400-late-black-screen-scanout-capture.md), [LIRO RAM section analysis](docs/evidence/0644-a6400-liro-ram-section-is-avcam-data.md), [CamCore contributor score](docs/evidence/0637-camcore-f301-contributor-boot-score.md), [USB mode gate](docs/evidence/0589-qemu-usb-mode-gate-and-defrootview.md), and [first firmware-driven live-view frame](docs/evidence/0591-qemu-a6400-first-live-view-frame.md) are separate findings. Earlier narrative highlights are preserved in [docs/archives/readme-latest-progress-2026-11-18.md](docs/archives/readme-latest-progress-2026-11-18.md) and [docs/archives/readme-latest-progress-2026-11-15.md](docs/archives/readme-latest-progress-2026-11-15.md).
+The dashboard shows how much of each firmware inventory the [knowledge map](docs/map/README.md) describes, graded by the strongest current claim (verified, decoded, open frontier). It is generated from `docs/map/` with `python -m tools.research.render_research_status --write` and is not a firmware compatibility percentage: unmapped items are not yet summarised, not unknown. All evidence records are indexed across 15 [map areas](docs/map/README.md#areas). Suite history: [test-growth chart](docs/images/test-growth.svg).
 
-[E9001](docs/evidence/9001-l3-grm-osd-unit-4092e-refusal-and-newselect-timer-fix.md)
-traces `Appframework`'s `CreateFramebuffer(640,480)` to a GRM-MA open for DMM
-unit `0x4092e`: `captured-e0044` refuses it (`-9`, with no captured base or
-handle) and the guest aborts, while checkpoint restore no longer fabricates a
-`sys__newselect` deadline.
-[E9002](docs/evidence/9002-grm-pool-policy-reconcile-and-glcommon-createframebuffer.md)
-fixes checkpoint resume so `--grm-pools` cannot be silently ignored (the
-restored policy is recorded, conflicts fail closed) and records that the
-labelled legacy single-pool boot passes `CreateFramebuffer(640,480)` without
-establishing the `0x4092e` unit mapping.
-[E9003](docs/evidence/9003-glcommon-post-createframebuffer-timer-wait.md) shows
-the next stop is a timer-paced wait: `Appframework` polls `0x00910042` and
-`0x00910041` until `--uipc-timer-service emulated` removes the poll storm, after
-which it idles without loading OSD or `viewUnified2`.
-[E9004](docs/evidence/9004-glcommon-wait-is-20ms-sleep-not-render.md) shows that
-wait is a fixed 20 ms sleep (19,815 us measured), and the 32 MiB surface is
-byte-identical across about 220 ticks: the app is waiting, not rendering.
-[E9005](docs/evidence/9005-rea-provider-limit-and-20ms-sites.md) records that REA
-cannot deep-analyze this ARM ELF on the current Windows host; a direct scan
-finds six 20,000 us sites in `libObj`, only one of which was seen in the early
-wait window.
-[E9006](docs/evidence/9006-captured-dmm-unit-4092e-authentic-osd-surface.md)
-maps unit `0x4092e` to its captured OSD A extent (`0x23A80000`, `0x96000`):
-the app allocates it, maps `/dev/stream` there, writes the full 614,400-byte
-frame (currently a black clear) and loads `viewUnified2.so`.
-
-- **[E0676](docs/evidence/0676-unicorn-sysv-vph-frame-clock.md) / [E0677](docs/evidence/0677-unicorn-sio-gpio-oracle.md)** add opt-in QEMU SYSV/VPH/evsel frame clock and oracle-backed SIO ch3, GPIO `0x32`, and ADC `0x3FF` peripheral models to `UnicornMachine`.
-- **UVC / 5 GHz Wi-Fi Streaming & CinemaHUD tooling:** adds offline-tested UVC-PTP adapter (`uvc_ptp_adapter.c`), Run B26 pre-arm harness (`tools/research/run_b26_uvc_prearm.py`), BCM4339 5 GHz Wi-Fi liveview bootstrap/daemon/client (`tools/native_camera/wifi_5ghz_bootstrap.sh`, `camera-daemon/src/wifi_stream.c`, `tools/research/wifi_uvc_client.py`), and CinemaHUD updates.
-
-![Research status: demonstrated results and remaining boundaries](docs/images/research-status.svg?v=8fade13bb8a2)
-
-![Daily automated test suite growth: 2091 tests across 32 days](docs/images/test-growth.svg?v=7c3d215972bb)
+![Knowledge map coverage by firmware inventory](docs/images/research-status.svg?v=07ca7ac05e53)
 
 ---
 
