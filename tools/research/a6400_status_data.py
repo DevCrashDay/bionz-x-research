@@ -221,25 +221,42 @@ STATUS_SNAPSHOT = StatusSnapshot(
     schema_version=1,
     as_of="2026-11-21",
     latest=EvidenceRef(
-        evidence_id="E9006",
-        path="docs/evidence/9006-captured-dmm-unit-4092e-authentic-osd-surface.md",
+        evidence_id="E9103",
+        path="docs/evidence/9103-a6100-mod-loader-port.md",
         date="2026-11-21",
-        title="Captured DMM unit 0x4092e is OSD A/B; an opt-in mapping opens the authentic 640x480 surface",
+        title="Mod Loader v2 (MLCR) & Film Simulations ported to ILCE-6100; multi-target SMOD v2 for ILCE-6400",
         demonstrated=(
-            "The preserved nflasha5 DMM table has two 0x4092e records (indices 28 and 32) whose extents are "
-            "OSD A/B: 0x23A80000 and 0x23B16000, size 0x96000, extent id 0x62, handles 0x041C/0x0420. "
-            "An opt-in policy returns the first record; the app allocates the full extent, "
-            "maps /dev/stream to physical 0x23A80000 and writes all 614,400 bytes. viewUnified2.so is loaded."
+            "Offline Picture Profile gate analysis + opt-in PP_UNLOCK=1 overlay (E9101), procedure record (E9102), "
+            "and MLV2_TARGET=a6100 Mod Loader v2 QEMU execution with folder navigation, Film Simulations / Studio GUI, "
+            "FilmSimLive picker, and FilmTexture SMOD v2 builds targeting both ILCE-6100 1.00 and ILCE-6400 2.00."
         ),
         boundary=(
-            "The surface is zero at 200M, so the full write is a clear/black frame; UI content and the draw "
-            "trigger are not established. The captured table is a preserved image, not live camera state. "
-            "No camera access."
+            "ILCE-6100 Picture Profile unlock and MLCR port are verified in offline dumps and QEMU (no physical a6100 flash "
+            "write); ILCE-6400 Ver. 2.00 film-simulation addresses are binary/offline-verified against captured av-cam.bin "
+            "and libObj.so without a live hardware camera test."
         ),
-        tier="OFFLINE PUBLIC UPDATERS + QEMU",
+        tier="OFFLINE + QEMU + ARMv7 SMOD v2",
     ),
-    headline="Unicorn SIO/GPIO & SYSV/VPH oracle | L3 OSD surface & 20ms wait | a6400A & ZV-E10 touch",
+    headline="ILCE-6100 MLCR & Film Sims (a6100/a6400) | L3 OSD surface | Unicorn SIO/GPIO oracle",
     cards=(
+        EvidenceRef(
+            evidence_id="E9006",
+            path="docs/evidence/9006-captured-dmm-unit-4092e-authentic-osd-surface.md",
+            date="2026-11-21",
+            title="Captured DMM unit 0x4092e is OSD A/B; an opt-in mapping opens the authentic 640x480 surface",
+            demonstrated=(
+                "The preserved nflasha5 DMM table has two 0x4092e records (indices 28 and 32) whose extents are "
+                "OSD A/B: 0x23A80000 and 0x23B16000, size 0x96000, extent id 0x62, handles 0x041C/0x0420. "
+                "An opt-in policy returns the first record; the app allocates the full extent, "
+                "maps /dev/stream to physical 0x23A80000 and writes all 614,400 bytes. viewUnified2.so is loaded."
+            ),
+            boundary=(
+                "The surface is zero at 200M, so the full write is a clear/black frame; UI content and the draw "
+                "trigger are not established. The captured table is a preserved image, not live camera state. "
+                "No camera access."
+            ),
+            tier="OFFLINE PUBLIC UPDATERS + QEMU",
+        ),
         EvidenceRef(
             evidence_id="E0677",
             path="docs/evidence/0677-unicorn-sio-gpio-oracle.md",

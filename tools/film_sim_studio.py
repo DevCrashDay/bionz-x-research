@@ -1,8 +1,9 @@
-"""a6100 Film Sim Studio — Visual tone-curve & color-matrix editor with live split preview
-and one-click SMOD v2 .mod build & USB push for the Sony ILCE-6100.
+"""BIONZ X Film Sim Studio — Visual tone-curve & color-matrix editor with live split preview
+and one-click SMOD v2 .mod build & USB push for Sony ILCE-6100 and ILCE-6400.
 """
 from __future__ import annotations
 
+import argparse
 import ctypes
 import json
 import os
@@ -21,10 +22,13 @@ if str(ROOT) not in sys.path:
 
 from mods.film_sims.studio_core import (
     PRESETS,
+    TARGETS,
     FilmSimParams,
     _slug,
     build_mod,
     compute_curves,
+    detect_available_target,
+    get_target,
     image_metrics,
     load_stock_tables,
     push_mod_to_camera,
@@ -40,15 +44,17 @@ ACCENT = "#ff8c2b"
 
 
 class FilmSimStudio(tk.Tk):
-    def __init__(self, initial_image: Path | None = None):
+    def __init__(self, initial_image: Path | None = None, target: str | None = None):
         super().__init__()
-        self.title("a6100 Film Sim Studio")
-        self.geometry("1260x820")
-        self.minsize(980, 680)
+        init_target = target or detect_available_target("a6100")
+        self.title("BIONZ X Film Sim Studio (ILCE-6100 / ILCE-6400)")
+        self.geometry("1260x840")
+        self.minsize(980, 700)
         self.configure(bg=BG)
 
         self._configure_styles()
-        self.stock = load_stock_tables()
+        self.target_var = tk.StringVar(value=init_target)
+        self.stock = self._load_stock_for_target(init_target)
         self.src_full: np.ndarray | None = None
         self.sim_full: np.ndarray | None = None
         self.src_preview: np.ndarray | None = None
@@ -69,8 +75,8 @@ class FilmSimStudio(tk.Tk):
         self.mod_name_var = tk.StringVar(value="Classic Chrome")
         self.split_var = tk.DoubleVar(value=0.5)
         self.zoom_var = tk.StringVar(value="Fit")
-        self.metrics_var = tk.StringVar(value="Open or drag & drop a JPEG/PNG from your a6100 to preview.")
-        self.status_var = tk.StringVar(value="Ready.")
+        self.metrics_var = tk.StringVar(value="Open or drag & drop a camera JPEG/PNG to preview.")
+        self.status_var = tk.StringVar(value=f"Ready ({get_target(init_target).label}).")
 
         self.vars: dict[str, tk.DoubleVar | tk.IntVar] = {}
         self._val_labels: dict[str, tk.Label] = {}
@@ -81,8 +87,17 @@ class FilmSimStudio(tk.Tk):
 
         if initial_image and initial_image.is_file():
             self.load_image_file(initial_image)
-        else:
-            self._load_default_or_sample()
+
+    def _load_stock_for_target(self, target: str) -> dict[str, list[int]]:
+        prof = get_target(target)
+        if prof.avcam_default_path.is_file():
+            return load_stock_tables(target=target)
+        fallback = detect_available_target(target)
+        if get_target(fallback).avcam_default_path.is_file():
+            return load_stock_tables(target=fallback)
+        raise FileNotFoundError(
+            f"Missing av-cam.bin for {prof.label} ({prof.avcam_default_path})"
+        )
 
     def _configure_styles(self) -> None:
         style = ttk.Style(self)
@@ -138,7 +153,16 @@ class FilmSimStudio(tk.Tk):
         right.grid(row=0, column=1, sticky="ns")
         right.grid_propagate(False)
 
-        # Presets & Recipe
+        # Target & Presets & Recipe
+        t_row = ttk.Frame(right)
+        t_row.pack(fill="x", pady=(0, 4))
+        ttk.Label(t_row, text="Camera:", font=("Segoe UI", 9, "bold")).pack(side="left")
+        tcb = ttk.Combobox(t_row, textvariable=self.target_var, state="readonly", width=10, values=list(TARGETS))
+        tcb.pack(side="left", padx=6)
+        tcb.bind("<<ComboboxSelected>>", lambda _e: self._on_target_change())
+        self._target_label = ttk.Label(t_row, text=get_target(self.target_var.get()).label, foreground=FG_DIM)
+        self._target_label.pack(side="left", padx=4)
+
         p_row = ttk.Frame(right)
         p_row.pack(fill="x", pady=(0, 6))
         ttk.Label(p_row, text="Preset:", font=("Segoe UI", 9, "bold")).pack(side="left")
@@ -245,14 +269,21 @@ class FilmSimStudio(tk.Tk):
             self._val_labels[k].config(text=var._fmt.format(d[k]))  # type: ignore[attr-defined]
         self.schedule_update(immediate=True)
 
-    def _load_default_or_sample(self) -> None:
-        sample = Path(r"C:\Users\alex\.gemini\antigravity\brain\a18e90e4-1425-40bd-b1c8-7ae34241f578\.user_uploaded\media_1795293880781_f88f41d4.jpg")
-        if sample.is_file():
-            self.load_image_file(sample)
+    def _on_target_change(self) -> None:
+        key = self.target_var.get()
+        prof = get_target(key)
+        self._target_label.config(text=prof.label)
+        try:
+            self.stock = self._load_stock_for_target(key)
+        except Exception as exc:
+            messagebox.showerror("Film Sim Studio", str(exc))
+            return
+        self.status_var.set(f"Switched target to {prof.label}.")
+        self.schedule_update(immediate=True)
 
     def open_image(self) -> None:
         path = filedialog.askopenfilename(
-            title="Open a6100 JPEG / PNG / TIFF",
+            title="Open Camera JPEG / PNG / TIFF",
             filetypes=[("Images", "*.jpg *.jpeg *.png *.tif *.tiff *.bmp"), ("All files", "*.*")],
         )
         if path:
@@ -499,14 +530,16 @@ class FilmSimStudio(tk.Tk):
         self.status_var.set(f"Loaded recipe {Path(path).name}")
 
     def on_build_only(self) -> None:
-        self._run_bg("Building .mod in WSL...", lambda p: build_mod(p), push=False)
+        target = self.target_var.get()
+        self._run_bg(f"Building {target} .mod...", lambda p: build_mod(p, target=target, stock=self.stock), push=False)
 
     def on_build_and_push(self) -> None:
-        self._run_bg("Building .mod & pushing to camera...", lambda p: self._build_and_push(p), push=True)
+        target = self.target_var.get()
+        self._run_bg(f"Building {target} .mod & pushing to camera...", lambda p: self._build_and_push(p, target), push=True)
 
-    def _build_and_push(self, p: FilmSimParams) -> dict:
-        b = build_mod(p)
-        u = push_mod_to_camera(Path(b["local_path"]), b["mod_filename"])
+    def _build_and_push(self, p: FilmSimParams, target: str) -> dict:
+        b = build_mod(p, target=target, stock=self.stock)
+        u = push_mod_to_camera(Path(b["local_path"]), b["mod_filename"], target=target)
         return {**b, **u}
 
     def _run_bg(self, msg: str, fn, push: bool) -> None:
@@ -528,11 +561,12 @@ class FilmSimStudio(tk.Tk):
 
     def on_read_log(self) -> None:
         slug = _slug(self.mod_name_var.get())
+        target = self.target_var.get()
         self.status_var.set("Reading camera logs...")
 
         def worker():
             try:
-                txt = read_camera_logs(slug)
+                txt = read_camera_logs(slug, target=target)
                 self.after(0, lambda: (self.status_var.set("Camera logs read."), messagebox.showinfo("Camera Logs", txt)))
             except Exception as exc:
                 self.after(0, lambda e=exc: (self.status_var.set(f"Error: {e}"), messagebox.showerror("Camera Logs", str(e))))
@@ -541,8 +575,11 @@ class FilmSimStudio(tk.Tk):
 
 
 def main() -> None:
-    init_img = Path(sys.argv[1]) if len(sys.argv) > 1 else None
-    app = FilmSimStudio(init_img)
+    ap = argparse.ArgumentParser(description="BIONZ X Film Sim Studio (ILCE-6100 / ILCE-6400)")
+    ap.add_argument("image", nargs="?", type=Path, help="Optional JPEG/PNG/TIFF preview image")
+    ap.add_argument("--target", choices=tuple(TARGETS), default=None, help="Camera target profile (default: auto-detect)")
+    args = ap.parse_args()
+    app = FilmSimStudio(args.image, target=args.target)
     app.mainloop()
 
 

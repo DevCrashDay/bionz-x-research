@@ -3,6 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 export PATH="$PWD/artifacts/toolchain/arm-linux-gnueabi/bin:$PATH"
 OUT=${1:-"$PWD/artifacts/a6100-film-sims/film_texture"}
+GOUT=${2:-"$(dirname "$OUT")/luma_grain"}
 mkdir -p "$OUT"
 arm-linux-gnueabi-gcc -mthumb -mcpu=cortex-a5 -mfloat-abi=softfp -Os -ffreestanding -fno-builtin \
   -nostdlib -nostartfiles -fno-stack-protector -fomit-frame-pointer -Wall -Wextra -Werror \
@@ -14,7 +15,6 @@ arm-linux-gnueabi-ld --build-id=none -T tools/native_camera/mlv2/mod_v2.ld "$OUT
 python3 -m tools.research.pack_mod_v2 --elf "$OUT/film_texture.elf" --name "Film Texture" \
   --on texture_life --off texture_life --out "$OUT/FilmTexture.mod"
 
-GOUT="$PWD/artifacts/a6100-film-sims/luma_grain"
 mkdir -p "$GOUT"
 arm-linux-gnueabi-gcc -mthumb -mcpu=cortex-a5 -mfloat-abi=softfp -Os -ffreestanding -fno-builtin \
   -nostdlib -nostartfiles -fno-stack-protector -fomit-frame-pointer -Wall -Wextra -Werror \

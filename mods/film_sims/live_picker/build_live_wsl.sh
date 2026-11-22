@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
+export PATH="$PWD/artifacts/toolchain/arm-linux-gnueabi/bin:$PATH"
 TARGET=${1:-a6400}
 OUT=${2:-/tmp/film-sim-live-$TARGET}
 rm -rf "$OUT"
@@ -9,13 +10,24 @@ LP=mods/film_sims/live_picker
 common=(-mthumb -mcpu=cortex-a5 -mfloat-abi=softfp -Os -ffreestanding -fno-builtin -nostdlib
         -nostartfiles -fno-stack-protector -fomit-frame-pointer -Wall -Wextra -Werror
         -fpie -fvisibility=hidden)
-if [ "$TARGET" = "a6400" ]; then
-  TFLAG="-DTARGET_A6400"
-  HOOK_ADDR="0x0655a598"
-else
-  TFLAG="-DTARGET_A6100"
-  HOOK_ADDR="0x0655a528"
-fi
+case "$TARGET" in
+  a6400)
+    TFLAG="-DTARGET_A6400"
+    HOOK_ADDR="0x0655a528"
+    ;;
+  a6100)
+    TFLAG="-DTARGET_A6100"
+    HOOK_ADDR="0x0655a528"
+    ;;
+  a6400-v1)
+    TFLAG="-DTARGET_A6400_V1"
+    HOOK_ADDR="0x0655a598"
+    ;;
+  *)
+    echo "Unknown target '$TARGET' (expected a6400, a6100, or a6400-v1)" >&2
+    exit 1
+    ;;
+esac
 arm-linux-gnueabi-gcc "${common[@]}" "$TFLAG" -c "$LP/film_sim_live.c" -o "$OUT/live.o"
 arm-linux-gnueabi-gcc "${common[@]}" "$TFLAG" -c "$LP/film_sim_live_trampoline.S" -o "$OUT/live_tramp.o"
 for o in "$OUT/live.o" "$OUT/live_tramp.o"; do

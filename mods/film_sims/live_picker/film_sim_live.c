@@ -1,4 +1,5 @@
-/* FilmSimLive: Live-View Film Simulation preset cycler (SMOD v2 + ACTION).
+/* FilmSimLive: Live-View Film Simulation preset cycler (SMOD v2 + ACTION)
+ * for ILCE-6100 (Ver.1.00) and ILCE-6400 (Ver.2.00 / Ver.1.00).
  *
  * Activated from MENU -> Mods -> FilmSim Live:
  * - Closes MENU via core.c post_menu_key() back to Live View.

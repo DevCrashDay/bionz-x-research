@@ -33,7 +33,15 @@ fc_stock, fc_chrome = (struct.pack("<96H", *arr(n)) for n in ("FC_GAMMA_STOCK", 
 a0_stock, a0_chrome = (struct.pack("<9h", *arr(n)) for n in ("COLOR_A0_STOCK", "COLOR_A0_CHROME"))
 a1_stock, a1_chrome = (struct.pack("<9h", *arr(n)) for n in ("COLOR_A1_STOCK", "COLOR_A1_CHROME"))
 
-EC_PA, FC_PA, A0_PA, A1_PA = 0x03E553B0, 0x03E8F1D4, 0x0444A254, 0x0444A266
+def _define_u32(name, default):
+    m = re.search(rf"#define\s+{name}\s+(0x[0-9a-fA-F]+|\d+)u?", hdr)
+    return int(m.group(1), 0) if m else default
+
+
+EC_PA = _define_u32("EC_GAMMA_PA", 0x03E553B0)
+FC_PA = _define_u32("FC_GAMMA_PA", 0x03E8F1D4)
+A0_PA = _define_u32("COLOR_A0_PA", 0x0444A254)
+A1_PA = _define_u32("COLOR_A1_PA", 0x0444A266)
 EC_PAGE, FC_PAGE, C_PAGE, STOP, BASE = 0x30000000, 0x30100000, 0x30200000, 0x31000000, 0x40AB3000
 EC_OFF, FC_OFF, A0_OFF, A1_OFF = EC_PA & 0xFFF, FC_PA & 0xFFF, A0_PA & 0xFFF, A1_PA & 0xFFF
 

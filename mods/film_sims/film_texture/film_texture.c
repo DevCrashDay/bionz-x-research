@@ -1,4 +1,4 @@
-/* Film Texture: SMOD v2 lifecycle mod for ILCE-6100.
+/* Film Texture: SMOD v2 lifecycle mod for ILCE-6100 and ILCE-6400 (identical /usr/sabin/ paths).
  * Bind-mounts tuned /tmp_bt/mods/sabin/{dcv_psf,spica_musashi}_*.bin over /usr/sabin/
  * on ON, and detaches (umount2 MNT_DETACH) on OFF.
  * Expects staged files in /tmp_bt/mods/sabin/ (c_tap zero file created automatically if missing).

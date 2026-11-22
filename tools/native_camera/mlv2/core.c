@@ -401,9 +401,9 @@ static int parse_mod(const char *path, Mod *m) {
     }
     ml_close(fd);
     if (!ok) { ml_log("scan_bad", h1->magic); return 0; }
-    ml_memcpy(m->path, path, 63);
+    ml_memset(m->path, 0, sizeof(m->path));
+    for (uint32_t k = 0; k < sizeof(m->path) - 1u && path[k]; k++) m->path[k] = path[k];
     m->name[31] = 0;
-    m->path[63] = 0;
     m->present = 1;
     return 1;
 }
@@ -701,7 +701,7 @@ static int post_menu_key(void) {
     return 1;
 }
 
-static void refresh_rows(Ctx *c, uint32_t menu) {
+static void refresh_rows(Ctx *c, uint32_t menu, int clear_unused) {
     if (!menu || *(volatile uint32_t *)(menu + 0x1f0u) != 7u) return;
     typedef void (*set_text_t)(void *, const char *);
     set_text_t set_text = (set_text_t)VIEW(MLV2_SET_TEXT);
@@ -727,8 +727,11 @@ static void refresh_rows(Ctx *c, uint32_t menu) {
                 set_text((void *)(btn + 0x7c8u), c->mods[v].name);
                 set_text((void *)(btn + 0xb60u), state_text(&c->mods[v]));
             }
-        } else {
-            set_text((void *)(btn + 0x7c8u), (!r && !c->view_count) ? "No mods found" : "");
+        } else if (!r && !c->view_count) {
+            set_text((void *)(btn + 0x7c8u), "No mods found");
+            set_text((void *)(btn + 0xb60u), "");
+        } else if (clear_unused) {
+            set_text((void *)(btn + 0x7c8u), "");
             set_text((void *)(btn + 0xb60u), "");
         }
     }
@@ -744,7 +747,7 @@ static void core_after_refresh(uint32_t menu) {
         c->root_children[6] = &c->tab_node;
         c->orig_root->child_count = 7;
     }
-    refresh_rows(c, menu);
+    refresh_rows(c, menu, 0);
 }
 
 /* ---------------- loading and toggling ---------------- */
@@ -971,7 +974,7 @@ static int core_before_enter(uint32_t menu, uint32_t leaf) {
         *(volatile uint32_t *)(menu + 0x1f4u) = 1u;
         rebuild_view(c);
         build_tree(c);
-        refresh_rows(c, menu);
+        refresh_rows(c, menu, 1);
         return 0;
     }
     Mod *m = &c->mods[v];
@@ -984,7 +987,7 @@ static int core_before_enter(uint32_t menu, uint32_t leaf) {
     toggle(m);
     if (is_action(m) && !was_on && m->enabled)
         ml_log(post_menu_key() ? "action_close" : "action_close_unavailable", m->addr);
-    refresh_rows(c, menu);
+    refresh_rows(c, menu, 0);
     return 0;
 }
 

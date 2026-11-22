@@ -1,12 +1,13 @@
 #!/bin/bash
-# Build Classic Chrome (SMOD v2) for ILCE-6100. Usage:
-#   bash mods/film_sims/classic_chrome/build_wsl.sh OUTPUT_DIR
+# Build Classic Chrome (SMOD v2) for ILCE-6100 or ILCE-6400. Usage:
+#   bash mods/film_sims/classic_chrome/build_wsl.sh OUTPUT_DIR [a6100|a6400]
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 export PATH="$PWD/artifacts/toolchain/arm-linux-gnueabi/bin:$PATH"
 OUT=$1
+TARGET=${2:-a6100}
 mkdir -p "$OUT"
-python3 mods/film_sims/classic_chrome/make_data.py "$OUT/classic_chrome_data.h"
+python3 mods/film_sims/classic_chrome/make_data.py --target "$TARGET" "$OUT/classic_chrome_data.h"
 arm-linux-gnueabi-gcc -mthumb -mcpu=cortex-a5 -mfloat-abi=softfp -Os -ffreestanding -fno-builtin \
   -nostdlib -nostartfiles -fno-stack-protector -fomit-frame-pointer -Wall -Wextra -Werror \
   -fpie -fvisibility=hidden -I"$OUT" -c mods/film_sims/classic_chrome/classic_chrome.c -o "$OUT/classic_chrome.o"

@@ -1,11 +1,11 @@
 /* Classic Chrome: Fujifilm Classic Chrome film simulation (tone curve + color matrix)
- * as an SMOD v2 lifecycle mod for the ILCE-6100 Mod Loader v2.
+ * as an SMOD v2 lifecycle mod for ILCE-6100 and ILCE-6400 Mod Loader v2.
  *
  * Performs four independent, content-guarded single-page swaps in av-cam LIRO RAM:
- *   ec : EC Record 28 variant 1 (Movie/PQD gamma), 96 x uint32_t at PA 0x03e553b0
- *   fc : FC Table 0 (Still/Live-View gamma),       96 x uint16_t at PA 0x03e8f1d4
- *   a0 : CC Matrix entry A0 (index 0),              9 x int16_t  at PA 0x0444a254
- *   a1 : CC Matrix entry A1 (index 1, Standard),    9 x int16_t  at PA 0x0444a266
+ *   ec : EC Record 28 variant 1 (Movie/PQD gamma), 96 x uint32_t at EC_GAMMA_PA
+ *   fc : FC Table 0 (Still/Live-View gamma),       96 x uint16_t at FC_GAMMA_PA
+ *   a0 : CC Matrix entry A0 (index 0),              9 x int16_t  at COLOR_A0_PA
+ *   a1 : CC Matrix entry A1 (index 1, Standard),    9 x int16_t  at COLOR_A1_PA
  * ON writes Classic Chrome data where stock (or v1 legacy) data is present; OFF restores
  * stock where Classic Chrome (or v1 legacy) data is present; foreign content is untouched.
  * Log: /tmp_bt/mods/classic_chrome.log, "classic_chrome on=N ec=C fc=C a0=C a1=C"
@@ -13,6 +13,19 @@
  */
 #include <stdint.h>
 #include "classic_chrome_data.h"
+
+#ifndef EC_GAMMA_PA
+#define EC_GAMMA_PA 0x03e553b0u
+#endif
+#ifndef FC_GAMMA_PA
+#define FC_GAMMA_PA 0x03e8f1d4u
+#endif
+#ifndef COLOR_A0_PA
+#define COLOR_A0_PA 0x0444a254u
+#endif
+#ifndef COLOR_A1_PA
+#define COLOR_A1_PA 0x0444a266u
+#endif
 
 static long sc3(long n, long a, long b, long c) {
     register long r0 __asm__("r0") = a, r1 __asm__("r1") = b, r2 __asm__("r2") = c;

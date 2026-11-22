@@ -1,13 +1,16 @@
 """Core math, presets, image preview simulator, SMOD v2 builder, and USB deployer
-for the ILCE-6100 Film Sim Studio.
+for the multi-target BIONZ X Film Sim Studio (ILCE-6100 Ver.1.00 and ILCE-6400 Ver.2.00).
 """
 from __future__ import annotations
 
+import argparse
+import contextlib
 import hashlib
 import json
 import math
 import os
 import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -16,21 +19,106 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-AVCAM_PATH = ROOT / "artifacts/a6100-inputs/av-cam.bin"
-LIVE_JSON = ROOT / "artifacts/a6100-pp/active-tables-live.json"
-AVCAM_SHA256 = "58b2118db858f3eb1594ae6cef3f628b7fa3cc6db9173b094565535d48e6ff9e"
 
-EC_REC28_V1_PA = 0x03E553B0
-FC_TBL0_PA = 0x03E8F1D4
-COLOR_A0_PA = 0x0444A254
-COLOR_A1_PA = 0x0444A266
-COLOR_B2_PA = 0x0444B178
-CC_TUNING_PA = 0x0444A1AE
-REFADR0_PA = 0x044ACD37
+
+@dataclass(frozen=True)
+class TargetProfile:
+    """Verified av-cam LIRO RAM and libObj target addresses for a camera firmware build."""
+
+    key: str
+    label: str
+    avcam_default_path: Path
+    avcam_sha256: str
+    live_json_path: Path
+    default_out_root: Path
+    sabin_stock_dir: Path
+    ec_gamma_pa: int
+    fc_gamma_pa: int
+    color_a0_pa: int
+    color_a1_pa: int
+    color_b2_pa: int
+    cc_tuning_pa: int
+    refadr0_pa: int
+    cc_out_pa: int
+    event_push_ref_va: int
+    event_push_resume_va: int
+
+
+TARGETS: dict[str, TargetProfile] = {
+    "a6100": TargetProfile(
+        key="a6100",
+        label="ILCE-6100 Ver.1.00",
+        avcam_default_path=ROOT / "artifacts/a6100-inputs/av-cam.bin",
+        avcam_sha256="58b2118db858f3eb1594ae6cef3f628b7fa3cc6db9173b094565535d48e6ff9e",
+        live_json_path=ROOT / "artifacts/a6100-pp/active-tables-live.json",
+        default_out_root=ROOT / "artifacts/a6100-film-sims",
+        sabin_stock_dir=ROOT / "artifacts/a6100-pp/sabin_stock",
+        ec_gamma_pa=0x03E553B0,
+        fc_gamma_pa=0x03E8F1D4,
+        color_a0_pa=0x0444A254,
+        color_a1_pa=0x0444A266,
+        color_b2_pa=0x0444B178,
+        cc_tuning_pa=0x0444A1AE,
+        refadr0_pa=0x044ACD37,
+        cc_out_pa=0x043CC38C,
+        event_push_ref_va=0x0655A528,
+        event_push_resume_va=0x0655A535,
+    ),
+    "a6400": TargetProfile(
+        key="a6400",
+        label="ILCE-6400 Ver.2.00",
+        avcam_default_path=ROOT / "artifacts/qemu-a6400/inputs-moddev-1/av-cam.bin",
+        avcam_sha256="dd8f8d0cc74ad4b70100e5728cf8b159b5155e7fb50eaf1147b99c9054740209",
+        live_json_path=ROOT / "artifacts/analysis/arri-movie-color-2026-11-16/colormode-matrix-table.json",
+        default_out_root=ROOT / "artifacts/a6400-film-sims",
+        sabin_stock_dir=ROOT / "firmware/extracted_a6400/firmware.tar_unpacked/0700_part_image/dev/nflasha15_unpacked/sabin",
+        ec_gamma_pa=0x03E55330,
+        fc_gamma_pa=0x03E8F154,
+        color_a0_pa=0x0444A244,
+        color_a1_pa=0x0444A256,
+        color_b2_pa=0x0444B168,
+        cc_tuning_pa=0x0444A19E,
+        refadr0_pa=0x044ACD27,
+        cc_out_pa=0x043CC384,
+        event_push_ref_va=0x0655A528,
+        event_push_resume_va=0x0655A535,
+    ),
+}
+
+# Backwards-compatible module constants default to ILCE-6100 Ver.1.00.
+_DEFAULT_TARGET = TARGETS["a6100"]
+AVCAM_PATH = _DEFAULT_TARGET.avcam_default_path
+LIVE_JSON = _DEFAULT_TARGET.live_json_path
+AVCAM_SHA256 = _DEFAULT_TARGET.avcam_sha256
+
+EC_REC28_V1_PA = _DEFAULT_TARGET.ec_gamma_pa
+FC_TBL0_PA = _DEFAULT_TARGET.fc_gamma_pa
+COLOR_A0_PA = _DEFAULT_TARGET.color_a0_pa
+COLOR_A1_PA = _DEFAULT_TARGET.color_a1_pa
+COLOR_B2_PA = _DEFAULT_TARGET.color_b2_pa
+CC_TUNING_PA = _DEFAULT_TARGET.cc_tuning_pa
+REFADR0_PA = _DEFAULT_TARGET.refadr0_pa
 
 STOCK_A0 = (1241, -205, -12, 62, 1116, -154, 30, -251, 1245)
 STOCK_A1 = (1161, -205, 68, 43, 1134, -153, 16, -236, 1243)
 STOCK_B2 = (1024, -88, 88, 51, 1024, -51, 48, -289, 1264)
+
+
+def get_target(target: str = "a6100") -> TargetProfile:
+    """Return the validated TargetProfile for ``a6100`` or ``a6400``."""
+    if target not in TARGETS:
+        raise ValueError(f"Unsupported camera target {target!r}; expected one of {tuple(TARGETS)}")
+    return TARGETS[target]
+
+
+def detect_available_target(preferred: str = "a6100") -> str:
+    """Return ``preferred`` if its av-cam.bin exists locally, else any available target."""
+    if get_target(preferred).avcam_default_path.is_file():
+        return preferred
+    for key, prof in TARGETS.items():
+        if prof.avcam_default_path.is_file():
+            return key
+    return preferred
 
 
 @dataclass
@@ -206,23 +294,37 @@ def _mode0_10bit(v: int) -> int:
     return s
 
 
-def load_stock_tables() -> dict[str, list[int]]:
-    av61 = AVCAM_PATH.read_bytes()
-    actual_sha = hashlib.sha256(av61).hexdigest()
-    assert actual_sha == AVCAM_SHA256, f"av-cam.bin hash mismatch: {actual_sha}"
-    ec_off = EC_REC28_V1_PA - 0x035C6000
-    fc_off = FC_TBL0_PA - 0x035C6000
-    ec_stock = list(struct.unpack_from("<96I", av61, ec_off))
-    fc_stock = list(struct.unpack_from("<96H", av61, fc_off))
+def _load_matrix_row(data: dict[str, Any], key: str, default: tuple[int, ...]) -> list[int]:
+    if "matrix_table" in data:
+        mt = data["matrix_table"]
+        for k in (f"{key}_idx0", f"{key}_idx1", f"{key}_idx17"):
+            if k in mt and "coeffs" in mt[k]:
+                return list(mt[k]["coeffs"])
+    if "live" in data and key in data["live"]:
+        return list(data["live"][key])
+    return list(default)
+
+
+def load_stock_tables(target: str = "a6100", avcam_path: Path | None = None) -> dict[str, list[int]]:
+    prof = get_target(target)
+    path = avcam_path or prof.avcam_default_path
+    av = path.read_bytes()
+    if avcam_path is None:
+        actual_sha = hashlib.sha256(av).hexdigest()
+        assert actual_sha == prof.avcam_sha256, f"{prof.key} av-cam.bin hash mismatch: {actual_sha}"
+    ec_off = prof.ec_gamma_pa - 0x035C6000
+    fc_off = prof.fc_gamma_pa - 0x035C6000
+    ec_stock = list(struct.unpack_from("<96I", av, ec_off))
+    fc_stock = list(struct.unpack_from("<96H", av, fc_off))
 
     a0_stock = list(STOCK_A0)
     a1_stock = list(STOCK_A1)
     b2_stock = list(STOCK_B2)
-    if LIVE_JSON.is_file():
-        live = json.loads(LIVE_JSON.read_text(encoding="utf-8"))
-        a0_stock = live["matrix_table"]["A0_idx0"]["coeffs"]
-        a1_stock = live["matrix_table"]["A1_idx1"]["coeffs"]
-        b2_stock = live["matrix_table"]["B2_idx17"]["coeffs"]
+    if prof.live_json_path.is_file():
+        live = json.loads(prof.live_json_path.read_text(encoding="utf-8"))
+        a0_stock = _load_matrix_row(live, "A0", STOCK_A0)
+        a1_stock = _load_matrix_row(live, "A1", STOCK_A1)
+        b2_stock = _load_matrix_row(live, "B2", STOCK_B2)
     return {
         "ec_stock": ec_stock,
         "fc_stock": fc_stock,
@@ -313,45 +415,52 @@ def compute_curves(stock: dict[str, list[int]], p: FilmSimParams) -> tuple[list[
     return ec_out, fc_out
 
 
-def build_look_matrix_3x3(p: FilmSimParams):
+def _matmul3x3(a: list[list[float]], b: list[list[float]]) -> list[list[float]]:
+    return [
+        [sum(a[r][k] * b[k][c] for k in range(3)) for c in range(3)]
+        for r in range(3)
+    ]
+
+
+def build_look_matrix_3x3(p: FilmSimParams) -> list[list[float]]:
     """Build 3x3 look transform in post-gamma RGB space with exact row sums = 1.0."""
-    import numpy as np
     if is_stock_params(p):
-        return np.eye(3, dtype=np.float64)
+        return [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
 
     # 1. Saturation matrix (BT.709 luma weights)
     s = p.saturation
     wr, wg, wb = 0.2126, 0.7152, 0.0722
-    m_sat = np.array([
+    m_sat = [
         [wr + (1.0 - wr) * s, wg * (1.0 - s), wb * (1.0 - s)],
         [wr * (1.0 - s), wg + (1.0 - wg) * s, wb * (1.0 - s)],
         [wr * (1.0 - s), wg * (1.0 - s), wb + (1.0 - wb) * s],
-    ], dtype=np.float64)
+    ]
 
     # 2. Hue / primary character matrix (each row sums to 1.0)
     ra = p.red_amber
     go = p.green_olive
     bc = p.blue_cyan
     w = p.warmth
-    m_hue = np.array([
+    raw_hue = [
         [1.0 - ra + w * 0.5, ra, -w * 0.5],
         [go * 0.65, 1.0 - go, go * 0.35],
         [-bc * 0.15 - w * 0.5, bc * 1.15, 1.0 - bc + w * 0.5],
-    ], dtype=np.float64)
-    # Normalize each row sum to exactly 1.0
-    m_hue /= m_hue.sum(axis=1, keepdims=True)
+    ]
+    m_hue = []
+    for row in raw_hue:
+        row_sum = sum(row)
+        m_hue.append([v / row_sum for v in row])
 
-    return m_hue @ m_sat
+    return _matmul3x3(m_hue, m_sat)
 
 
 def compute_q10_matrix(stock9: list[int], p: FilmSimParams) -> list[int]:
     """Compute row-sum-invariant Q10 3x3 int16 matrix for A0 or A1."""
     if is_stock_params(p):
         return list(stock9)
-    import numpy as np
     m_look = build_look_matrix_3x3(p)
-    s = np.array(stock9, dtype=np.float64).reshape(3, 3)
-    m_new = m_look @ s
+    s = [[float(stock9[r * 3 + c]) for c in range(3)] for r in range(3)]
+    m_new = _matmul3x3(m_look, s)
     out9: list[int] = []
     for r in range(3):
         target_sum = int(sum(stock9[r * 3 : r * 3 + 3]))
@@ -474,7 +583,9 @@ def _fmt(vals: list[int], as_hex: bool = False) -> str:
     return ",".join(hex(v) if as_hex else str(v) for v in vals)
 
 
-def emit_header(out_header: Path, stock: dict[str, list[int]], p: FilmSimParams) -> None:
+def emit_header(out_header: Path, stock: dict[str, list[int]], p: FilmSimParams,
+                target: str = "a6100") -> None:
+    prof = get_target(target)
     ec_sim, fc_sim = compute_curves(stock, p)
     a0_sim = compute_q10_matrix(stock["a0_stock"], p)
     a1_sim = compute_q10_matrix(stock["a1_stock"], p)
@@ -486,18 +597,18 @@ def emit_header(out_header: Path, stock: dict[str, list[int]], p: FilmSimParams)
         hex_b = ",".join(f"0x{b:02x}" for b in lut_bytes)
         lut_block = (
             "#define REFADR_ENABLED 1\n"
-            f"#define CC_TUNING_PA 0x{CC_TUNING_PA:08x}u\n"
-            f"#define REFADR0_PA 0x{REFADR0_PA:08x}u\n"
+            f"#define CC_TUNING_PA 0x{prof.cc_tuning_pa:08x}u\n"
+            f"#define REFADR0_PA 0x{prof.refadr0_pa:08x}u\n"
             f"static const uint8_t REFADR_SIM[1215] = {{{hex_b}}};\n"
         )
     hdr = (
-        f"/* Auto-generated by mods/film_sims/studio_core.py for {p.name} */\n"
+        f"/* Auto-generated by mods/film_sims/studio_core.py for {p.name} ({prof.label}) */\n"
         "#include <stdint.h>\n\n"
-        f"#define EC_GAMMA_PA 0x{EC_REC28_V1_PA:08x}u\n"
-        f"#define FC_GAMMA_PA 0x{FC_TBL0_PA:08x}u\n"
-        f"#define COLOR_A0_PA 0x{COLOR_A0_PA:08x}u\n"
-        f"#define COLOR_A1_PA 0x{COLOR_A1_PA:08x}u\n"
-        f"#define COLOR_B2_PA 0x{COLOR_B2_PA:08x}u\n"
+        f"#define EC_GAMMA_PA 0x{prof.ec_gamma_pa:08x}u\n"
+        f"#define FC_GAMMA_PA 0x{prof.fc_gamma_pa:08x}u\n"
+        f"#define COLOR_A0_PA 0x{prof.color_a0_pa:08x}u\n"
+        f"#define COLOR_A1_PA 0x{prof.color_a1_pa:08x}u\n"
+        f"#define COLOR_B2_PA 0x{prof.color_b2_pa:08x}u\n"
         f'#define MOD_TAG "{slug}"\n'
         f'#define MOD_LOG_PATH "/tmp_bt/mods/{slug}.log"\n\n'
         f"static const uint32_t EC_GAMMA_STOCK[96] = {{{_fmt(stock['ec_stock'], True)}}};\n"
@@ -525,29 +636,41 @@ def _to_wsl_path(win_or_posix: Path) -> str:
     return s.replace("\\", "/")
 
 
-def build_mod(p: FilmSimParams, out_dir: Path | None = None) -> dict[str, Any]:
-    stock = load_stock_tables()
+def build_mod(p: FilmSimParams, out_dir: Path | None = None,
+              target: str = "a6100", stock: dict[str, list[int]] | None = None) -> dict[str, Any]:
+    prof = get_target(target)
+    if stock is None:
+        stock = load_stock_tables(target=target)
     slug = _slug(p.name)
     mod_filename = _camel_filename(p.name)
     if out_dir is None:
-        out_dir = ROOT / "artifacts/a6100-film-sims" / slug
+        out_dir = prof.default_out_root / slug
     out_dir.mkdir(parents=True, exist_ok=True)
-    emit_header(out_dir / "film_sim_data.h", stock, p)
-    (out_dir / "recipe.json").write_text(json.dumps(p.to_dict(), indent=2), encoding="utf-8")
+    emit_header(out_dir / "film_sim_data.h", stock, p, target=target)
+    recipe = {**p.to_dict(), "target": prof.key}
+    (out_dir / "recipe.json").write_text(json.dumps(recipe, indent=2), encoding="utf-8")
 
-    wsl_root = _to_wsl_path(ROOT)
-    wsl_out = _to_wsl_path(out_dir)
+    import shlex
+    if os.name == "nt":
+        run_root = _to_wsl_path(ROOT)
+        run_out = _to_wsl_path(out_dir)
+        py_bin = "python3"
+    else:
+        run_root = str(ROOT.resolve())
+        run_out = str(out_dir.resolve())
+        py_bin = shlex.quote(sys.executable or shutil.which("python3") or "python3")
+
     cmd_str = (
-        f"set -euo pipefail; cd '{wsl_root}'; "
-        f"export PATH='{wsl_root}/artifacts/toolchain/arm-linux-gnueabi/bin':\"$PATH\"; "
+        f"set -euo pipefail; cd {shlex.quote(run_root)}; "
+        f"export PATH={shlex.quote(run_root + '/artifacts/toolchain/arm-linux-gnueabi/bin')}:\"$PATH\"; "
         f"arm-linux-gnueabi-gcc -mthumb -mcpu=cortex-a5 -mfloat-abi=softfp -Os -ffreestanding -fno-builtin "
         f"-nostdlib -nostartfiles -fno-stack-protector -fomit-frame-pointer -Wall -Wextra -Werror "
-        f"-fpie -fvisibility=hidden -I'{wsl_out}' -c mods/film_sims/template/film_sim.c -o '{wsl_out}/film_sim.o'; "
-        f"if arm-linux-gnueabi-readelf -rW '{wsl_out}/film_sim.o' | grep -E 'R_ARM_(ABS32|GOT|TARGET1|PLT32)'; then "
+        f"-fpie -fvisibility=hidden -I{shlex.quote(run_out)} -c mods/film_sims/template/film_sim.c -o {shlex.quote(run_out + '/film_sim.o')}; "
+        f"if arm-linux-gnueabi-readelf -rW {shlex.quote(run_out + '/film_sim.o')} | grep -E 'R_ARM_(ABS32|GOT|TARGET1|PLT32)'; then "
         "echo 'absolute relocations' >&2; exit 1; fi; "
-        f"arm-linux-gnueabi-ld --build-id=none -T tools/native_camera/mlv2/mod_v2.ld '{wsl_out}/film_sim.o' -o '{wsl_out}/film_sim.elf'; "
-        f"python3 -m tools.research.pack_mod_v2 --elf '{wsl_out}/film_sim.elf' --name '{p.name[:31]}' "
-        f"--on sim_life --off sim_life --action --out '{wsl_out}/{mod_filename}'"
+        f"arm-linux-gnueabi-ld --build-id=none -T tools/native_camera/mlv2/mod_v2.ld {shlex.quote(run_out + '/film_sim.o')} -o {shlex.quote(run_out + '/film_sim.elf')}; "
+        f"{py_bin} -m tools.research.pack_mod_v2 --elf {shlex.quote(run_out + '/film_sim.elf')} --name {shlex.quote(p.name[:31])} "
+        f"--on sim_life --off sim_life --action --out {shlex.quote(run_out + '/' + mod_filename)}"
     )
     try:
         if os.name == "nt":
@@ -563,10 +686,11 @@ def build_mod(p: FilmSimParams, out_dir: Path | None = None) -> dict[str, Any]:
     info["local_path"] = str(out_dir / mod_filename)
     info["mod_filename"] = mod_filename
     info["slug"] = slug
+    info["target"] = prof.key
     return info
 
 
-VENV_PYTHON = Path(r"C:\Users\alex\Desktop\a6100-recovery\a6100-fw-recovery\.venv\Scripts\python.exe")
+VENV_PYTHON = ROOT / "venv/Scripts/python.exe"
 
 
 def _has_win32file() -> bool:
@@ -577,33 +701,64 @@ def _has_win32file() -> bool:
         return False
 
 
-def connect_camera():
-    dbg_dir = str(ROOT / "artifacts/a6100-pp")
-    if dbg_dir not in sys.path:
-        sys.path.insert(0, dbg_dir)
+def connect_camera(target: str = "a6100"):
+    prof = get_target(target)
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
-    from a6100_usb_dbg import DirectScsiExchange
-    from tools.camera_debugger import Debugger, OP_INFO
+    if prof.key == "a6100" and (ROOT / "artifacts/a6100-pp/a6100_usb_dbg.py").is_file():
+        dbg_dir = str(ROOT / "artifacts/a6100-pp")
+        if dbg_dir not in sys.path:
+            sys.path.insert(0, dbg_dir)
+        from a6100_usb_dbg import DirectScsiExchange
+        from tools.camera_debugger import Debugger, OP_INFO
 
-    for drive in (r"\\.\F:", r"\\.\E:", r"\\.\G:", r"\\.\PHYSICALDRIVE3", r"\\.\PHYSICALDRIVE4"):
+        for drive in (r"\\.\F:", r"\\.\E:", r"\\.\G:", r"\\.\PHYSICALDRIVE3", r"\\.\PHYSICALDRIVE4"):
+            try:
+                dbg = Debugger(DirectScsiExchange(drive, timeout=3.0))
+                dbg.request(OP_INFO)
+                return dbg, drive
+            except Exception:
+                continue
+    raise RuntimeError(
+        f"{prof.label} not found via DirectScsiExchange (use open_camera_debugger for tools.camera_debugger)"
+    )
+
+
+@contextlib.contextmanager
+def open_camera_debugger(target: str = "a6100"):
+    """Yield (Debugger, transport_label) for ILCE-6100 or ILCE-6400."""
+    prof = get_target(target)
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    if prof.key == "a6100" and (ROOT / "artifacts/a6100-pp/a6100_usb_dbg.py").is_file():
         try:
-            dbg = Debugger(DirectScsiExchange(drive, timeout=3.0))
+            dbg, drive = connect_camera(target=target)
+            yield dbg, drive
+            return
+        except RuntimeError:
+            pass
+    from tools.camera_debugger import OP_INFO, connect
+
+    try:
+        with connect() as dbg:
             dbg.request(OP_INFO)
-            return dbg, drive
-        except Exception:
-            continue
-    raise RuntimeError("ILCE-6100 not found on USB Mass Storage (ensure camera is plugged in & USB Debugger is running)")
+            yield dbg, f"{prof.key} (camera_debugger)"
+    except Exception as exc:
+        raise RuntimeError(
+            f"{prof.label} not found over USB Debugger (ensure camera is connected and USB Debugger is active)"
+        ) from exc
 
 
-def push_mod_to_camera(mod_path: Path, mod_filename: str | None = None) -> dict[str, Any]:
+def push_mod_to_camera(mod_path: Path, mod_filename: str | None = None,
+                       target: str = "a6100") -> dict[str, Any]:
+    prof = get_target(target)
     fname = mod_filename or mod_path.name
-    if not _has_win32file() and VENV_PYTHON.is_file():
+    if prof.key == "a6100" and not _has_win32file() and VENV_PYTHON.is_file() and Path(sys.executable).resolve() != VENV_PYTHON.resolve():
         code = (
             "import json, sys; from pathlib import Path; "
             f"sys.path.insert(0, {str(ROOT)!r}); "
             "from mods.film_sims.studio_core import push_mod_to_camera; "
-            f"print(json.dumps(push_mod_to_camera(Path({str(mod_path)!r}), {fname!r})))"
+            f"print(json.dumps(push_mod_to_camera(Path({str(mod_path)!r}), {fname!r}, {prof.key!r})))"
         )
         try:
             proc = subprocess.run([str(VENV_PYTHON), "-c", code], capture_output=True, text=True, check=True)
@@ -612,23 +767,24 @@ def push_mod_to_camera(mod_path: Path, mod_filename: str | None = None) -> dict[
             raise RuntimeError((exc.stderr or exc.stdout or str(exc)).strip().splitlines()[-1]) from exc
 
     from tools.camera_debugger import OP_EXEC
-    dbg, drive = connect_camera()
-    remote = f"/tmp_bt/mods/{fname}"
-    data = mod_path.read_bytes()
-    res = dbg.push(remote, data)
-    # Request live reload in case the same mod name is already active
-    dbg.request(OP_EXEC, f"echo {fname} > /tmp_bt/mlv2/reload".encode())
-    ls_out = dbg.request(OP_EXEC, b"ls -la /tmp_bt/mods")["payload"].decode(errors="replace")
-    return {"drive": drive, "remote": remote, **res, "ls": ls_out.strip()}
+    with open_camera_debugger(target=prof.key) as (dbg, drive):
+        remote = f"/tmp_bt/mods/{fname}"
+        data = mod_path.read_bytes()
+        res = dbg.push(remote, data)
+        # Request live reload in case the same mod name is already active
+        dbg.request(OP_EXEC, f"echo {fname} > /tmp_bt/mlv2/reload".encode())
+        ls_out = dbg.request(OP_EXEC, b"ls -la /tmp_bt/mods")["payload"].decode(errors="replace")
+        return {"drive": drive, "remote": remote, "target": prof.key, **res, "ls": ls_out.strip()}
 
 
-def read_camera_logs(slug: str) -> str:
-    if not _has_win32file() and VENV_PYTHON.is_file():
+def read_camera_logs(slug: str, target: str = "a6100") -> str:
+    prof = get_target(target)
+    if prof.key == "a6100" and not _has_win32file() and VENV_PYTHON.is_file() and Path(sys.executable).resolve() != VENV_PYTHON.resolve():
         code = (
             "import sys; "
             f"sys.path.insert(0, {str(ROOT)!r}); "
             "from mods.film_sims.studio_core import read_camera_logs; "
-            f"print(read_camera_logs({slug!r}))"
+            f"print(read_camera_logs({slug!r}, {prof.key!r}))"
         )
         try:
             proc = subprocess.run([str(VENV_PYTHON), "-c", code], capture_output=True, text=True, check=True)
@@ -637,16 +793,18 @@ def read_camera_logs(slug: str) -> str:
             raise RuntimeError((exc.stderr or exc.stdout or str(exc)).strip().splitlines()[-1]) from exc
 
     from tools.camera_debugger import OP_EXEC
-    dbg, drive = connect_camera()
-    cmd = f"echo '=== {drive} /tmp_bt/mods/{slug}.log ==='; cat /tmp_bt/mods/{slug}.log 2>/dev/null || echo '(empty)'; echo '=== mod_loader.log ==='; tail -n 10 /tmp_bt/mods/mod_loader.log 2>/dev/null || true"
-    return dbg.request(OP_EXEC, cmd.encode())["payload"].decode(errors="replace")
+    with open_camera_debugger(target=prof.key) as (dbg, drive):
+        cmd = f"echo '=== {drive} /tmp_bt/mods/{slug}.log ==='; cat /tmp_bt/mods/{slug}.log 2>/dev/null || echo '(empty)'; echo '=== mod_loader.log ==='; tail -n 10 /tmp_bt/mods/mod_loader.log 2>/dev/null || true"
+        return dbg.request(OP_EXEC, cmd.encode())["payload"].decode(errors="replace")
 
 
 def emit_live_picker_header(out_header: Path, stock: dict[str, list[int]] | None = None,
-                            presets: list[FilmSimParams] | None = None) -> Path:
+                            presets: list[FilmSimParams] | None = None,
+                            target: str = "a6100") -> Path:
     """Emit film_sim_live_data.h bundling Stock (0) + all presets for FilmSimLive.mod."""
+    prof = get_target(target)
     if stock is None:
-        stock = load_stock_tables()
+        stock = load_stock_tables(target=target)
     if presets is None:
         presets = [p for p in PRESETS.values() if not is_stock_params(p)]
 
@@ -672,15 +830,15 @@ def emit_live_picker_header(out_header: Path, stock: dict[str, list[int]] | None
         + "};\n"
     )
     hdr = (
-        "/* Auto-generated by mods/film_sims/studio_core.py for FilmSimLive.mod */\n"
+        f"/* Auto-generated by mods/film_sims/studio_core.py for FilmSimLive.mod ({prof.label}) */\n"
         "#include <stdint.h>\n\n"
-        f"#define EC_GAMMA_PA 0x{EC_REC28_V1_PA:08x}u\n"
-        f"#define FC_GAMMA_PA 0x{FC_TBL0_PA:08x}u\n"
-        f"#define COLOR_A0_PA 0x{COLOR_A0_PA:08x}u\n"
-        f"#define COLOR_A1_PA 0x{COLOR_A1_PA:08x}u\n"
-        f"#define COLOR_B2_PA 0x{COLOR_B2_PA:08x}u\n"
-        f"#define CC_TUNING_PA 0x{CC_TUNING_PA:08x}u\n"
-        f"#define REFADR0_PA 0x{REFADR0_PA:08x}u\n"
+        f"#define EC_GAMMA_PA 0x{prof.ec_gamma_pa:08x}u\n"
+        f"#define FC_GAMMA_PA 0x{prof.fc_gamma_pa:08x}u\n"
+        f"#define COLOR_A0_PA 0x{prof.color_a0_pa:08x}u\n"
+        f"#define COLOR_A1_PA 0x{prof.color_a1_pa:08x}u\n"
+        f"#define COLOR_B2_PA 0x{prof.color_b2_pa:08x}u\n"
+        f"#define CC_TUNING_PA 0x{prof.cc_tuning_pa:08x}u\n"
+        f"#define REFADR0_PA 0x{prof.refadr0_pa:08x}u\n"
         f"#define LIVE_N_PRESETS {len(names)}u\n\n"
         f"const char LIVE_NAMES[{len(names)}][16] = {{{name_rows}}};\n"
         f"const int8_t LIVE_LUT_IDX[{len(names)}] = {{{_fmt(lut_idxs, False)}}};\n\n"
@@ -699,3 +857,26 @@ def emit_live_picker_header(out_header: Path, stock: dict[str, list[int]] | None
     out_header.parent.mkdir(parents=True, exist_ok=True)
     out_header.write_text(hdr, encoding="utf-8")
     return out_header
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Build BIONZ X Film Sim .mod files or live-picker headers.")
+    ap.add_argument("--target", choices=tuple(TARGETS), default="a6100")
+    ap.add_argument("--emit-live-header", type=Path, help="Write film_sim_live_data.h to PATH")
+    ap.add_argument("--build", metavar="PRESET", help="Build SMOD v2 .mod for PRESET name")
+    ap.add_argument("--out", type=Path, help="Output directory for --build")
+    args = ap.parse_args()
+    if args.emit_live_header:
+        out = emit_live_picker_header(args.emit_live_header, target=args.target)
+        print(f"Wrote {out} for {args.target}")
+    if args.build:
+        if args.build not in PRESETS:
+            raise SystemExit(f"Unknown preset {args.build!r}; choices: {', '.join(PRESETS)}")
+        res = build_mod(PRESETS[args.build], out_dir=args.out, target=args.target)
+        print(json.dumps(res, indent=2))
+    if not args.emit_live_header and not args.build:
+        ap.print_help()
+
+
+if __name__ == "__main__":
+    main()
