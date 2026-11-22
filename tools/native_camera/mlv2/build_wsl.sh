@@ -9,6 +9,11 @@ CC=arm-linux-gnueabi-gcc
 common=(-mthumb -mcpu=cortex-a5 -mfloat-abi=softfp -Os -ffreestanding -fno-builtin -nostdlib
         -nostartfiles -fno-stack-protector -fomit-frame-pointer -Wall -Wextra -Werror
         -Wno-unused-parameter)
+target_flags=()
+if [[ "${MLV2_TARGET:-a6400}" == "a6100" ]]; then
+    target_flags=(-DMLV2_TARGET_A6100=1)
+    common+=("${target_flags[@]}")
+fi
 
 # Shim: linked at the reference cave address. A second link moves the shim by 0x1000 and the
 # viewUnified2.so base by 0x10000; package.py diffs the two images to record the relocations.
@@ -38,7 +43,7 @@ python3 tools/native_camera/mlv2/package.py "$OUT"
 
 # On-camera guard (static ARM binary, runs as root over ptrace).
 "$CC" -static -O2 -Wall -Wextra -Werror -march=armv7-a -mfloat-abi=softfp \
-    "$D/mlv2_guard.c" -o "$OUT/mlv2_guard_arm"
+    "${target_flags[@]}" "$D/mlv2_guard.c" -o "$OUT/mlv2_guard_arm"
 
 # The joint debugger package invokes this separate worker in the background.
 # Only the matching archive can supply executable code to it.

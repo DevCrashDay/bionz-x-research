@@ -3,9 +3,7 @@
 One record per hardware or software claim. Records are dated and are **not** rewritten
 when a later result supersedes them: the newer record says what changed.
 
-Current consolidated state: [README research status](../../README.md) (through **E0663**,
-2026-11-20) and [UVC/PTP status and next steps](../UVC_PTP_STATUS.md) (through **E0494**,
-Current consolidated state: [README research status](../../README.md) (through **E0664**,
+Current consolidated state: [README research status](../../README.md) (through **E9103**,
 2026-11-21) and [UVC/PTP status and next steps](../UVC_PTP_STATUS.md) (through **E0494**,
 2026-11-13).
 
@@ -24,6 +22,9 @@ snapshot or its recorded test count.
 
 | ID | Date | Claim |
 | --- | --- | --- |
+| [E9103](9103-a6100-mod-loader-port.md) | 2026-11-21 | ILCE-6100 `viewUnified2.so` + `libObj.so` Mod Loader v2 (`MLCR`) port and `MLV2_TARGET=a6100` QEMU verification: resolves all three view hooks (`+0x5acc0c`, `+0x5ad038`, `+0x5ad5fc`), `libtestcmd.so` shim window, `SET_TEXT`/`SET_MODE`, five `libObj.so` event addresses, tab rect slots (`+0x803984`/`+0x803a04`), and `.bss` anchor (`+0xb7a658`), with folder menu navigation (`core.c` v3) and Film Simulations / Studio / `FilmSimLive` / `FilmTexture` SMOD v2 mods |
+| [E9102](9102-a6100-picture-profile-camera-apply.md) | 2026-11-21 | Procedure-only record (not executed on physical camera): exact 2-byte `.dynsym` `st_value` redirect (`0x138b4c`) and rollback for `/usr/lib/CautionConfig.so` on ILCE-6100 Ver.1.00 (`a19110bd…` → `a91f2f28…`), plus read-only `/usr` and shell blockers |
+| [E9101](9101-a6100-picture-profile-gate.md) | 2026-11-21 | ILCE-6100 dump: Picture Profile is present in every data layer (shared string resource byte-identical to the a6400, 13 node exports, registry index 251 of 416, 21 menu-tree references, settings superset, av-cam PP pipeline), so the gate is the run-time model-data decision, not a missing item; the dump's `CautionConfig.so` has a 2026-11-19 mtime but matches the 2026-11-10 stock pull byte-for-byte. Opt-in `PP_UNLOCK=1` redirects the Soft Skin menu node to the PP node with two `.dynsym` `st_value` bytes (`0x138b4c`, `0xc5b5c8`→`0xc5d530`) in the run's disposable overlay; the generated patch is byte-identical to the validated reference and the boot log is unchanged; A/B on the drawn menu: stock page 9/11 ends in `Soft Skin Effect  Off`, `PP_UNLOCK=1` shows `Picture Profile  PP7` in that row (Soft Skin replaced while on) |
 | [E9006](9006-captured-dmm-unit-4092e-authentic-osd-surface.md) | 2026-11-21 | The captured DMM table holds two `0x4092e` records whose extents are OSD A/B (`0x23A80000`/`0x23B16000`, size `0x96000`, extent `0x62`, handles `0x41C`/`0x420`); an opt-in policy returns OSD A, the app allocates and maps it, writes the full 614,400-byte frame (a black clear) and loads `viewUnified2.so` |
 | [E9005](9005-rea-provider-limit-and-20ms-sites.md) | 2026-11-21 | REA deep analysis is unavailable for this ARM `libObj.so` on the investigating host; a direct Thumb scan finds six `movw #0x4e20` sites, only `+0x862CB4` observed in the 200-202M window |
 | [E9004](9004-glcommon-wait-is-20ms-sleep-not-render.md) | 2026-11-21 | The post-`CreateFramebuffer` wait is a fixed 20 ms sleep (19,815 us measured, 40 calls per 1M instructions), and the 32 MiB surface at physical `0x202E0000` is byte-identical between the first tick after 200M and ~205.5M, so the app is waiting rather than drawing |
