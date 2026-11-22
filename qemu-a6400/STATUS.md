@@ -122,6 +122,20 @@ The model is on by default; opt-in live view still overlays it at priority
 -400. Not re-run here and not checked on a physical camera. See
 [E0637](../docs/evidence/0637-camcore-f301-contributor-boot-score.md).
 
+## CamCore 0xF3020800 window (2026-11-21 / L0090)
+
+The certified baseline 120 s boot logs 90 distinct catch-all pairs at
+`0xF3020800..0xF3020BFF`, the 1 KiB after the 0x800-byte AIF model at
+`0xF3020000`: 89 write-only offsets and one read-modify-write word `+0xB80`.
+`cxd90045-camcore` now mounts a 0x400-byte sub-window there (priority -600) with
+one block-relative rule per offset: Z0 for the write-only offsets, RF for
+`+0xB80` (all 74 reads are followed by a write; readers `0x63784AB4/0x63784A74`).
+An offset without a rule inside the window still logs as unmodelled. The
+post-change boot has 0 catch-all pairs in the window and the same final
+sequencer state (`index 42`, `step 0x897F`, `status/mirror 0x0102`,
+`top/b5_top/b5_opd 1`, 43 steps); qtest 7/7 (a ruled write is silent, the
+unruled `+0xBF0` still logs).
+
 ## Contributor boot scores for merged emulator patches (2026-11-19 / E0614–E0618)
 
 Pull requests #35, #37 and #40 map plain `cxd90014-regfile` read-back over
